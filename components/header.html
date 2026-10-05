@@ -1,0 +1,26 @@
+<header class="bg-white h-16 border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
+  <h1 class="text-lg font-bold text-slate-800">Tổng quan</h1>
+  
+  <div class="flex items-center gap-3">
+    <button class="w-9 h-9 rounded-full border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 transition">
+      <i data-lucide="download-cloud" class="w-4 h-4"></i>
+    </button>
+    <div class="flex items-center gap-1.5 bg-red-50 border border-red-100 px-3 py-1.5 rounded-full text-red-500 font-semibold text-sm">
+      <i data-lucide="disc" class="w-3.5 h-3.5 fill-red-500"></i>
+      <span>0 đ</span>
+    </div>
+    
+    <!-- Đã thêm ID để JS cập nhật tên -->
+    <span id="header-username" class="font-semibold text-sm text-slate-700 ml-1">Huy</span>
+    
+    <!-- Đã thêm ID để JS cập nhật Avatar (chữ cái đầu) -->
+    <div id="header-avatar" class="w-9 h-9 rounded-full bg-[#18253f] text-white font-bold text-xs flex items-center justify-center uppercase">
+      HU
+    </div>
+    
+    <!-- Nút đăng xuất -->
+    <button onclick="logoutUser()" class="w-9 h-9 rounded-full border border-red-100 bg-red-50 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white ml-1 transition" title="Đăng xuất">
+      <i data-lucide="log-out" class="w-4 h-4"></i>
+    </button>
+  </div>
+</header>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GZ AFL - Nền tảng Affiliate</title>
+  
+  <!--Favicon) -->
+  <link rel="icon" type="image/png" href="LOGO.png">
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-[#f4f6f9] text-slate-700 m-0 p-0">
+
+  <!-- dashboard-->
+  <div id="app-root" class="flex min-h-screen hidden">
+    <div id="sidebar-container"></div>
+    <div class="flex-1 flex flex-col min-w-0">
+      <div id="header-container"></div>
+      <div id="main-content-container" class="overflow-y-auto flex-1"></div>
+    </div>
+  </div>
+
+  <!-- Container cho Giao diện Chờ / Landing Page (Hiện khi chưa đăng nhập) -->
+  <div id="landing-root" class="w-full min-h-screen"></div>
+
+  <!-- ==============================================
+       MODAL YÊU CẦU RÚT TIỀN (DÙNG CHUNG)
+  =============================================== -->
+  <div id="withdraw-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="withdraw-modal-content">
+      
+      <button onclick="closeWithdrawModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <div class="p-8">
+        <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-6">
+          <i data-lucide="landmark" class="w-6 h-6 text-blue-500"></i>
+        </div>
+        
+        <h2 class="text-2xl font-bold text-slate-800 mb-2">Rút tiền về tài khoản</h2>
+        <p class="text-sm text-slate-500 mb-6">Vui lòng chọn ngân hàng và nhập chính xác số tài khoản của bạn.</p>
+
+        <div class="space-y-4">
+          <!-- Chọn Ngân hàng / Ví -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ngân hàng / Ví điện tử</label>
+            <select id="withdraw-bank" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
+              <option value="" disabled selected>-- Chọn phương thức nhận tiền --</option>
+              <option value="MBBank">Ngân hàng Quân Đội (MBBank)</option>
+              <option value="Vietcombank">Vietcombank</option>
+              <option value="Techcombank">Techcombank</option>
+              <option value="Vietinbank">VietinBank</option>
+              <option value="BIDV">BIDV</option>
+              <option value="Agribank">Agribank</option>
+              <option value="Momo">Ví điện tử Momo</option>
+              <option value="ZaloPay">Ví ZaloPay</option>
+            </select>
+          </div>
+
+          <!-- Nhập STK -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Số tài khoản / Số điện thoại ví</label>
+            <input type="text" id="withdraw-acc-number" placeholder="Ví dụ: 0987654321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
+          </div>
+
+          <!-- Tên chủ thẻ -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên chủ tài khoản (Không dấu)</label>
+            <input type="text" id="withdraw-acc-name" placeholder="VD: NGUYEN VAN A" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all uppercase">
+          </div>
+        </div>
+
+        <button onclick="submitWithdraw()" class="w-full mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98] flex items-center justify-center gap-2">
+          <i data-lucide="send" class="w-4 h-4"></i> Gửi yêu cầu rút tiền
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script xử lý nối các file -->
+  <script src="script.js"></script>
+</body>
+</html>

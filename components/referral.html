@@ -1,0 +1,133 @@
+<main class="p-8 max-w-5xl mx-auto animation-fade-in">
+
+  <!-- Header của trang con -->
+  <div class="mb-8">
+    <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Mời bạn bè</h2>
+    <p class="text-slate-500 mt-2 text-sm">Chia sẻ mã giới thiệu của bạn — mỗi mã giới thiệu được nhập thành công sẽ nhận ngay 100 điểm thưởng.</p>
+  </div>
+
+  <!-- Banner số điểm (Dark Card) -->
+  <div class="bg-[#18253f] text-white rounded-[2rem] p-8 mb-6 relative overflow-hidden shadow-lg shadow-blue-900/10">
+    <div class="absolute -right-10 -top-10 w-48 h-48 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
+    <div class="absolute right-20 -bottom-10 w-32 h-32 bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
+
+    <div class="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="gift" class="w-7 h-7 text-white"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold">Mời bạn bè — nhận điểm thưởng</h3>
+          <p class="text-sm text-slate-300 mt-1">Mỗi mã giới thiệu nhập thành công = <span class="font-bold text-white">100 điểm</span></p>
+        </div>
+      </div>
+
+      <div class="bg-white/10 rounded-2xl px-6 py-4 text-center flex-shrink-0">
+        <div class="text-3xl font-extrabold" id="referral-points">0</div>
+        <div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mt-1">Điểm của bạn</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 Stat cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
+    <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center text-red-500 flex-shrink-0">
+        <i data-lucide="users" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="text-xl font-bold text-slate-800" id="stat-redeemed-count">0</div>
+        <div class="text-xs text-slate-400 font-medium mt-0.5">Mã đã sử dụng thành công</div>
+      </div>
+    </div>
+    <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0">
+        <i data-lucide="star" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="text-xl font-bold text-slate-800" id="stat-total-points">0</div>
+        <div class="text-xs text-slate-400 font-medium mt-0.5">Tổng điểm kiếm được</div>
+      </div>
+    </div>
+    <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
+      <div class="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500 flex-shrink-0">
+        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <div class="text-xl font-bold text-slate-800" id="stat-refresh-time">--:--:--</div>
+        <div class="text-xs text-slate-400 font-medium mt-0.5">Mã mới sau</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mã giới thiệu của bạn -->
+  <div class="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-6">
+    <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Mã giới thiệu của bạn</div>
+
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div class="flex-1 bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-2xl py-5 px-6 flex items-center justify-center sm:justify-start">
+        <span id="referral-code" class="text-3xl md:text-4xl font-extrabold tracking-[0.2em] text-[#18253f]">------</span>
+      </div>
+      <button id="btn-copy-code" class="bg-[#18253f] hover:bg-[#233559] text-white font-semibold px-6 py-4 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] flex-shrink-0">
+        <i data-lucide="copy" class="w-4 h-4"></i>
+        <span>Copy mã</span>
+      </button>
+    </div>
+
+    <p class="text-xs text-slate-400 font-medium mt-4 flex items-center gap-1.5">
+      <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0"></i>
+      Mã giới thiệu là duy nhất cho thiết bị của bạn và sẽ tự động đổi mới sau mỗi 24 giờ.
+    </p>
+  </div>
+
+  <!-- Nhập mã giới thiệu của người khác (Collapsible) -->
+  <div class="bg-white rounded-3xl border border-slate-100 shadow-sm mb-6 overflow-hidden">
+    <button id="redeem-toggle" class="w-full flex items-center justify-between gap-3 px-6 md:px-8 py-5 hover:bg-slate-50/60 transition-colors">
+      <div class="flex items-center gap-3">
+        <i data-lucide="ticket" class="w-5 h-5 text-red-500 flex-shrink-0"></i>
+        <span class="font-bold text-slate-800">Nhập mã giới thiệu của người khác</span>
+      </div>
+      <i data-lucide="chevron-down" id="redeem-chevron" class="w-5 h-5 text-slate-400 transition-transform duration-300 flex-shrink-0"></i>
+    </button>
+
+    <div id="redeem-panel" class="hidden px-6 md:px-8 pb-8">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input
+          id="redeem-input"
+          type="text"
+          maxlength="6"
+          placeholder="Nhập mã 6 ký tự..."
+          class="flex-1 bg-slate-50/50 border-2 border-slate-100 rounded-2xl py-3.5 px-5 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold tracking-widest uppercase"
+        >
+        <button id="btn-redeem-code" class="bg-[#f04d4d] hover:bg-red-600 text-white font-bold px-6 py-3.5 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] flex-shrink-0">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Xác nhận</span>
+        </button>
+      </div>
+
+      <div id="redeem-feedback" class="hidden mt-4 flex items-start gap-2 text-sm font-medium p-3 rounded-xl">
+        <i id="redeem-feedback-icon" data-lucide="info" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+        <span id="redeem-feedback-text"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lịch sử mã đã sử dụng -->
+  <div class="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
+    <h3 class="font-bold text-slate-800 mb-6">Lịch sử mã đã sử dụng</h3>
+    <div id="redeem-history-area">
+      <!-- Nội dung sẽ được JavaScript tự động điền vào đây -->
+    </div>
+  </div>
+
+</main>
+
+<style>
+  .animation-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

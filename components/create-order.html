@@ -1,0 +1,139 @@
+<main class="p-8 max-w-6xl mx-auto animation-fade-in">
+  
+  <!-- Header của trang con -->
+  <div class="mb-8">
+    <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Tạo đơn hàng hoàn tiền</h2>
+    <p class="text-slate-500 mt-2 text-sm">Dán link sản phẩm Shopee, TikTok hoặc Lazada để tạo nhanh link hoàn tiền và mua hàng đúng phiên ghi nhận.</p>
+  </div>
+
+  <!-- Khối nhập Link (Chức năng chính) -->
+  <div class="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] mb-8">
+    
+    <!-- Các Badge nền tảng -->
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <div class="flex items-center gap-1.5 bg-orange-50 text-orange-600 px-3.5 py-1.5 rounded-full text-xs font-bold border border-orange-100">
+        <i data-lucide="shopping-bag" class="w-3.5 h-3.5"></i> SHOPEE
+      </div>
+      <div class="flex items-center gap-1.5 bg-slate-100 text-slate-800 px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-200">
+        <i data-lucide="video" class="w-3.5 h-3.5"></i> TIKTOK
+      </div>
+      <div class="flex items-center gap-1.5 bg-blue-50 text-blue-600 px-3.5 py-1.5 rounded-full text-xs font-bold border border-blue-100">
+        <i data-lucide="heart" class="w-3.5 h-3.5"></i> LAZADA
+      </div>
+    </div>
+
+    <!-- Ô nhập Link -->
+    <div class="relative mb-3 group">
+      <div class="absolute top-4 left-4 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+        <i data-lucide="link-2" class="w-5 h-5"></i>
+      </div>
+      <textarea 
+        id="link-input" 
+        rows="3" 
+        class="w-full bg-slate-50/50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-20 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all resize-none shadow-inner"
+        placeholder="Dán link sản phẩm vào đây..."
+      ></textarea>
+      
+      <!-- Nút Dán (Paste) tiện ích -->
+      <button onclick="navigator.clipboard.readText().then(text => document.getElementById('link-input').value = text)" class="absolute top-4 right-4 text-sm font-semibold text-red-500 hover:text-red-600 transition bg-red-50 px-3 py-1.5 rounded-lg">
+        Dán
+      </button>
+    </div>
+
+    <!-- Thông báo lỗi (Mặc định ẩn) -->
+    <div id="link-error" class="hidden flex items-center gap-2 text-red-500 text-sm font-medium mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
+      <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+      <span></span>
+    </div>
+
+    <!-- Hướng dẫn đã được cập nhật chỉ cho phép 1 link -->
+    <div class="flex items-center gap-2 text-xs text-slate-400 mb-6 font-medium">
+      <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0"></i>
+      Vui lòng chỉ nhập 1 link duy nhất cho mỗi lần chuyển đổi.
+    </div>
+
+    <!-- Nút Tạo Link -->
+    <button id="btn-create-link" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98]">
+      <i data-lucide="sparkles" class="w-5 h-5 text-yellow-400"></i>
+      <span>Tạo link & kiểm tra hoa hồng</span>
+    </button>
+  </div>
+
+  <!-- Hai cột nội dung thông tin (Lưu ý & Hướng dẫn) -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    
+    <!-- Cột trái: Lưu ý quan trọng -->
+    <div class="bg-amber-50/60 p-6 md:p-8 rounded-3xl border border-amber-200/60">
+      <h3 class="flex items-center gap-2 text-amber-600 font-bold text-lg mb-6">
+        <i data-lucide="triangle-alert" class="w-5 h-5"></i>
+        Lưu ý quan trọng
+      </h3>
+      
+      <ul class="space-y-4">
+        <li class="flex items-start gap-3">
+          <i data-lucide="trash-2" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+          <span class="text-sm text-amber-900/80 leading-relaxed font-medium">Hãy xóa các sản phẩm cùng loại đã có sẵn trong giỏ hàng trước khi đặt mua qua link hoàn tiền.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <i data-lucide="mouse-pointer-click" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+          <span class="text-sm text-amber-900/80 leading-relaxed font-medium">Trong lúc mua hàng, tránh nhảy sang các link khác như live, video hoặc quảng cáo để không bị mất ghi nhận.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <i data-lucide="chrome" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+          <span class="text-sm text-amber-900/80 leading-relaxed font-medium">Nên hoàn tất quá trình đặt hàng trong cùng một phiên trình duyệt và hạn chế đóng tab giữa chừng.</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <i data-lucide="info" class="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5"></i>
+          <span class="text-sm text-amber-900/80 leading-relaxed font-medium">Đơn hàng có được ghi nhận hợp lệ hay không là do sàn TMĐT quyết định. Chúng tôi không thể can thiệp.</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Cột phải: Cách thực hiện -->
+    <div class="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm">
+      <h3 class="text-slate-800 font-bold text-lg mb-6">Cách thực hiện</h3>
+      
+      <div class="relative border-l-2 border-slate-100 ml-4 space-y-8 pb-4">
+        
+        <!-- Bước 1 -->
+        <div class="relative pl-8">
+          <div class="absolute -left-[17px] bg-[#f04d4d] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-md ring-4 ring-white">
+            1
+          </div>
+          <h4 class="font-bold text-slate-800 flex items-center gap-2 mb-1">
+            <i data-lucide="copy" class="w-4 h-4 text-slate-400"></i> Sao chép link sản phẩm
+          </h4>
+          <p class="text-sm text-slate-500 leading-relaxed">
+            Mở Shopee, TikTok hoặc Lazada, tìm sản phẩm bạn muốn mua. Nhấn nút chia sẻ hoặc sao chép đường dẫn của sản phẩm đó.
+          </p>
+        </div>
+
+        <!-- Bước 2 -->
+        <div class="relative pl-8">
+          <div class="absolute -left-[17px] bg-[#f04d4d] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-md ring-4 ring-white">
+            2
+          </div>
+          <h4 class="font-bold text-slate-800 flex items-center gap-2 mb-1">
+            <i data-lucide="arrow-left-right" class="w-4 h-4 text-slate-400"></i> Chuyển đổi link
+          </h4>
+          <p class="text-sm text-slate-500 leading-relaxed">
+            Dán link sản phẩm vào ô trống phía trên và nhấn tạo link. Hệ thống sẽ tự động tạo link hoàn tiền chỉ trong vài giây.
+          </p>
+        </div>
+        
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<style>
+  /* Hiệu ứng mượt khi load component */
+  .animation-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

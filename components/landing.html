@@ -1,0 +1,161 @@
+<div class="min-h-screen bg-[#fafbfc] relative overflow-hidden font-sans z-0 animation-fade-in">
+  
+  <!-- Background mờ (Pastel blobs) tạo hiệu ứng chiều sâu -->
+  <div class="absolute top-0 left-[0%] w-[600px] h-[600px] bg-red-50/80 rounded-full blur-[100px] -z-10"></div>
+  <div class="absolute top-40 right-[0%] w-[500px] h-[500px] bg-emerald-50/60 rounded-full blur-[100px] -z-10"></div>
+  <div class="absolute bottom-0 left-[20%] w-[400px] h-[400px] bg-blue-50/50 rounded-full blur-[100px] -z-10"></div>
+
+  <!-- Navbar -->
+  <nav class="flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur-md sticky top-0 z-50 border-b border-slate-100/50">
+    <!-- Logo -->
+    <div class="flex items-center gap-2">
+      <div class="w-11 h-11 bg-[#111827] rounded-2xl flex items-center justify-center shadow-md overflow-hidden p-1.5">
+        <!-- Đường dẫn trỏ tới Logo của bạn -->
+        <img src="LOGO.png" alt="GZ AFL Logo" class="w-full h-full object-contain">
+      </div>
+    </div>
+
+    <!-- Center Menu -->
+    <div class="hidden md:flex items-center gap-8">
+      <a href="#" class="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-[#f04d4d] rounded-full font-bold text-sm border border-red-100/50 transition">
+        <i data-lucide="home" class="w-4 h-4"></i> Trang chủ
+      </a>
+      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+        <i data-lucide="search" class="w-4 h-4"></i> Tra cứu đơn hàng
+      </a>
+      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+        <i data-lucide="wallet" class="w-4 h-4"></i> Ví của bạn
+      </a>
+      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+        <i data-lucide="help-circle" class="w-4 h-4"></i> Hướng dẫn
+      </a>
+    </div>
+
+    <!-- Right (Login Button) -->
+    <div>
+      <button onclick="openAuthModal(true)" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-5 py-1.5 rounded-full hover:shadow-md transition group">
+        <div class="w-9 h-9 bg-[#18253f] group-hover:bg-[#233559] text-white rounded-full flex items-center justify-center font-bold text-sm transition">
+          <i data-lucide="user" class="w-4 h-4"></i>
+        </div>
+        <div class="text-left">
+          <div class="text-[10px] text-slate-400 font-medium leading-none">Xin chào!</div>
+          <div class="text-sm font-bold text-slate-800 leading-none mt-1">Đăng nhập</div>
+        </div>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <div class="flex flex-col items-center justify-center pt-20 pb-16 px-4 text-center">
+    
+    <!-- Badge -->
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-red-100 text-[#f04d4d] text-xs font-bold mb-8 shadow-sm">
+      <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Nền tảng Affiliate uy tín tại Việt Nam
+    </div>
+
+    <!-- Tiêu đề lớn -->
+    <h1 class="text-[40px] md:text-[56px] lg:text-[64px] font-extrabold text-[#1a202c] tracking-tight leading-[1.1] mb-5">
+      Chuyển đổi link mua sắm <br>
+      <span class="text-[#f04d4d]">Nhận hoa hồng</span>
+    </h1>
+
+    <p class="text-slate-500 font-medium italic mb-12 max-w-md mx-auto text-sm md:text-base leading-relaxed">
+      Hoa hồng các đơn hàng từ Shopee, Lazada, TikTok Shop — công khai, <br class="hidden md:block">minh bạch
+    </p>
+
+    <!-- Hộp chuyển đổi Link -->
+    <div class="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-100 p-6 md:p-10 w-full max-w-4xl mb-12 relative z-10">
+      
+      <!-- Logo các sàn -->
+      <div class="flex justify-center items-center gap-8 mb-8">
+        <div class="flex items-center gap-2 text-sm font-bold text-[#ee4d2d]"><i data-lucide="shopping-bag" class="w-4 h-4"></i> Shopee</div>
+        <div class="flex items-center gap-2 text-sm font-bold text-black"><i data-lucide="video" class="w-4 h-4"></i> TikTok</div>
+        <div class="flex items-center gap-2 text-sm font-bold text-[#0f146d]"><i data-lucide="heart" class="w-4 h-4"></i> Lazada</div>
+      </div>
+
+      <!-- Input Group: Thiết kế liền mạch thành 1 hàng -->
+      <div class="flex flex-col md:flex-row items-center gap-0 bg-white border-2 border-slate-100 rounded-2xl p-1.5 focus-within:border-red-200 focus-within:ring-4 focus-within:ring-red-50 transition-all shadow-sm">
+         
+         <!-- Nút Dán -->
+         <button onclick="navigator.clipboard.readText().then(text => document.getElementById('landing-link-input').value = text)" class="flex items-center justify-center gap-2 px-6 py-3.5 bg-red-50 text-[#f04d4d] rounded-xl font-bold hover:bg-red-100 transition whitespace-nowrap w-full md:w-auto">
+           <i data-lucide="clipboard" class="w-4 h-4"></i> Dán
+         </button>
+         
+         <!-- Ô nhập link -->
+         <div class="flex-1 w-full relative flex items-center px-4 py-3 md:py-0">
+            <i data-lucide="link-2" class="text-slate-300 w-5 h-5 mr-3 flex-shrink-0"></i>
+            <input id="landing-link-input" type="text" placeholder="Dán link sản phẩm..." class="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-slate-700 placeholder-slate-400 font-medium text-base">
+         </div>
+
+         <!-- Nút Chuyển đổi -->
+         <button onclick="openAuthModal(false)" class="flex items-center justify-center gap-2 px-8 py-3.5 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-500/20 transition whitespace-nowrap w-full md:w-auto transform active:scale-95">
+           <i data-lucide="boxes" class="w-4 h-4 text-white"></i> Chuyển đổi link
+         </button>
+      </div>
+
+      <div class="mt-5 text-left flex items-center justify-center md:justify-start gap-2 text-xs font-medium text-slate-400">
+        <i data-lucide="list-tree" class="w-3.5 h-3.5"></i>
+        Dán nhiều link chuyển đổi cùng lúc, mỗi link 1 dòng
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================================
+       MODAL ĐĂNG NHẬP / ĐĂNG KÝ
+  =============================================== -->
+  <div id="auth-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="auth-modal-content">
+      
+      <!-- Nút Đóng -->
+      <button onclick="closeAuthModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <div class="p-8">
+        <div class="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
+          <i data-lucide="user-circle" class="w-6 h-6 text-red-500"></i>
+        </div>
+        
+        <h2 id="auth-title" class="text-2xl font-bold text-slate-800 mb-2">Đăng nhập</h2>
+        <p id="auth-subtitle" class="text-sm text-slate-500 mb-6">Vui lòng đăng nhập để theo dõi và nhận hoa hồng.</p>
+
+        <!-- Thông báo lỗi/thành công -->
+        <div id="auth-error" class="hidden flex items-center gap-2 text-red-500 text-xs font-medium mb-4 bg-red-50 p-3 rounded-xl border border-red-100">
+          <i id="auth-error-icon" data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+          <span id="auth-error-text"></span>
+        </div>
+
+        <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+          <!-- Nhập Tên -->
+          <div id="auth-name-group" class="mb-4 hidden">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên hiển thị</label>
+            <input type="text" id="auth-name" placeholder="Nguyễn Văn A" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <!-- Nhập Email / SĐT -->
+          <div class="mb-4">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
+            <input type="text" id="auth-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <!-- Nhập Mật khẩu -->
+          <div class="mb-6">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu</label>
+            <input type="password" id="auth-password" placeholder="••••••••" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <!-- Nút Submit -->
+          <button type="submit" id="auth-submit-btn" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+            Đăng nhập
+          </button>
+        </form>
+
+        <!-- Nút Toggle -->
+        <div class="mt-6 text-center text-sm font-medium text-slate-500">
+          <span id="auth-toggle-text">Chưa có tài khoản?</span> 
+          <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-[#f04d4d] font-bold hover:underline">Đăng ký ngay</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

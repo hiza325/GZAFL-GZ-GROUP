@@ -1,0 +1,66 @@
+<!-- Cập nhật: Thu gọn w-[84px], khi hover mở rộng w-64, dùng 'group' để điều khiển các phần tử con -->
+<aside class="w-[84px] hover:w-64 group transition-all duration-300 ease-in-out bg-white border-r border-slate-200 flex flex-col justify-between h-screen sticky top-0 flex-shrink-0 overflow-x-hidden z-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+  
+  <!-- Thẻ bọc cố định chiều rộng (w-64) giúp layout không bị vỡ khi thu nhỏ -->
+  <div class="w-64">
+    
+    <!-- Logo (Dùng pl-[10px] để căn đúng vào giữa khung 84px khi thu nhỏ, tự động căn giữa khi mở rộng) -->
+    <a href="#" id="logo-home-btn" class="flex flex-col py-5 border-b border-slate-100 cursor-pointer group/logo items-start pl-[10px] group-hover:items-center group-hover:pl-0 transition-all duration-300">
+      
+      <!-- Logo image: hiển thị đầy đủ logo gốc, kích thước lớn hơn để nhìn rõ ngay cả khi chưa hover -->
+      <img src="LOGO.png" alt="GZ AFL Logo" class="w-16 h-16 object-contain rounded-xl shadow-sm group-hover/logo:scale-105 transition-transform duration-300 shrink-0">
+      
+      <!-- Chữ GZ AFL ẩn đi khi thu gọn -->
+      <span class="font-bold text-slate-800 tracking-wider text-sm mt-2 opacity-0 group-hover:opacity-100 transition-all duration-300 h-0 group-hover:h-auto overflow-hidden group-hover/logo:text-red-500">GZ AFL</span>
+    </a>
+
+    <!-- Main Menu -->
+    <div class="p-4">
+      <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 h-4">Menu chính</div>
+      
+      <nav class="space-y-2">
+        <a href="#" class="flex items-center gap-4 px-3 py-3 bg-[#18253f] text-white rounded-xl font-medium text-sm shadow-sm overflow-hidden">
+          <i data-lucide="layout-grid" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Tổng quan</span>
+        </a>
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="shopping-cart" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Tạo đơn hàng</span>
+        </a>
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="bell" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Thông báo</span>
+        </a>
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="file-text" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Đơn hàng đã đặt</span>
+        </a>
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="wallet" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Ví hoàn tiền</span>
+        </a>
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="user-plus" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Mời bạn bè</span>
+        </a>
+      </nav>
+
+      <!-- Partner Banner Button -->
+      <div class="mt-4">
+        <a href="#" class="flex items-center gap-4 py-3 px-3 bg-red-50 text-red-500 font-semibold rounded-xl text-sm hover:bg-red-100 transition-colors overflow-hidden">
+          <i data-lucide="star" class="w-5 h-5 flex-shrink-0 ml-1 fill-red-500"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Partner</span>
+        </a>
+      </div>
+
+      <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mt-6 mb-3 px-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 h-4">Thông tin</div>
+      <nav class="space-y-2">
+        <a href="#" class="flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden">
+          <i data-lucide="user" class="w-5 h-5 flex-shrink-0 ml-1"></i>
+          <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">Cá nhân</span>
+        </a>
+      </nav>
+    </div>
+    
+  </div>
+</aside>
