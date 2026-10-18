@@ -76,7 +76,13 @@ npm run watch:css
 | `WITHDRAWAL_MIN` | `50000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
+| `EMAIL_OTP` | `auto` | Bước xác thực email khi đăng ký: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Máy chủ gửi thư dùng cho mã xác thực. Bỏ trống `SMTP_SECURE` thì tự suy ra (`true` khi cổng `465`) |
+| `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail thì dùng *Mật khẩu ứng dụng* 16 ký tự) |
+| `MAIL_FROM`, `MAIL_FROM_NAME` | theo `SMTP_USER`, tên `GZ AFL` | Địa chỉ và tên người gửi hiện trên thư |
 | `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp (bỏ trống thì dùng giá trị mặc định trong `components/guide.html`) |
+
+> **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).
 
 Tạo khoá `JWT_SECRET` ngẫu nhiên:
 
@@ -129,9 +135,11 @@ backend/
     format.js              # Định dạng ngày/tiền kiểu Việt Nam
     rateLimit.js           # Giới hạn số yêu cầu cho API đăng nhập
     affiliate.js           # Chuyển link sản phẩm -> link hoàn tiền (mock / accesstrade / shopee)
+    mailer.js              # Gửi email qua SMTP (in ra console khi chưa cấu hình ở môi trường dev)
+    otp.js                 # Sinh / kiểm tra mã xác thực email (OTP) cho đăng ký và quên mật khẩu
     notify.js              # Ghi thông báo cho người dùng
   routes/
-    auth.js                # Đăng ký / đăng nhập / đăng xuất / me
+    auth.js                # Đăng ký (2 bước kèm mã xác thực) / đăng nhập / đăng xuất / me / quên mật khẩu
     orders.js              # Danh sách + tạo đơn hàng (kèm chuyển đổi link)
     wallet.js              # Thống kê ví + rút tiền
     referral.js            # Mã giới thiệu + nhập mã
@@ -144,6 +152,53 @@ backend/
 
 ---
 
+## Xác thực email (OTP)
+
+Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email người dùng nhập; nhập đúng mã mới tạo được tài khoản. Cùng cơ chế đó cho phép khách **tự đặt lại mật khẩu** khi quên.
+
+- **Email là bắt buộc khi đăng ký**, kể cả khi đăng nhập bằng số điện thoại.
+- **Đổi email trong trang Cá nhân cũng phải xác thực**: mã được gửi tới *địa chỉ mới* rồi mới lưu, nên email khôi phục luôn là địa chỉ thật. Chỉ đổi tên/số điện thoại thì không cần mã.
+- Mã có hiệu lực **10 phút**, chỉ dùng được **một lần**, lưu dưới dạng **bcrypt hash** (không lưu mã gốc).
+- Nhập sai quá **5 lần** thì phải yêu cầu mã mới; mỗi lần yêu cầu lại phải chờ **60 giây**, tối đa **5 mã/giờ** cho mỗi email.
+- Mỗi IP chỉ được yêu cầu gửi mã **10 lần / 15 phút** cho mỗi đầu API.
+- Bước yêu cầu gửi mã **luôn trả về cùng một thông báo** dù tài khoản có tồn tại hay không — người ngoài không dò được danh sách tài khoản.
+
+### Chưa có tài khoản email?
+
+`EMAIL_OTP=auto` (mặc định) xử lý như sau:
+
+| Tình huống | Kết quả |
+|---|---|
+| `development`, chưa cấu hình SMTP | Bước xác thực **vẫn bật**, nhưng thư chỉ được **in ra console** của server; mã cũng trả về ở trường `devCode` nên hiện luôn trong ô vàng "mã thử nghiệm" ngay trên giao diện để bạn thử |
+| `production`, chưa cấu hình SMTP | Bước xác thực **tự tắt** kèm cảnh báo lúc khởi động, để không chặn mất việc đăng ký |
+| Đã điền `SMTP_*` + `MAIL_FROM` | Gửi thư thật |
+
+Muốn tự quyết định thì đặt `EMAIL_OTP=on` (luôn bật) hoặc `EMAIL_OTP=off` (luôn tắt).
+
+### Cấu hình gửi thư
+
+Điền vào `backend/.env` — mẫu có sẵn trong `backend/.env.example`. Với Gmail: bật xác thực 2 lớp rồi tạo **Mật khẩu ứng dụng** 16 ký tự và dùng nó làm `SMTP_PASS`.
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=ten-ban@gmail.com
+SMTP_PASS=abcd efgh ijkl mnop
+MAIL_FROM=ten-ban@gmail.com
+MAIL_FROM_NAME=GZ AFL
+```
+
+Cần tỉ lệ vào Inbox tốt hơn Gmail thì dùng Brevo (`smtp-relay.brevo.com`, miễn phí 300 thư/ngày).
+
+### Quên mật khẩu có 2 đường
+
+1. **Tự đặt lại (mặc định)**: khách bấm **"Quên mật khẩu?"** → nhận mã qua email → nhập mã kèm mật khẩu mới. Xong ngay, không cần quản trị viên.
+2. **Nhờ quản trị viên (dự phòng)**: dùng khi tài khoản **chưa có email**, khi hệ thống chưa gửi được thư, hoặc khi khách không nhận được mail. Yêu cầu vào tab **Khôi phục mật khẩu** của trang quản trị.
+
+Đặt lại mật khẩu thành công bằng đường nào cũng **tự đóng** yêu cầu đang chờ của đường kia, và làm **mọi phiên đăng nhập cũ hết hiệu lực**.
+
+---
+
 ## API
 
 Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nhập dùng cookie phiên.
@@ -151,12 +206,15 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/api/health` | Kiểm tra server sống |
-| GET | `/api/config` | Cấu hình công khai cho giao diện (hiện tại: thông tin liên hệ hỗ trợ) |
-| POST | `/api/auth/register` | Đăng ký `{ username, password, name }` |
+| GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không) |
+| POST | `/api/auth/register/otp` | Bước 1 khi đăng ký: gửi mã xác thực `{ username, name, email }` (giới hạn 10 lần / 15 phút) |
+| POST | `/api/auth/register` | Bước 2: tạo tài khoản `{ username, password, name, email, otp }` |
 | POST | `/api/auth/login` | Đăng nhập, đặt cookie phiên |
 | POST | `/api/auth/logout` | Đăng xuất |
 | GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập) |
-| POST | `/api/auth/forgot-password` | Gửi yêu cầu khôi phục mật khẩu `{ username, note }` |
+| POST | `/api/auth/forgot-password/otp` | Quên mật khẩu bước 1: gửi mã xác thực `{ username }` |
+| POST | `/api/auth/forgot-password/confirm` | Quên mật khẩu bước 2: `{ username, otp, newPassword }` |
+| POST | `/api/auth/forgot-password` | Đường dự phòng: gửi yêu cầu cho quản trị viên `{ username, note }` |
 | GET | `/api/orders` | Danh sách đơn hàng của mình (kèm link hoàn tiền, `sub_id`, số lượt bấm) |
 | POST | `/api/orders` | Tạo đơn `{ link }` → trả về `{ order, affiliate }` với link hoàn tiền |
 | GET | `/api/wallet` | Thống kê ví + lịch sử rút tiền + `minWithdraw`, `canWithdraw` |
@@ -165,7 +223,8 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | POST | `/api/referral/redeem` | Nhập mã giới thiệu `{ code }` |
 | GET | `/api/notifications` | Danh sách thông báo + số chưa đọc |
 | POST | `/api/notifications/read-all` | Đánh dấu tất cả thông báo là đã đọc |
-| PUT | `/api/profile` | Cập nhật hồ sơ `{ name, email, phone }` |
+| PUT | `/api/profile` | Cập nhật hồ sơ `{ name, email, phone }`. Nếu **đổi email** và đang bật xác thực thì phải kèm `emailOtp` |
+| POST | `/api/profile/email/otp` | Gửi mã xác thực tới **email mới** khi đổi email `{ email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/profile/avatar` | Cập nhật ảnh đại diện `{ dataUrl }` |
 | PUT | `/api/profile/password` | Đổi mật khẩu `{ currentPassword, newPassword }` (tối đa 10 lần / 15 phút) |
 
@@ -233,7 +292,8 @@ Nếu gọi nhà cung cấp thất bại, đơn **vẫn được tạo** với l
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
-| `password_resets` | Yêu cầu khôi phục mật khẩu: người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
+| `password_resets` | Yêu cầu khôi phục mật khẩu gửi cho quản trị viên (đường dự phòng): người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
+| `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
 
 `db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
 
@@ -259,7 +319,7 @@ npm run reset-password -- quantri@example.com MatKhauMoi123   # đặt mật kh�
 
 Đổi mật khẩu bằng công cụ này cũng làm **mọi phiên đăng nhập cũ hết hiệu lực**, và tự đóng mọi yêu cầu khôi phục đang chờ của tài khoản đó trong trang quản trị.
 
-Người dùng cũng có thể tự gửi yêu cầu ngay trên web (bấm **"Quên mật khẩu?"** ở màn hình đăng nhập). Hệ thống chưa có kênh gửi email/SMS nên yêu cầu sẽ vào hàng đợi cho quản trị viên — xem tab **Khôi phục mật khẩu** bên dưới. Cách làm này **không tiết lộ** tài khoản nào có tồn tại hay không.
+Nếu khách **chưa có email trong tài khoản**, hoặc email sai, hoặc hệ thống chưa cấu hình gửi thư, khách có thể bấm **"Không nhận được mã?"** ở màn hình quên mật khẩu để đưa yêu cầu vào hàng đợi quản trị viên — xem tab **Khôi phục mật khẩu** bên dưới. Cách làm này **không tiết lộ** tài khoản nào có tồn tại hay không.
 
 `quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
 
@@ -271,14 +331,18 @@ Trang quản trị gồm 5 tab:
 | **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** của khách; nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
 | **Người dùng** | Xem điểm, số đơn, hoa hồng, đã rút, số dư; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
-| **Khôi phục mật khẩu** | Xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
+| **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
 
 ### Cấp lại mật khẩu cho khách
 
-1. Khách bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, nhập tài khoản và cách liên hệ lại.
+Khách thường **tự đặt lại được** bằng mã xác thực gửi qua email (xem [Xác thực email (OTP)](#xác-thực-email-otp)). Phần dưới đây là **đường dự phòng**, dùng khi khách không có email trong tài khoản hoặc không nhận được thư:
+
+1. Khách bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, nhập tài khoản, rồi bấm **"Không nhận được mã?"** và điền cách liên hệ lại.
 2. Vào **Quản trị → Khôi phục mật khẩu** (tab có **huy hiệu đỏ** đếm số yêu cầu đang chờ).
 3. Bấm **Đặt lại** hai lần → hệ thống hiện **mật khẩu tạm**.
 4. Chép mật khẩu rồi gửi cho khách qua Zalo/điện thoại, nhắc khách đổi mật khẩu sau khi đăng nhập.
+
+Nếu khách đã tự đặt lại thành công thì yêu cầu của họ trong tab này **tự chuyển sang `Đã xử lý`**, không cần làm gì thêm.
 
 Mật khẩu tạm **chỉ hiện đúng một lần**, không được lưu vào database. Sau khi đặt lại, **mọi phiên đăng nhập cũ của khách hết hiệu lực** và khách nhận được một thông báo.
 
@@ -305,7 +369,8 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
 - Thư mục nội bộ (`/backend`, `/data`, `/node_modules`, `package.json`) bị chặn không cho tải qua HTTP.
 - Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
-- Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản.
+- Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản. Bước yêu cầu gửi mã xác thực cũng vậy.
+- **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email tách biệt nhau).
 - **Mật khẩu tạm** do quản trị viên cấp không được lưu dưới dạng văn bản thường — chỉ hiện một lần cho quản trị viên rồi thôi.
 
 ### Lưu ý khi triển khai thật
@@ -324,4 +389,4 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 
 ## Tài khoản
 
-Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam** và mật khẩu tối thiểu 6 ký tự.
+Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam**, mật khẩu tối thiểu 6 ký tự, kèm **một địa chỉ email để nhận mã xác thực** — email này là bắt buộc kể cả khi bạn đăng nhập bằng số điện thoại, vì đó là nơi nhận mã khi quên mật khẩu.

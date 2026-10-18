@@ -46,6 +46,37 @@ WITHDRAWAL_MIN=50000
 AFFILIATE_PROVIDER=mock        # đổi khi có tài khoản affiliate thật
 ```
 
+### Gửi email xác thực (OTP)
+
+Muốn bật bước **xác thực email khi đăng ký** và cho khách **tự đặt lại mật khẩu**, điền
+thêm máy chủ gửi thư. Chưa điền cũng chạy bình thường — chỉ là bước xác thực tắt đi
+(và server in cảnh báo lúc khởi động, xem mục [5](#5-vận-hành-thường-ngày)).
+
+```ini
+EMAIL_OTP=auto                      # auto | on | off (mặc định auto)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=ten-ban@gmail.com
+SMTP_PASS=mat-khau-ung-dung-16-ky-tu
+MAIL_FROM=no-reply@gzafl.vn         # bỏ trống thì lấy theo SMTP_USER
+MAIL_FROM_NAME=GZ AFL
+```
+
+- **Gmail**: bật xác thực 2 lớp cho tài khoản, vào *Quản lý tài khoản Google → Bảo mật →
+  Mật khẩu ứng dụng*, tạo một mật khẩu 16 ký tự rồi dùng nó cho `SMTP_PASS`
+  (mật khẩu đăng nhập Gmail thường **không** dùng được). Giới hạn khoảng 500 thư/ngày.
+- **Brevo** (miễn phí 300 thư/ngày, tỉ lệ vào Inbox tốt hơn): `SMTP_HOST=smtp-relay.brevo.com`,
+  `SMTP_PORT=587`, `SMTP_USER`/`SMTP_PASS` lấy trong mục *SMTP & API* của Brevo.
+- Gửi tên miền thật thì khai báo bản ghi **SPF/DKIM** cho tên miền đó, nếu không thư dễ
+  vào Spam. Dù sao cũng nên nhắc khách kiểm tra thư rác.
+- **Sau khi điền, nhớ kiểm tra lại bảng khởi động**: dòng `Gửi thư` phải hiện
+  `qua smtp...` và dòng `Xác thực email (OTP)` phải là `BẬT`.
+- Khi bật, mã xác thực được dùng ở **3 chỗ**: đăng ký tài khoản, khách tự đặt lại
+  mật khẩu, và đổi email trong trang Cá nhân (mã gửi tới địa chỉ mới).
+
+> ⚠️ Đặt `EMAIL_OTP=on` mà **chưa** cấu hình SMTP thì **không ai đăng ký được**. Cứ để
+> `auto`: có SMTP là tự bật, không có thì tự tắt.
+
 Ghi chú quan trọng:
 
 - `backend/.env` **không** được commit lên git (đã nằm trong `.gitignore`).
@@ -181,11 +212,14 @@ sudo systemctl enable --now gzafl
 ## 4. Kiểm tra sau khi lên
 
 1. Mở `https://gzafl.vn` — trang chủ phải hiển thị, không có lỗi CSS.
-2. Đăng ký một tài khoản thử ⇒ **tải lại trang vẫn phải còn đăng nhập**.
-   (Nếu bị đăng xuất ⇒ cookie `secure` đang lệch với thực tế HTTPS — xem mục 6.)
+2. Đăng ký một tài khoản thử ⇒ phải **nhận được email chứa mã 6 chữ số**, nhập mã rồi mới tạo được tài khoản. Sau đó **tải lại trang vẫn phải còn đăng nhập**.
+   (Nếu bị đăng xuất ⇒ cookie `secure` đang lệch với thực tế HTTPS — xem mục 6.
+   Nếu không thấy email ⇒ kiểm tra cả thư rác, rồi xem mục 6.)
 3. `https://gzafl.vn/api/health` phải trả `{"ok":true,...}`.
 4. Tạo thử một đơn hàng ⇒ link hoàn tiền phải bắt đầu bằng `https://gzafl.vn/r/...`.
 5. Đăng nhập bằng tài khoản quản trị ⇒ vào được trang Quản trị.
+6. Bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, gửi mã cho tài khoản thử ⇒ phải nhận được thư thứ hai và đặt lại được mật khẩu.
+7. Vào **Cá nhân**, sửa ô Email ⇒ phải hiện khối **Xác thực email mới**; bấm *Gửi mã*, nhập mã nhận được ở địa chỉ mới rồi bấm *Lưu thay đổi* ⇒ email mới phải được lưu.
 
 ---
 
@@ -201,10 +235,16 @@ sudo systemctl enable --now gzafl
 | Đổi JWT_SECRET | `npm run gen-secret -- --write` rồi khởi động lại |
 | Sao lưu dữ liệu | copy file `backend/data/gzafl.sqlite` |
 
-Khách quên mật khẩu thường sẽ tự bấm **"Quên mật khẩu?"** ở màn hình đăng nhập. Yêu cầu
-vào hàng đợi trong **Quản trị → Khôi phục mật khẩu** (tab có huy hiệu đỏ). Bấm **Đặt lại**
+Khách quên mật khẩu thường sẽ **tự xử lý được**: bấm **"Quên mật khẩu?"** ở màn hình đăng nhập,
+hệ thống gửi mã xác thực về email đã đăng ký, khách nhập mã kèm mật khẩu mới là xong.
+
+Việc của quản trị viên chỉ còn ở đường dự phòng: khi khách **chưa có email** trong tài khoản
+hoặc **không nhận được thư**, khách bấm **"Không nhận được mã?"** rồi điền cách liên hệ lại.
+Yêu cầu vào hàng đợi trong **Quản trị → Khôi phục mật khẩu** (tab có huy hiệu đỏ). Bấm **Đặt lại**
 hai lần để cấp mật khẩu tạm, chép rồi gửi cho khách qua Zalo/điện thoại. Lệnh
 `npm run reset-password` ở trên cũng tự đóng các yêu cầu đang chờ của tài khoản đó.
+
+Khách tự đặt lại thành công thì yêu cầu đang chờ của họ **tự chuyển sang `Đã xử lý`**.
 
 > Không đặt lại mật khẩu cho **chính tài khoản đang đăng nhập** trong trang quản trị —
 > thao tác đó huỷ phiên hiện tại ngay. Hãy dùng **Cá nhân → Đổi mật khẩu**.
@@ -239,6 +279,21 @@ Thiếu `TRUST_PROXY` khi chạy sau proxy. Link được tạo từ `req.protoc
 **Ảnh đại diện không lưu được.**
 Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy service (`chown -R www-data backend/uploads`).
 
+**Khách không nhận được email chứa mã xác thực.**
+1. Xem bảng khởi động của server: dòng `Gửi thư` phải ghi `qua smtp...`. Nếu ghi
+   `CHƯA cấu hình SMTP` thì `.env` chưa được đọc hoặc thiếu `SMTP_HOST`/`MAIL_FROM`.
+2. Nếu dòng `Xác thực email (OTP)` ghi `tắt` ⇒ đang là `EMAIL_OTP=auto` mà chưa có SMTP.
+3. Xem log server: lỗi gửi thư được in ra kèm lý do (`Invalid login`, `Connection timeout`...).
+   - `Invalid login: 535` với Gmail ⇒ `SMTP_PASS` phải là **Mật khẩu ứng dụng**, không phải
+     mật khẩu đăng nhập Gmail.
+   - `Connection timeout` ⇒ nhà cung cấp VPS thường chặn cổng `587`; thử `SMTP_PORT=465`
+     (khi đó bỏ trống `SMTP_SECURE`, hệ thống tự đặt `true`).
+4. Thư vào **Spam** ⇒ khai báo SPF/DKIM cho tên miền gửi, hoặc chuyển sang Brevo.
+5. Khách vẫn không nhận được ⇒ bảo khách dùng **"Không nhận được mã?"** trong màn hình
+   quên mật khẩu để nhờ quản trị viên cấp lại (mục 5).
+6. Nếu khách báo **"Vui lòng chờ N giây"** ⇒ đang trong thời gian chờ 60 giây giữa hai lần
+   yêu cầu mã. Mã cũ vẫn còn hiệu lực, không cần gửi lại.
+
 ---
 
 ## 7. Danh sách biến môi trường
@@ -252,6 +307,12 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SSL_CERT_PATH` | – | Chứng chỉ TLS (chỉ dùng cho Cách B) |
 | `TRUST_PROXY` | – | `1` / `true` / danh sách IP — bật khi chạy sau reverse proxy |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
+| `EMAIL_OTP` | `auto` | Bật xác thực email khi đăng ký: `auto` / `on` / `off` |
+| `SMTP_HOST`, `SMTP_PORT` | – | Máy chủ gửi thư (mặc định cổng `587`) |
+| `SMTP_SECURE` | theo cổng | `true` khi cổng `465`; để trống thì tự suy ra |
+| `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail dùng mật khẩu ứng dụng) |
+| `MAIL_FROM` | theo `SMTP_USER` | Địa chỉ người gửi |
+| `MAIL_FROM_NAME` | `GZ AFL` | Tên người gửi hiện trên thư |
 | `WITHDRAWAL_MIN` | `50000` | Số dư tối thiểu được rút (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |

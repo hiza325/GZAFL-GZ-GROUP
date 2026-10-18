@@ -59,7 +59,7 @@
 
         <p class="text-[11px] text-slate-400 mt-4 flex items-start gap-1.5">
           <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"></i>
-          Nếu quên mật khẩu, hãy bấm "Quên mật khẩu?" ở màn hình đăng nhập để gửi yêu cầu. Quản trị viên sẽ liên hệ lại và cấp mật khẩu tạm.
+          Nếu quên mật khẩu, hãy bấm "Quên mật khẩu?" ở màn hình đăng nhập. Mã xác thực sẽ được gửi tới email đã đăng ký để bạn tự đặt lại mật khẩu.
         </p>
       </div>
     </div>
@@ -98,6 +98,33 @@
             <input type="email" id="profile-email" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all" placeholder="Chưa cập nhật">
           </div>
 
+          <!-- Đổi email thì phải xác thực địa chỉ mới (chỉ hiện khi email có thay đổi) -->
+          <div id="profile-email-otp-block" class="hidden bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-slate-600 mb-3">
+              <i data-lucide="mail-check" class="w-4 h-4 text-[#f04d4d]"></i>
+              <span>Xác thực email mới</span>
+            </div>
+
+            <p class="text-[11px] text-slate-500 mb-3">
+              Mã gồm <b id="profile-email-otp-length">6</b> số sẽ được gửi tới
+              <b id="profile-email-otp-target" class="break-all">email mới</b>. Nhập mã để xác nhận địa chỉ này là của bạn.
+            </p>
+
+            <div id="profile-email-otp-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-3">
+              <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
+              <span>Chưa cấu hình gửi thư — mã thử nghiệm: <b id="profile-email-otp-devcode" class="font-mono text-sm"></b></span>
+            </div>
+
+            <div class="flex items-stretch gap-2">
+              <input type="text" id="profile-email-otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"
+                class="flex-1 min-w-0 bg-white border-2 border-slate-100 rounded-xl py-2.5 px-3 text-slate-700 text-center text-lg font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 transition-all">
+              <button type="button" id="profile-email-otp-btn" onclick="sendProfileEmailOtp()"
+                class="bg-[#18253f] hover:bg-[#233559] text-white font-semibold text-xs px-4 rounded-xl whitespace-nowrap transition">Gửi mã</button>
+            </div>
+
+            <p id="profile-email-otp-hint" class="text-[11px] text-slate-400 mt-3">Mã có hiệu lực 10 phút và chỉ dùng được một lần.</p>
+          </div>
+
           <div>
             <label class="block text-xs font-bold text-slate-500 mb-2">Số điện thoại *</label>
             <input type="text" id="profile-phone" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all" placeholder="Chưa cập nhật">
@@ -105,7 +132,7 @@
 
           <p class="text-[11px] text-slate-400 flex items-start gap-1.5">
             <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"></i>
-            Lưu ý: Email/Số điện thoại dùng để đăng nhập không thay đổi khi bạn sửa ở đây.
+            Lưu ý: Email/Số điện thoại dùng để đăng nhập không thay đổi khi bạn sửa ở đây. Email là nơi nhận mã khi bạn quên mật khẩu, nên khi đổi email bạn sẽ cần nhập mã xác thực gửi tới địa chỉ mới.
           </p>
         </div>
 

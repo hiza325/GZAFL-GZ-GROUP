@@ -7,19 +7,92 @@ const { toUser } = require('../lib/serialize');
 const { isValidUsername, isValidEmail, generateReferralCode } = require('../lib/validate');
 const { setAuthCookie, clearAuthCookie, loadUser } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
-const { RESET_PENDING } = require('../lib/constants');
+const { RESET_PENDING, RESET_RESOLVED } = require('../lib/constants');
+const { notify } = require('../lib/notify');
+const otp = require('../lib/otp');
 
 const router = express.Router();
 
 // Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
 router.use(rateLimit({ windowMs: 60 * 1000, max: 30 }));
 
+// Riêng việc GỬI mã OTP thì chặt hơn: 10 lần / 15 phút / IP cho mỗi endpoint.
+// (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
+const otpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+
 const BCRYPT_ROUNDS = 10;
 
-router.post('/register', (req, res) => {
+/**
+ * Chạy hàm xử lý và tự trả về đúng mã lỗi của OtpError (400/429/502...).
+ */
+function handleOtpError(res, err) {
+  if (err instanceof otp.OtpError) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+  console.error('Lỗi gửi mã xác thực:', err);
+  return res.status(500).json({ error: 'Có lỗi xảy ra. Vui lòng thử lại sau.' });
+}
+
+/* ==========================================
+   Đăng ký tài khoản
+
+   Mọi tài khoản đều phải có email (kể cả khi đăng nhập bằng số điện thoại),
+   vì email là nơi nhận mã xác thực.
+
+   Khi bật xác thực email (EMAIL_OTP — xem lib/otp.js), đăng ký gồm 2 bước:
+     1. POST /register/otp  -> kiểm tra thông tin rồi gửi mã về email
+     2. POST /register      -> kèm otp, mã đúng mới tạo tài khoản
+
+   Chưa cấu hình SMTP mà đang chạy development thì mã được trả về ở trường
+   devCode (và in ra console) để test được ngay, không cần tài khoản email.
+   ========================================== */
+
+// Bước 1: gửi mã xác thực về email
+router.post('/register/otp', otpRateLimit, async (req, res) => {
+  const username = String((req.body && req.body.username) || '').trim();
+  const name = String((req.body && req.body.name) || '').trim();
+  const email = String((req.body && req.body.email) || '').trim();
+
+  if (!otp.otpEnabled()) {
+    return res.status(400).json({ error: 'Bước xác thực email đang tắt.' });
+  }
+  if (!otp.deliveryAvailable()) {
+    return res.status(503).json({ error: 'Hệ thống chưa cấu hình gửi email. Vui lòng liên hệ quản trị viên.' });
+  }
+  if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại đăng nhập.' });
+  if (!isValidUsername(username)) {
+    return res.status(400).json({ error: 'Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.' });
+  }
+  if (!name) return res.status(400).json({ error: 'Vui lòng nhập tên hiển thị.' });
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.' });
+  }
+
+  const exists = db.prepare('SELECT 1 AS x FROM users WHERE username = ?').get(username);
+  if (exists) return res.status(409).json({ error: 'Email hoặc Số điện thoại này đã được đăng ký.' });
+
+  try {
+    const sent = await otp.issueAndSend({ purpose: 'register', email, username, name });
+    return res.json({
+      ok: true,
+      email,
+      expiresInSeconds: sent.expiresInSeconds,
+      resendInSeconds: sent.resendInSeconds,
+      // Chỉ có giá trị khi chưa cấu hình SMTP và đang ở môi trường phát triển
+      devCode: sent.devCode
+    });
+  } catch (err) {
+    return handleOtpError(res, err);
+  }
+});
+
+// Bước 2: kiểm tra mã rồi tạo tài khoản
+router.post('/register', async (req, res) => {
   const username = String((req.body && req.body.username) || '').trim();
   const password = String((req.body && req.body.password) || '').trim();
   const name = String((req.body && req.body.name) || '').trim();
+  const email = String((req.body && req.body.email) || '').trim();
+  const code = String((req.body && req.body.otp) || '').trim();
 
   if (!username || !password) return res.status(400).json({ error: 'Vui lòng điền đầy đủ thông tin.' });
   if (!name) return res.status(400).json({ error: 'Vui lòng nhập tên hiển thị.' });
@@ -27,13 +100,26 @@ router.post('/register', (req, res) => {
     return res.status(400).json({ error: 'Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.' });
   }
   if (password.length < 6) return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.' });
+  }
+
+  // Kiểm tra mã TRƯỚC khi kiểm tra trùng tài khoản, để không lộ tài khoản đã tồn tại
+  if (otp.otpEnabled()) {
+    if (!code) return res.status(400).json({ error: 'Vui lòng nhập mã xác thực đã gửi tới email của bạn.' });
+    try {
+      otp.verify({ purpose: 'register', email, code });
+    } catch (err) {
+      return handleOtpError(res, err);
+    }
+  }
 
   const exists = db.prepare('SELECT 1 AS x FROM users WHERE username = ?').get(username);
   if (exists) return res.status(409).json({ error: 'Email hoặc Số điện thoại này đã được đăng ký.' });
 
   const passwordHash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
   const referralCode = generateReferralCode(db);
-  const isEmail = isValidEmail(username);
+  const isEmailLogin = isValidEmail(username);
 
   const info = db
     .prepare(
@@ -44,13 +130,20 @@ router.post('/register', (req, res) => {
       username,
       passwordHash,
       name,
-      isEmail ? username : '',
-      isEmail ? '' : username,
+      email,
+      isEmailLogin ? '' : username,
       referralCode,
       new Date().toISOString()
     );
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(info.lastInsertRowid));
+
+  notify(row.id, {
+    title: 'Chào mừng bạn đến với GZ AFL',
+    body: 'Tài khoản đã được xác thực qua email. Hãy tạo đơn đầu tiên để bắt đầu nhận hoàn tiền.',
+    icon: 'party-popper'
+  });
+
   return res.status(201).json({ user: toUser(row) });
 });
 
@@ -84,16 +177,119 @@ router.get('/me', (req, res) => {
 /* ==========================================
    Quên mật khẩu
 
-   Người dùng KHÔNG thể tự đặt lại mật khẩu ngay, vì hệ thống chưa có kênh
-   gửi email/SMS để xác minh danh tính. Thay vào đó yêu cầu được đưa vào
-   hàng đợi cho quản trị viên (xem routes/admin.js -> /password-resets),
-   quản trị viên đặt lại rồi gửi mật khẩu tạm qua kênh liên hệ.
+   Có 2 đường:
 
-   Luôn trả về CÙNG MỘT thông báo dù tài khoản có tồn tại hay không, để
-   người ngoài không dò được danh sách tài khoản đang có.
+   1. TỰ ĐẶT LẠI QUA EMAIL (dùng khi đã cấu hình gửi thư)
+        POST /forgot-password/otp      -> gửi mã xác thực về email đã đăng ký
+        POST /forgot-password/confirm  -> mã xác thực + mật khẩu mới
+
+   2. NHỜ QUẢN TRỊ VIÊN (dự phòng cho tài khoản chưa có email, hoặc khi
+      chưa cấu hình được việc gửi thư)
+        POST /forgot-password          -> đưa yêu cầu vào hàng đợi cho admin
+                                          (xem routes/admin.js -> /password-resets)
+
+   Cả hai đường đều trả về CÙNG MỘT thông báo dù tài khoản có tồn tại hay
+   không, để người ngoài không dò được danh sách tài khoản đang có.
    ========================================== */
 const FORGOT_PASSWORD_MESSAGE =
   'Nếu tài khoản tồn tại, yêu cầu đã được gửi tới quản trị viên. Vui lòng liên hệ Zalo/email hỗ trợ để nhận mật khẩu mới.';
+
+const RESET_OTP_MESSAGE =
+  'Nếu tài khoản tồn tại và đã có email, mã xác thực đã được gửi tới email đó. Nhớ kiểm tra cả thư rác (Spam).';
+
+// Bước 1 của đường tự đặt lại: gửi mã về email
+router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
+  const username = String((req.body && req.body.username) || '').trim();
+
+  if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại.' });
+
+  if (!otp.otpEnabled() || !otp.deliveryAvailable()) {
+    return res.status(503).json({
+      error: 'Hệ thống chưa gửi được email. Vui lòng dùng cách nhờ quản trị viên hỗ trợ bên dưới.'
+    });
+  }
+
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+  let devCode = null;
+  let expiresInSeconds = otp.TTL_SECONDS;
+  let resendInSeconds = otp.RESEND_COOLDOWN_SECONDS;
+
+  if (row && row.email) {
+    try {
+      const sent = await otp.issueAndSend({
+        purpose: 'reset',
+        email: row.email,
+        username,
+        name: row.name
+      });
+      devCode = sent.devCode;
+      expiresInSeconds = sent.expiresInSeconds;
+      resendInSeconds = sent.resendInSeconds;
+    } catch (err) {
+      // Đang trong thời gian chờ 60 giây: mã trước đó VẪN còn hiệu lực nên
+      // vẫn trả về thông báo chung, không tiết lộ tài khoản có tồn tại hay không.
+      const cooling = err instanceof otp.OtpError && err.status === 429;
+      if (!cooling) {
+        console.error('Không gửi được mã đặt lại mật khẩu:', err.message);
+        return res.status(502).json({
+          error: 'Không gửi được email xác thực. Vui lòng dùng cách nhờ quản trị viên hỗ trợ bên dưới.'
+        });
+      }
+    }
+  }
+
+  return res.json({
+    ok: true,
+    message: RESET_OTP_MESSAGE,
+    expiresInSeconds,
+    resendInSeconds,
+    devCode
+  });
+});
+
+// Bước 2: mã đúng thì đổi mật khẩu luôn
+router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {
+  const username = String((req.body && req.body.username) || '').trim();
+  const code = String((req.body && req.body.otp) || '').trim();
+  const newPassword = String((req.body && req.body.newPassword) || '').trim();
+
+  if (!username) return res.status(400).json({ error: 'Thiếu Email hoặc Số điện thoại.' });
+  if (!code) return res.status(400).json({ error: 'Vui lòng nhập mã xác thực.' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+  // Không có tài khoản / tài khoản chưa có email thì trả về y hệt lỗi mã sai
+  if (!row || !row.email) {
+    return res.status(400).json({ error: 'Mã xác thực không đúng hoặc đã hết hạn. Hãy yêu cầu mã mới.' });
+  }
+
+  try {
+    otp.verify({ purpose: 'reset', email: row.email, code });
+  } catch (err) {
+    return handleOtpError(res, err);
+  }
+
+  // Đổi mật khẩu + tăng token_version -> mọi phiên đăng nhập cũ hết hiệu lực
+  db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
+    bcrypt.hashSync(newPassword, BCRYPT_ROUNDS),
+    row.id
+  );
+
+  // Người dùng đã tự xử lý xong -> đóng luôn yêu cầu đang chờ quản trị viên (nếu có)
+  db.prepare(
+    'UPDATE password_resets SET status = ?, resolved_at = ? WHERE user_id = ? AND status = ?'
+  ).run(RESET_RESOLVED, new Date().toISOString(), row.id, RESET_PENDING);
+
+  notify(row.id, {
+    title: 'Mật khẩu đã được đặt lại',
+    body: 'Bạn vừa đặt lại mật khẩu bằng mã xác thực gửi tới email. Nếu không phải bạn, hãy liên hệ hỗ trợ ngay.',
+    icon: 'key-round'
+  });
+
+  return res.json({ ok: true, message: 'Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.' });
+});
 
 router.post('/forgot-password', (req, res) => {
   const username = String((req.body && req.body.username) || '').trim();

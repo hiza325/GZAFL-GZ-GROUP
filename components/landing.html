@@ -136,6 +136,14 @@
           <div class="mb-4">
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
             <input type="text" id="auth-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <p class="text-[11px] text-slate-400 mt-1.5">Dùng để đăng nhập.</p>
+          </div>
+
+          <!-- Email nhận mã xác thực (chỉ hiện khi đăng ký) -->
+          <div id="auth-email-group" class="mb-4 hidden">
+            <label for="auth-email" id="auth-email-label" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email nhận mã xác thực</label>
+            <input type="email" id="auth-email" autocomplete="email" placeholder="email@gmail.com" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <p id="auth-email-hint" class="text-[11px] text-slate-400 mt-1.5">Mã xác thực 6 số sẽ được gửi tới email này.</p>
           </div>
 
           <!-- Nhập Mật khẩu -->
@@ -156,31 +164,102 @@
           </button>
         </form>
 
+        <!-- Đăng ký bước 2: nhập mã xác thực gửi qua email -->
+        <div id="auth-otp-panel" class="hidden">
+          <p class="text-sm text-slate-500 mb-5">Mã xác thực đã được gửi tới <span id="auth-otp-email" class="font-semibold text-slate-700 break-all"></span>. Nhập mã để hoàn tất đăng ký.</p>
+
+          <div id="auth-otp-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4">
+            <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
+            <span>Chưa cấu hình gửi thư — mã thử nghiệm: <b id="auth-otp-devcode" class="font-mono text-sm"></b></span>
+          </div>
+
+          <div class="mb-6">
+            <label for="auth-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
+            <input type="text" id="auth-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <button type="button" id="auth-otp-submit-btn" onclick="submitRegisterOtp()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+            Xác nhận &amp; tạo tài khoản
+          </button>
+
+          <div class="mt-4 flex items-center justify-between text-xs font-semibold">
+            <button type="button" id="auth-otp-resend-btn" onclick="resendRegisterOtp()" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
+            <button type="button" onclick="backToAuthForm()" class="text-slate-400 hover:text-slate-600 transition">Quay lại</button>
+          </div>
+        </div>
+
         <!-- Quên mật khẩu (chỉ hiện ở chế độ đăng nhập) -->
         <div id="auth-forgot-row" class="mt-4 text-center">
           <button type="button" onclick="showForgotPassword()" class="text-xs font-semibold text-slate-400 hover:text-[#f04d4d] transition">Quên mật khẩu?</button>
         </div>
 
-        <!-- Quên mật khẩu: gửi yêu cầu cho quản trị viên -->
+        <!-- Quên mật khẩu, bước 1: gửi mã xác thực về email -->
         <div id="auth-forgot-panel" class="hidden">
-          <p class="text-sm text-slate-500 mb-5">Nhập tài khoản cần khôi phục. Yêu cầu sẽ được gửi tới quản trị viên, người phụ trách sẽ liên hệ lại và cấp mật khẩu tạm.</p>
+          <p class="text-sm text-slate-500 mb-5">Nhập tài khoản cần khôi phục. Mã xác thực sẽ được gửi tới email bạn đã đăng ký.</p>
 
-          <div class="mb-4">
+          <div class="mb-5">
             <label for="forgot-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
             <input type="text" id="forgot-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
-          <div class="mb-6">
-            <label for="forgot-note" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách liên hệ lại</label>
-            <input type="text" id="forgot-note" placeholder="Ví dụ: Zalo 0987 654 321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          <button type="button" id="forgot-submit-btn" onclick="submitForgotPassword()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+            Gửi mã xác thực
+          </button>
+
+          <!-- Đường dự phòng: nhờ quản trị viên cấp lại mật khẩu -->
+          <div id="forgot-admin-block" class="hidden mt-5 pt-5 border-t border-slate-100">
+            <p class="text-xs text-slate-500 mb-4">Không nhận được mã (tài khoản chưa có email, hoặc email sai)? Gửi yêu cầu để quản trị viên cấp lại mật khẩu cho bạn.</p>
+
+            <div class="mb-4">
+              <label for="forgot-note" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách liên hệ lại</label>
+              <input type="text" id="forgot-note" placeholder="Ví dụ: Zalo 0987 654 321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            </div>
+
+            <button type="button" id="forgot-admin-btn" onclick="submitForgotPasswordAdmin()" class="w-full bg-white border-2 border-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:border-slate-300 hover:bg-slate-50 transition-all transform active:scale-[0.98]">
+              Nhờ quản trị viên hỗ trợ
+            </button>
           </div>
 
-          <button type="button" id="forgot-submit-btn" onclick="submitForgotPassword()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
-            Gửi yêu cầu
-          </button>
+          <div id="forgot-admin-toggle-row" class="mt-4 text-center">
+            <button type="button" onclick="toggleForgotAdmin()" id="forgot-admin-toggle" class="text-xs font-semibold text-slate-400 hover:text-[#f04d4d] transition">Không nhận được mã?</button>
+          </div>
 
           <div class="mt-6 text-center text-sm font-medium text-slate-500">
             <button type="button" onclick="hideForgotPassword()" class="text-[#f04d4d] font-bold hover:underline">Quay lại đăng nhập</button>
+          </div>
+        </div>
+
+        <!-- Quên mật khẩu, bước 2: nhập mã + mật khẩu mới -->
+        <div id="auth-reset-panel" class="hidden">
+          <p class="text-sm text-slate-500 mb-5">Nếu tài khoản tồn tại và đã có email, mã xác thực đã được gửi tới email đó. Nhập mã kèm mật khẩu mới để hoàn tất.</p>
+
+          <div id="reset-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4">
+            <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
+            <span>Chưa cấu hình gửi thư — mã thử nghiệm: <b id="reset-devcode" class="font-mono text-sm"></b></span>
+          </div>
+
+          <div class="mb-4">
+            <label for="reset-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
+            <input type="text" id="reset-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <div class="mb-4">
+            <label for="reset-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu mới</label>
+            <input type="password" id="reset-password" autocomplete="new-password" placeholder="Ít nhất 6 ký tự" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <div class="mb-5">
+            <label for="reset-confirm" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Xác nhận mật khẩu mới</label>
+            <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="••••••••" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <button type="button" id="reset-submit-btn" onclick="submitPasswordReset()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+            Đặt lại mật khẩu
+          </button>
+
+          <div class="mt-4 flex items-center justify-between text-xs font-semibold">
+            <button type="button" id="reset-resend-btn" onclick="resendResetOtp()" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
+            <button type="button" onclick="backToForgotPanel()" class="text-slate-400 hover:text-slate-600 transition">Quay lại</button>
           </div>
         </div>
 

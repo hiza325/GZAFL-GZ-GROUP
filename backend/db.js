@@ -93,6 +93,23 @@ db.exec(`
     resolved_by INTEGER,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
+
+  -- Mã OTP gửi qua email (xác thực đăng ký + tự đặt lại mật khẩu).
+  -- Lưu bcrypt hash của mã, không lưu mã gốc.
+  CREATE TABLE IF NOT EXISTS email_otps (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    purpose      TEXT NOT NULL,
+    email        TEXT NOT NULL,
+    username     TEXT NOT NULL DEFAULT '',
+    code_hash    TEXT NOT NULL,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    sends        INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL,
+    last_sent_at TEXT NOT NULL,
+    expires_at   TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    UNIQUE (purpose, email)
+  );
 `);
 
 /**

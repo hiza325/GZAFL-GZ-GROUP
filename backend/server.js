@@ -125,10 +125,19 @@ app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISO
 
 // Cấu hình công khai cho giao diện (KHÔNG chứa bí mật nào)
 app.get('/api/config', (req, res) => {
+  const otp = require('./lib/otp');
   res.json({
     support: {
       email: process.env.SUPPORT_EMAIL || '',
       zalo: process.env.SUPPORT_ZALO || ''
+    },
+    // Giao diện dựa vào đây để biết có cần hiện bước nhập mã xác thực không
+    otp: {
+      enabled: otp.otpEnabled(),
+      delivery: otp.deliveryAvailable(),
+      length: otp.CODE_LENGTH,
+      ttlSeconds: otp.TTL_SECONDS,
+      resendSeconds: otp.RESEND_COOLDOWN_SECONDS
     }
   });
 });
@@ -182,4 +191,29 @@ server.listen(PORT, () => {
   console.log(`  Tin cậy reverse proxy : ${TRUST_PROXY || 'không'}`);
   const affiliate = require('./lib/affiliate').describe();
   console.log(`  Nhà cung cấp hoàn tiền: ${affiliate.provider}${affiliate.isReal ? '' : ' (thử nghiệm, chưa tạo hoa hồng thật)'}`);
+
+  const otp = require('./lib/otp');
+  const mail = require('./lib/mailer').describe();
+  console.log(`  Xác thực email (OTP)  : ${otp.otpEnabled() ? 'BẬT' : 'tắt'} (EMAIL_OTP=${otp.otpMode()})`);
+  if (mail.configured) {
+    console.log(`  Gửi thư               : qua ${mail.host}:${mail.port}, người gửi ${mail.from}`);
+  } else if (mail.dev) {
+    console.log('  Gửi thư               : CHƯA cấu hình SMTP - thư được in ra console (chỉ để thử nghiệm)');
+  } else {
+    console.log('  Gửi thư               : CHƯA cấu hình SMTP - KHÔNG gửi được email nào');
+  }
+
+  if (!otp.otpEnabled() && otp.otpMode() === 'auto' && process.env.NODE_ENV === 'production') {
+    console.log('');
+    console.log('  LƯU Ý: chưa cấu hình SMTP nên bước xác thực email khi đăng ký đang TẮT.');
+    console.log('         Muốn bật, điền SMTP_* và MAIL_FROM trong backend/.env rồi khởi động lại.');
+  }
+  if (otp.otpEnabled() && otp.otpMode() === 'on' && !otp.deliveryAvailable()) {
+    console.log('');
+    console.log('  CẢNH BÁO: EMAIL_OTP=on nhưng chưa cấu hình SMTP -> KHÔNG AI ĐĂNG KÝ ĐƯỢC.');
+    console.log('            Điền SMTP_* và MAIL_FROM trong backend/.env, hoặc đặt EMAIL_OTP=auto.');
+  }
+
+  const cleaned = otp.cleanup();
+  if (cleaned) console.log(`  Đã dọn ${cleaned} mã xác thực hết hạn.`);
 });

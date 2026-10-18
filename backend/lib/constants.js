@@ -16,6 +16,7 @@ const CANCELLED = 'Đã huỷ';
 // Yêu cầu khôi phục mật khẩu (xem routes/auth.js + routes/admin.js)
 const RESET_STATUSES = ['Chờ xử lý', 'Đã xử lý', 'Đã huỷ'];
 const RESET_PENDING = 'Chờ xử lý';
+const RESET_RESOLVED = 'Đã xử lý';
 
 // Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng)
 const WITHDRAWAL_MIN = Number(process.env.WITHDRAWAL_MIN) || 50000;
@@ -27,5 +28,6 @@ module.exports = {
   CANCELLED,
   RESET_STATUSES,
   RESET_PENDING,
+  RESET_RESOLVED,
   WITHDRAWAL_MIN
 };

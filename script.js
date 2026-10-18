@@ -5,6 +5,11 @@
 let isLoginMode = true;
 let currentUser = null;
 
+// Thông tin form đăng ký đang chờ mã xác thực (chỉ dùng khi bật xác thực email)
+let pendingRegister = null;
+// Bộ đếm ngược cho nút "Gửi lại mã" của 3 luồng: đăng ký, quên mật khẩu và đổi email
+let otpTimers = { register: null, reset: null, profile: null };
+
 /* ==========================================
    TIỆN ÍCH DÙNG CHUNG
 ========================================== */
@@ -116,15 +121,28 @@ function showToast(message, type = 'info') {
 
 // Thông tin liên hệ hỗ trợ lấy từ server (SUPPORT_EMAIL / SUPPORT_ZALO trong backend/.env).
 // Nếu server không cấu hình thì giữ nguyên giá trị mặc định ghi trong components/guide.html.
-let supportContactPromise = null;
+let appConfigPromise = null;
 
-function fetchSupportContact() {
-  if (!supportContactPromise) {
-    supportContactPromise = api('/config')
-      .then((data) => (data && data.support) || null)
-      .catch(() => null);
+// Cấu hình công khai của server (xem backend/server.js -> GET /api/config)
+function fetchAppConfig() {
+  if (!appConfigPromise) {
+    appConfigPromise = api('/config').catch(() => null);
   }
-  return supportContactPromise;
+  return appConfigPromise;
+}
+
+// Bước xác thực email do SERVER quyết định (xem backend/lib/otp.js -> otpEnabled).
+// Giao diện chỉ hiện ô nhập mã khi server báo có bật.
+let otpConfig = { enabled: false, delivery: false, length: 6, ttlSeconds: 600, resendSeconds: 60 };
+
+fetchAppConfig().then((cfg) => {
+  if (cfg && cfg.otp) otpConfig = Object.assign({}, otpConfig, cfg.otp);
+  if (typeof updateAuthUI === 'function') updateAuthUI();
+});
+
+async function fetchSupportContact() {
+  const cfg = await fetchAppConfig();
+  return (cfg && cfg.support) || null;
 }
 
 async function applySupportContact(root) {
@@ -296,16 +314,32 @@ window.closeAuthModal = function() {
   }, 300);
 };
 
-// Luôn đưa modal về trạng thái đăng nhập/đăng ký (thoát khỏi màn "quên mật khẩu")
+// Luôn đưa modal về trạng thái đăng nhập/đăng ký (thoát khỏi màn nhập mã / quên mật khẩu)
 function resetAuthPanels() {
   const form = document.getElementById('auth-form');
+  const otpPanel = document.getElementById('auth-otp-panel');
   const forgotPanel = document.getElementById('auth-forgot-panel');
+  const resetPanel = document.getElementById('auth-reset-panel');
   const toggleBlock = document.getElementById('auth-toggle-block');
+  if (otpPanel) otpPanel.classList.add('hidden');
   if (forgotPanel) forgotPanel.classList.add('hidden');
+  if (resetPanel) resetPanel.classList.add('hidden');
   if (form) form.classList.remove('hidden');
   if (toggleBlock) toggleBlock.classList.remove('hidden');
-  const noteEl = document.getElementById('forgot-note');
-  if (noteEl) noteEl.value = '';
+
+  ['auth-otp', 'forgot-note', 'reset-otp', 'reset-password', 'reset-confirm'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  hideForgotAdminBlock();
+  setDevCode('auth-otp-dev', 'auth-otp-devcode', '');
+  setDevCode('reset-dev', 'reset-devcode', '');
+  clearInterval(otpTimers.register);
+  clearInterval(otpTimers.reset);
+  otpTimers.register = null;
+  otpTimers.reset = null;
+  pendingRegister = null;
 }
 
 window.toggleAuthMode = function() {
@@ -321,6 +355,7 @@ function updateAuthUI() {
   const subtitle = document.getElementById('auth-subtitle');
   const nameGroup = document.getElementById('auth-name-group');
   const confirmGroup = document.getElementById('auth-confirm-group');
+  const emailGroup = document.getElementById('auth-email-group');
   const submitBtn = document.getElementById('auth-submit-btn');
   const toggleText = document.getElementById('auth-toggle-text');
   const toggleBtn = document.getElementById('auth-toggle-btn');
@@ -332,19 +367,40 @@ function updateAuthUI() {
     subtitle.innerText = 'Vui lòng đăng nhập để theo dõi và nhận hoa hồng.';
     nameGroup.classList.add('hidden');
     if (confirmGroup) confirmGroup.classList.add('hidden');
+    if (emailGroup) emailGroup.classList.add('hidden');
     submitBtn.innerHTML = `<span>Đăng nhập</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
     toggleText.innerText = 'Chưa có tài khoản?';
     toggleBtn.innerText = 'Đăng ký ngay';
     if (forgotRow) forgotRow.classList.remove('hidden');
   } else {
     title.innerText = 'Đăng ký tài khoản';
-    subtitle.innerText = 'Tạo tài khoản mới bằng Email hoặc Số điện thoại.';
+    subtitle.innerText = otpConfig.enabled
+      ? 'Tạo tài khoản mới. Mã xác thực sẽ được gửi tới email bạn nhập.'
+      : 'Tạo tài khoản mới bằng Email hoặc Số điện thoại.';
     nameGroup.classList.remove('hidden');
     if (confirmGroup) confirmGroup.classList.remove('hidden');
     submitBtn.innerHTML = `<span>Tạo tài khoản</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
     toggleText.innerText = 'Đã có tài khoản?';
     toggleBtn.innerText = 'Đăng nhập ngay';
     if (forgotRow) forgotRow.classList.add('hidden');
+
+    // Ô email chỉ cần khi đăng ký. Nếu tên đăng nhập đã là email thì điền sẵn cho tiện.
+    if (emailGroup) {
+      emailGroup.classList.remove('hidden');
+      const usernameEl = document.getElementById('auth-username');
+      const emailEl = document.getElementById('auth-email');
+      if (emailEl && !emailEl.value.trim() && usernameEl && isValidEmail(usernameEl.value)) {
+        emailEl.value = usernameEl.value.trim();
+      }
+      const label = document.getElementById('auth-email-label');
+      const hint = document.getElementById('auth-email-hint');
+      if (label) label.innerText = otpConfig.enabled ? 'Email nhận mã xác thực' : 'Email liên hệ';
+      if (hint) {
+        hint.innerText = otpConfig.enabled
+          ? `Mã xác thực ${otpConfig.length} số sẽ được gửi tới email này.`
+          : 'Dùng để khôi phục mật khẩu sau này.';
+      }
+    }
   }
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -352,10 +408,208 @@ function updateAuthUI() {
 /* ==========================================
    Quên mật khẩu
 
-   Hệ thống chưa có kênh gửi email/SMS nên người dùng không thể tự đặt lại
-   mật khẩu. Yêu cầu được gửi tới quản trị viên (xem tab "Khôi phục mật khẩu"
-   trong trang quản trị), quản trị viên đặt lại rồi gửi mật khẩu tạm.
+   Có 2 đường:
+
+   1. TỰ ĐẶT LẠI QUA EMAIL (mặc định): nhập tài khoản -> server gửi mã 6 số
+      tới email đã đăng ký -> nhập mã kèm mật khẩu mới.
+   2. NHỜ QUẢN TRỊ VIÊN: dự phòng cho tài khoản chưa có email, hoặc khi hệ
+      thống chưa cấu hình được việc gửi thư. Yêu cầu vào tab "Khôi phục mật
+      khẩu" của trang quản trị.
 ========================================== */
+
+// Ẩn phần "nhờ quản trị viên" và trả nhãn nút về mặc định
+function hideForgotAdminBlock() {
+  const block = document.getElementById('forgot-admin-block');
+  const toggle = document.getElementById('forgot-admin-toggle');
+  if (block) block.classList.add('hidden');
+  if (toggle) toggle.innerText = 'Không nhận được mã?';
+}
+
+window.toggleForgotAdmin = function() {
+  const block = document.getElementById('forgot-admin-block');
+  const toggle = document.getElementById('forgot-admin-toggle');
+  if (!block) return;
+  const showing = !block.classList.toggle('hidden');
+  if (toggle) toggle.innerText = showing ? 'Ẩn phần nhờ quản trị viên' : 'Không nhận được mã?';
+};
+
+// Hiện mã thử nghiệm — chỉ có khi server chưa cấu hình gửi thư và đang ở dev
+function setDevCode(boxId, codeId, code) {
+  const box = document.getElementById(boxId);
+  const el = document.getElementById(codeId);
+  if (!box || !el) return;
+  if (code) {
+    el.innerText = code;
+    box.classList.remove('hidden');
+  } else {
+    el.innerText = '';
+    box.classList.add('hidden');
+  }
+}
+
+// Đếm ngược nút "Gửi lại mã" (kind = 'register' | 'reset' | 'profile')
+const RESEND_BUTTONS = {
+  register: 'auth-otp-resend-btn',
+  reset: 'reset-resend-btn',
+  profile: 'profile-email-otp-btn'
+};
+
+function startResendCountdown(kind, seconds) {
+  const btn = document.getElementById(RESEND_BUTTONS[kind] || '');
+  clearInterval(otpTimers[kind]);
+  otpTimers[kind] = null;
+  if (!btn) return;
+
+  let left = Math.max(0, Number(seconds) || 0);
+  const paint = () => {
+    if (left <= 0) {
+      clearInterval(otpTimers[kind]);
+      otpTimers[kind] = null;
+      btn.disabled = false;
+      btn.innerText = 'Gửi lại mã';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerText = `Gửi lại mã (${left}s)`;
+    left -= 1;
+  };
+  paint();
+  // paint() đã tự tắt nút khi hết giờ, nên chỉ hẹn giờ khi nút còn bị khoá
+  if (btn.disabled) otpTimers[kind] = setInterval(paint, 1000);
+}
+
+// Đưa nút về trạng thái "đang xử lý", trả về hàm khôi phục
+function busyButton(btn, text) {
+  if (!btn) return () => {};
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.classList.add('opacity-70');
+  btn.innerText = text;
+  return () => {
+    btn.disabled = false;
+    btn.classList.remove('opacity-70');
+    btn.innerHTML = original;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+}
+
+function isValidOtpCode(code) {
+  return String(code || '').length === otpConfig.length && !/\D/.test(String(code || ''));
+}
+
+function showAuthErrorHidden() {
+  const errorBox = document.getElementById('auth-error');
+  if (errorBox) errorBox.classList.add('hidden');
+}
+
+/* ---------- Đăng ký: bước nhập mã xác thực ---------- */
+
+function showOtpPanel(email, devCode, resendSeconds) {
+  const form = document.getElementById('auth-form');
+  const panel = document.getElementById('auth-otp-panel');
+  const toggleBlock = document.getElementById('auth-toggle-block');
+  const forgotRow = document.getElementById('auth-forgot-row');
+  const title = document.getElementById('auth-title');
+  const subtitle = document.getElementById('auth-subtitle');
+  if (!panel) return;
+
+  if (form) form.classList.add('hidden');
+  if (toggleBlock) toggleBlock.classList.add('hidden');
+  if (forgotRow) forgotRow.classList.add('hidden');
+  panel.classList.remove('hidden');
+  if (title) title.innerText = 'Xác thực email';
+  if (subtitle) subtitle.innerText = 'Nhập mã xác thực để hoàn tất đăng ký.';
+
+  const emailEl = document.getElementById('auth-otp-email');
+  if (emailEl) emailEl.innerText = email || '';
+  setDevCode('auth-otp-dev', 'auth-otp-devcode', devCode);
+  startResendCountdown('register', resendSeconds);
+
+  showAuthErrorHidden();
+  const otpEl = document.getElementById('auth-otp');
+  if (otpEl) {
+    otpEl.value = '';
+    otpEl.focus();
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+window.backToAuthForm = function() {
+  const panel = document.getElementById('auth-otp-panel');
+  const form = document.getElementById('auth-form');
+  const toggleBlock = document.getElementById('auth-toggle-block');
+  if (panel) panel.classList.add('hidden');
+  if (form) form.classList.remove('hidden');
+  if (toggleBlock) toggleBlock.classList.remove('hidden');
+  clearInterval(otpTimers.register);
+  otpTimers.register = null;
+  pendingRegister = null;
+  showAuthErrorHidden();
+  updateAuthUI();
+};
+
+window.submitRegisterOtp = async function() {
+  const otpEl = document.getElementById('auth-otp');
+  const btn = document.getElementById('auth-otp-submit-btn');
+  showAuthErrorHidden();
+
+  if (!pendingRegister) {
+    return showAuthMessage('Thông tin đăng ký đã hết. Vui lòng nhập lại từ đầu.');
+  }
+
+  const code = otpEl ? otpEl.value.trim() : '';
+  if (!isValidOtpCode(code)) {
+    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+  }
+
+  const restore = busyButton(btn, 'Đang xác thực...');
+  try {
+    await api('/auth/register', {
+      method: 'POST',
+      body: Object.assign({}, pendingRegister, { otp: code })
+    });
+    pendingRegister = null;
+    clearInterval(otpTimers.register);
+    otpTimers.register = null;
+    toggleAuthMode(); // trở về form đăng nhập
+    const passwordEl = document.getElementById('auth-password');
+    if (passwordEl) passwordEl.value = '';
+    showAuthMessage('Tạo tài khoản thành công! Vui lòng đăng nhập lại.', true);
+  } catch (err) {
+    showAuthMessage(err.message);
+  } finally {
+    restore();
+  }
+};
+
+window.resendRegisterOtp = async function() {
+  const btn = document.getElementById('auth-otp-resend-btn');
+  if (!pendingRegister) return;
+  if (btn) btn.disabled = true;
+
+  try {
+    const data = await api('/auth/register/otp', {
+      method: 'POST',
+      body: {
+        username: pendingRegister.username,
+        name: pendingRegister.name,
+        email: pendingRegister.email
+      }
+    });
+    // Trong thời gian chờ 60 giây, server trả thông báo chung và không có mã mới
+    // -> giữ nguyên mã cũ đang hiện để không xoá trắng ô thử nghiệm
+    if (data.devCode) setDevCode('auth-otp-dev', 'auth-otp-devcode', data.devCode);
+    startResendCountdown('register', data.resendInSeconds);
+    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+  } catch (err) {
+    showAuthMessage(err.message);
+    if (err.status === 429) startResendCountdown('register', otpConfig.resendSeconds);
+  } finally {
+    if (btn && !otpTimers.register) btn.disabled = false;
+  }
+};
+
+/* ---------- Quên mật khẩu ---------- */
 
 window.showForgotPassword = function() {
   const form = document.getElementById('auth-form');
@@ -364,6 +618,9 @@ window.showForgotPassword = function() {
   const forgotRow = document.getElementById('auth-forgot-row');
   const title = document.getElementById('auth-title');
   const subtitle = document.getElementById('auth-subtitle');
+  const submitBtn = document.getElementById('forgot-submit-btn');
+  const toggleRow = document.getElementById('forgot-admin-toggle-row');
+  const adminBlock = document.getElementById('forgot-admin-block');
   if (!panel) return;
 
   // Điền sẵn tài khoản người dùng vừa gõ ở form đăng nhập
@@ -378,26 +635,165 @@ window.showForgotPassword = function() {
   if (forgotRow) forgotRow.classList.add('hidden');
   panel.classList.remove('hidden');
   if (title) title.innerText = 'Quên mật khẩu';
-  if (subtitle) subtitle.innerText = 'Gửi yêu cầu khôi phục tới quản trị viên.';
 
-  const errorBox = document.getElementById('auth-error');
-  if (errorBox) errorBox.classList.add('hidden');
+  if (otpConfig.enabled && otpConfig.delivery) {
+    if (subtitle) subtitle.innerText = 'Mã xác thực sẽ được gửi tới email bạn đã đăng ký.';
+    if (submitBtn) submitBtn.classList.remove('hidden');
+    if (toggleRow) toggleRow.classList.remove('hidden');
+    if (adminBlock) adminBlock.classList.add('hidden');
+  } else {
+    // Chưa gửi được email -> chỉ còn đường nhờ quản trị viên
+    if (subtitle) subtitle.innerText = 'Hệ thống chưa gửi được email. Gửi yêu cầu để quản trị viên cấp lại mật khẩu.';
+    if (submitBtn) submitBtn.classList.add('hidden');
+    if (toggleRow) toggleRow.classList.add('hidden');
+    if (adminBlock) adminBlock.classList.remove('hidden');
+  }
+
+  showAuthErrorHidden();
   if (typeof lucide !== 'undefined') lucide.createIcons();
 };
 
 window.hideForgotPassword = function() {
   resetAuthPanels();
-  const errorBox = document.getElementById('auth-error');
-  if (errorBox) errorBox.classList.add('hidden');
+  showAuthErrorHidden();
   updateAuthUI();
 };
 
+// Bước 1: yêu cầu server gửi mã xác thực
 window.submitForgotPassword = async function() {
   const usernameEl = document.getElementById('forgot-username');
-  const noteEl = document.getElementById('forgot-note');
   const btn = document.getElementById('forgot-submit-btn');
-  const errorBox = document.getElementById('auth-error');
-  if (errorBox) errorBox.classList.add('hidden');
+  showAuthErrorHidden();
+  if (!usernameEl) return;
+
+  const username = usernameEl.value.trim();
+  if (!username) return showAuthMessage('Vui lòng nhập Email hoặc Số điện thoại.');
+  if (!validateUsername(username)) {
+    return showAuthMessage('Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.');
+  }
+
+  const restore = busyButton(btn, 'Đang gửi...');
+  try {
+    const data = await api('/auth/forgot-password/otp', { method: 'POST', body: { username } });
+    showResetPanel(data);
+  } catch (err) {
+    showAuthMessage(err.message || 'Không gửi được mã xác thực. Vui lòng thử lại.');
+  } finally {
+    restore();
+  }
+};
+
+// Chuyển sang bước nhập mã + mật khẩu mới
+function showResetPanel(data) {
+  const forgotPanel = document.getElementById('auth-forgot-panel');
+  const panel = document.getElementById('auth-reset-panel');
+  const title = document.getElementById('auth-title');
+  const subtitle = document.getElementById('auth-subtitle');
+  if (!panel) return;
+
+  if (forgotPanel) forgotPanel.classList.add('hidden');
+  panel.classList.remove('hidden');
+  if (title) title.innerText = 'Đặt lại mật khẩu';
+  if (subtitle) subtitle.innerText = 'Nhập mã xác thực đã gửi tới email kèm mật khẩu mới.';
+
+  setDevCode('reset-dev', 'reset-devcode', data && data.devCode);
+  startResendCountdown('reset', (data && data.resendInSeconds) || otpConfig.resendSeconds);
+  showAuthErrorHidden();
+  showAuthMessage(
+    (data && data.message) || 'Nếu tài khoản tồn tại, mã xác thực đã được gửi tới email đã đăng ký.',
+    true
+  );
+
+  const otpEl = document.getElementById('reset-otp');
+  if (otpEl) {
+    otpEl.value = '';
+    otpEl.focus();
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+window.backToForgotPanel = function() {
+  const resetPanel = document.getElementById('auth-reset-panel');
+  const forgotPanel = document.getElementById('auth-forgot-panel');
+  if (resetPanel) resetPanel.classList.add('hidden');
+  if (forgotPanel) forgotPanel.classList.remove('hidden');
+  clearInterval(otpTimers.reset);
+  otpTimers.reset = null;
+  setDevCode('reset-dev', 'reset-devcode', '');
+  setText('auth-title', 'Quên mật khẩu');
+  setText('auth-subtitle', 'Mã xác thực sẽ được gửi tới email bạn đã đăng ký.');
+  showAuthErrorHidden();
+  ['reset-otp', 'reset-password', 'reset-confirm'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+};
+
+// Bước 2: mã đúng thì đổi mật khẩu
+window.submitPasswordReset = async function() {
+  const usernameEl = document.getElementById('forgot-username');
+  const otpEl = document.getElementById('reset-otp');
+  const pwEl = document.getElementById('reset-password');
+  const cfEl = document.getElementById('reset-confirm');
+  const btn = document.getElementById('reset-submit-btn');
+  showAuthErrorHidden();
+
+  const username = usernameEl ? usernameEl.value.trim() : '';
+  const code = otpEl ? otpEl.value.trim() : '';
+  const password = pwEl ? pwEl.value.trim() : '';
+  const confirm = cfEl ? cfEl.value.trim() : '';
+
+  if (!isValidOtpCode(code)) {
+    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+  }
+  if (password.length < 6) return showAuthMessage('Mật khẩu mới phải có ít nhất 6 ký tự.');
+  if (confirm !== password) return showAuthMessage('Mật khẩu xác nhận không khớp.');
+
+  const restore = busyButton(btn, 'Đang xử lý...');
+  try {
+    const data = await api('/auth/forgot-password/confirm', {
+      method: 'POST',
+      body: { username, otp: code, newPassword: password }
+    });
+    resetAuthPanels();
+    isLoginMode = true;
+    updateAuthUI();
+    showAuthMessage(data.message || 'Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.', true);
+  } catch (err) {
+    showAuthMessage(err.message || 'Không đặt lại được mật khẩu. Vui lòng thử lại.');
+  } finally {
+    restore();
+  }
+};
+
+window.resendResetOtp = async function() {
+  const usernameEl = document.getElementById('forgot-username');
+  const btn = document.getElementById('reset-resend-btn');
+  const username = usernameEl ? usernameEl.value.trim() : '';
+  if (!username) return;
+  if (btn) btn.disabled = true;
+
+  try {
+    const data = await api('/auth/forgot-password/otp', { method: 'POST', body: { username } });
+    // Trong thời gian chờ 60 giây, server trả thông báo chung và không có mã mới
+    // -> giữ nguyên mã cũ đang hiện để không xoá trắng ô thử nghiệm
+    if (data.devCode) setDevCode('reset-dev', 'reset-devcode', data.devCode);
+    startResendCountdown('reset', data.resendInSeconds);
+    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+  } catch (err) {
+    showAuthMessage(err.message);
+    if (err.status === 429) startResendCountdown('reset', otpConfig.resendSeconds);
+  } finally {
+    if (btn && !otpTimers.reset) btn.disabled = false;
+  }
+};
+
+// Đường dự phòng: nhờ quản trị viên cấp lại mật khẩu
+window.submitForgotPasswordAdmin = async function() {
+  const usernameEl = document.getElementById('forgot-username');
+  const noteEl = document.getElementById('forgot-note');
+  const btn = document.getElementById('forgot-admin-btn');
+  showAuthErrorHidden();
   if (!usernameEl) return;
 
   const username = usernameEl.value.trim();
@@ -411,13 +807,7 @@ window.submitForgotPassword = async function() {
     return showAuthMessage('Vui lòng nhập Zalo hoặc Số điện thoại để quản trị viên liên hệ lại.');
   }
 
-  const originalText = btn ? btn.innerText : '';
-  if (btn) {
-    btn.disabled = true;
-    btn.classList.add('opacity-70');
-    btn.innerText = 'Đang gửi...';
-  }
-
+  const restore = busyButton(btn, 'Đang gửi...');
   try {
     const data = await api('/auth/forgot-password', {
       method: 'POST',
@@ -427,11 +817,7 @@ window.submitForgotPassword = async function() {
   } catch (err) {
     showAuthMessage(err.message || 'Không gửi được yêu cầu. Vui lòng thử lại.');
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove('opacity-70');
-      btn.innerText = originalText;
-    }
+    restore();
   }
 };
 
@@ -489,6 +875,7 @@ window.handleAuthSubmit = async function(event) {
   const usernameInput = usernameEl.value.trim();
   const passwordInput = passwordEl.value.trim();
   const nameInput = nameEl ? nameEl.value.trim() : '';
+  let registerEmail = '';
 
   if (!usernameInput || !passwordInput) {
     return showAuthMessage('Vui lòng điền đầy đủ thông tin.');
@@ -502,6 +889,14 @@ window.handleAuthSubmit = async function(event) {
     const confirmEl = document.getElementById('auth-confirm-password');
     const confirmInput = confirmEl ? confirmEl.value.trim() : '';
     if (confirmInput !== passwordInput) return showAuthMessage('Mật khẩu xác nhận không khớp.');
+
+    const emailEl = document.getElementById('auth-email');
+    const emailInput = emailEl ? emailEl.value.trim() : '';
+    // Chưa nhập gì mà tên đăng nhập đã là email thì dùng luôn email đó
+    registerEmail = emailInput || (isValidEmail(usernameInput) ? usernameInput : '');
+    if (!isValidEmail(registerEmail)) {
+      return showAuthMessage('Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.');
+    }
   }
 
   const submitBtn = document.getElementById('auth-submit-btn');
@@ -522,13 +917,37 @@ window.handleAuthSubmit = async function(event) {
       closeAuthModal();
       await checkAuth();
     } else {
-      await api('/auth/register', {
-        method: 'POST',
-        body: { username: usernameInput, password: passwordInput, name: nameInput }
-      });
-      toggleAuthMode();
-      passwordEl.value = '';
-      showAuthMessage('Tạo tài khoản thành công! Vui lòng đăng nhập lại.', true);
+      // Bảo đảm đã có cấu hình OTP của server trước khi chọn luồng đăng ký
+      await fetchAppConfig();
+
+      if (!otpConfig.enabled) {
+        // Server đang tắt xác thực email -> đăng ký một bước như trước
+        await api('/auth/register', {
+          method: 'POST',
+          body: {
+            username: usernameInput,
+            password: passwordInput,
+            name: nameInput,
+            email: registerEmail
+          }
+        });
+        toggleAuthMode();
+        passwordEl.value = '';
+        showAuthMessage('Tạo tài khoản thành công! Vui lòng đăng nhập lại.', true);
+      } else {
+        // Bước 1: xin mã xác thực rồi chuyển sang màn nhập mã
+        const data = await api('/auth/register/otp', {
+          method: 'POST',
+          body: { username: usernameInput, name: nameInput, email: registerEmail }
+        });
+        pendingRegister = {
+          username: usernameInput,
+          password: passwordInput,
+          name: nameInput,
+          email: registerEmail
+        };
+        showOtpPanel(registerEmail, data.devCode, data.resendInSeconds);
+      }
     }
   } catch (err) {
     showAuthMessage(err.message);
@@ -1213,6 +1632,13 @@ function initProfilePage() {
   emailInput.value = user.email || (usernameIsEmail ? user.username : '');
   phoneInput.value = user.phone || (!usernameIsEmail ? user.username : '');
 
+  // 2b. Đổi email thì phải xác thực địa chỉ mới -> theo dõi ô email và dọn khối xác thực
+  profileEmailOriginal = emailInput.value.trim();
+  emailInput.oninput = function() {
+    updateProfileEmailOtpVisibility();
+  };
+  resetProfileEmailOtp();
+
   // 3. Hiển thị Avatar nếu có
   const avatarImg = document.getElementById('profile-avatar-img');
   const avatarText = document.getElementById('profile-avatar-text');
@@ -1274,6 +1700,92 @@ function initProfilePage() {
   };
 }
 
+// Địa chỉ email lúc mở trang, dùng để biết người dùng có đổi email hay không
+let profileEmailOriginal = '';
+
+function profileEmailChanged() {
+  const el = document.getElementById('profile-email');
+  if (!el) return false;
+  return el.value.trim().toLowerCase() !== String(profileEmailOriginal || '').toLowerCase();
+}
+
+/**
+ * Hiện khối "Xác thực email mới" khi: server đang bật xác thực email
+ * VÀ người dùng đã sửa ô email khác với địa chỉ đang lưu.
+ */
+function updateProfileEmailOtpVisibility(reset) {
+  const block = document.getElementById('profile-email-otp-block');
+  if (!block) return;
+
+  if (reset) {
+    block.classList.add('hidden');
+    return;
+  }
+
+  const emailEl = document.getElementById('profile-email');
+  const shouldShow = otpConfig.enabled && profileEmailChanged();
+
+  if (shouldShow) {
+    block.classList.remove('hidden');
+    setText('profile-email-otp-target', (emailEl ? emailEl.value.trim() : '') || 'email mới');
+    setText('profile-email-otp-length', String(otpConfig.length || 6));
+    const hint = document.getElementById('profile-email-otp-hint');
+    if (hint) {
+      hint.innerText = otpConfig.delivery
+        ? 'Mã có hiệu lực ' + Math.round((otpConfig.ttlSeconds || 600) / 60) + ' phút và chỉ dùng được một lần.'
+        : 'Hệ thống chưa cấu hình gửi thư. Vui lòng liên hệ quản trị viên để đổi email.';
+    }
+  } else {
+    block.classList.add('hidden');
+  }
+}
+
+// Gửi mã xác thực tới địa chỉ email mới
+window.sendProfileEmailOtp = async function() {
+  const emailEl = document.getElementById('profile-email');
+  const btn = document.getElementById('profile-email-otp-btn');
+  const input = document.getElementById('profile-email-otp-input');
+  if (!emailEl) return;
+
+  const email = emailEl.value.trim();
+  if (!email) return showToast('Vui lòng nhập email mới trước khi lấy mã.', 'error');
+  if (!isValidEmail(email)) return showToast('Email không hợp lệ. Vui lòng kiểm tra lại.', 'error');
+
+  let data = null;
+  const restore = busyButton(btn, 'Đang gửi...');
+  try {
+    data = await api('/profile/email/otp', { method: 'POST', body: { email } });
+  } catch (err) {
+    showToast(err.message || 'Không gửi được mã xác thực. Vui lòng thử lại.', 'error');
+    if (err.status === 429) startResendCountdown('profile', otpConfig.resendSeconds);
+  } finally {
+    restore();
+  }
+
+  if (!data) return;
+
+  // Không xoá ô mã thử nghiệm cũ nếu lần này không có mã mới (đang trong thời gian chờ)
+  if (data.devCode) setDevCode('profile-email-otp-dev', 'profile-email-otp-devcode', data.devCode);
+  startResendCountdown('profile', data.resendInSeconds);
+  showToast('Đã gửi mã xác thực tới ' + email + '. Nhớ kiểm tra cả thư rác (Spam).', 'success');
+  if (input) input.focus();
+};
+
+// Dọn khối xác thực sau khi lưu thành công hoặc khi tải lại trang
+function resetProfileEmailOtp() {
+  updateProfileEmailOtpVisibility(true);
+  setDevCode('profile-email-otp-dev', 'profile-email-otp-devcode', '');
+  const input = document.getElementById('profile-email-otp-input');
+  if (input) input.value = '';
+  const btn = document.getElementById('profile-email-otp-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerText = 'Gửi mã';
+  }
+  clearInterval(otpTimers.profile);
+  otpTimers.profile = null;
+}
+
 // Lưu thông tin cá nhân
 window.saveProfileData = async function() {
   if (!currentUser) return;
@@ -1300,13 +1812,27 @@ window.saveProfileData = async function() {
     return;
   }
 
+  // Đổi email -> bắt buộc kèm mã xác thực đã gửi tới địa chỉ mới
+  const body = { name: nameValue, email: emailValue, phone: phoneValue };
+  if (otpConfig.enabled && profileEmailChanged()) {
+    const codeEl = document.getElementById('profile-email-otp-input');
+    const code = codeEl ? codeEl.value.trim() : '';
+    if (!isValidOtpCode(code)) {
+      updateProfileEmailOtpVisibility();
+      showToast('Vui lòng lấy mã và nhập mã xác thực gồm ' + otpConfig.length + ' chữ số gửi tới email mới.', 'error');
+      return;
+    }
+    body.emailOtp = code;
+  }
+
   try {
-    const data = await api('/profile', {
-      method: 'PUT',
-      body: { name: nameValue, email: emailValue, phone: phoneValue }
-    });
+    const data = await api('/profile', { method: 'PUT', body });
     currentUser = data.user || currentUser;
     renderHeaderUser(currentUser);
+
+    // Địa chỉ mới đã được xác thực -> cập nhật mốc so sánh và dọn khối xác thực
+    profileEmailOriginal = (currentUser.email || '').trim();
+    resetProfileEmailOtp();
 
     const msg = document.getElementById('profile-save-msg');
     if (msg) {
@@ -1318,6 +1844,8 @@ window.saveProfileData = async function() {
       }, 3000);
     }
   } catch (err) {
+    // Sai mã / mã hết hạn: hiện lại khối xác thực để người dùng thử lại
+    updateProfileEmailOtpVisibility();
     showToast(err.message, 'error');
   }
 };
