@@ -5,6 +5,7 @@ const db = require('../db');
 const { formatDateTime } = require('../lib/format');
 const { REFERRAL_CODE_LENGTH } = require('../lib/validate');
 const { requireAuth } = require('../lib/auth');
+const { notify } = require('../lib/notify');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -59,6 +60,12 @@ router.post('/redeem', (req, res) => {
     new Date().toISOString()
   );
   db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(REWARD_POINTS, req.user.id);
+
+  notify(req.user.id, {
+    title: 'Nhập mã giới thiệu thành công',
+    body: `Bạn vừa nhận được ${REWARD_POINTS} điểm từ mã ${code}.`,
+    icon: 'user-plus'
+  });
 
   const updated = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
   return res.json({

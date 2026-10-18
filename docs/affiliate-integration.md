@@ -3,7 +3,13 @@
 > Tài liệu này mô tả **cách làm** để khi người dùng dán link Shopee/TikTok/Lazada,
 > hệ thống trả về một **link mua hàng có ghi nhận hoa hồng** thay vì link gốc.
 >
-> Trạng thái: **chưa triển khai** — đây là bản thiết kế để bàn giao.
+> **Trạng thái hiện tại:** phần khung đã **triển khai xong** (`backend/lib/affiliate.js`,
+> link rút gọn `/r/<mã đơn>`, đơn hàng lưu `original_link` / `affiliate_link` / `sub_id`,
+> giao diện trả link hoàn tiền kèm nút Copy và Mua ngay).
+>
+> Đang chạy ở nhà cung cấp `mock` — chạy được toàn bộ luồng nhưng **chưa tạo hoa hồng thật**.
+> Việc còn lại là đăng ký tài khoản affiliate, điền khóa API và chọn
+> `AFFILIATE_PROVIDER=accesstrade` (hoặc `shopee`). Xem mục 7 để biết việc cần làm.
 
 ---
 

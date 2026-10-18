@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { toUser } = require('../lib/serialize');
 const { isValidEmail, isValidPhone } = require('../lib/validate');
-const { requireAuth } = require('../lib/auth');
+const { requireAuth, setAuthCookie } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
 
 const router = express.Router();
@@ -95,9 +95,17 @@ router.put(
     }
 
     const passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, req.user.id);
 
-    // Phiên đăng nhập vẫn giữ nguyên vì hệ thống dùng JWT không lưu trong DB.
+    // Tăng token_version -> mọi phiên đăng nhập cũ ở thiết bị khác lập tức hết hiệu lực.
+    db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
+      passwordHash,
+      req.user.id
+    );
+
+    // Cấp lại cookie cho chính phiên đang thao tác để người dùng không bị văng ra.
+    const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    setAuthCookie(res, updated);
+
     return res.json({ ok: true });
   }
 );

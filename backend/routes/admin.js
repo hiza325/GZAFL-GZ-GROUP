@@ -27,6 +27,7 @@ const {
 const { formatMoney } = require('../lib/format');
 const { ORDER_STATUSES, WITHDRAWAL_STATUSES, ROLES, CANCELLED } = require('../lib/constants');
 const { requireAdmin } = require('../lib/auth');
+const { notify } = require('../lib/notify');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -350,7 +351,8 @@ router.get('/orders', (req, res) => {
 
 router.patch('/orders/:code', (req, res) => {
   const code = String(req.params.code || '').trim();
-  if (!db.prepare('SELECT 1 AS x FROM orders WHERE code = ?').get(code)) {
+  const before = db.prepare('SELECT * FROM orders WHERE code = ?').get(code);
+  if (!before) {
     return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
   }
 
@@ -379,7 +381,26 @@ router.patch('/orders/:code', (req, res) => {
   }
 
   db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
-  return res.json({ order: toAdminOrder(findOrderByCode(code)) });
+
+  const after = findOrderByCode(code);
+
+  // Báo cho người dùng biết đơn của họ vừa thay đổi
+  const statusChanged = body.status !== undefined && String(body.status) !== before.status;
+  const commissionChanged =
+    body.commission !== undefined && Number(body.commission) !== Number(before.commission);
+
+  if (statusChanged || commissionChanged) {
+    const parts = [];
+    if (statusChanged) parts.push(`trạng thái: ${after.status}`);
+    if (commissionChanged) parts.push(`hoa hồng: ${formatMoney(after.commission)}`);
+    notify(before.user_id, {
+      title: `Đơn ${code} đã được cập nhật`,
+      body: `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
+      icon: 'file-text'
+    });
+  }
+
+  return res.json({ order: toAdminOrder(after) });
 });
 
 /* ==========================================
@@ -485,6 +506,23 @@ router.patch('/withdrawals/:code', (req, res) => {
   }
 
   db.prepare(`UPDATE withdrawals SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
+
+  // Báo cho người dùng biết lệnh rút của họ vừa thay đổi
+  const amountChanged = nextAmount !== (Number(row.amount) || 0);
+  if (nextStatus !== row.status || amountChanged) {
+    let title = `Lệnh rút ${code} đã được cập nhật`;
+    let body = 'Quản trị viên vừa cập nhật lệnh rút tiền của bạn.';
+
+    if (nextStatus === 'Đã thanh toán') {
+      title = `Lệnh rút ${code} đã được thanh toán`;
+      body = `${formatMoney(nextAmount)} đã được chuyển tới ${row.bank} - ${row.acc_num}.`;
+    } else if (nextStatus === CANCELLED) {
+      title = `Lệnh rút ${code} đã bị huỷ`;
+      body = `Số tiền ${formatMoney(Number(row.amount) || 0)} đã được trả lại vào số dư khả dụng của bạn.`;
+    }
+
+    notify(row.user_id, { title, body, icon: 'banknote' });
+  }
 
   return res.json({ withdrawal: toAdminWithdrawal(findWithdrawalByCode(code)) });
 });

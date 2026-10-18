@@ -56,7 +56,7 @@ function setRole(username, role) {
 
   if (role === 'admin') {
     console.log(`Đã cấp quyền quản trị cho "${row.username}" (${row.name}).`);
-    console.log('Hãy đăng nhập lại để thấy mục "Quản trị" trong menu.');
+    console.log('Không cần đăng nhập lại: tải lại trang là mục "Quản trị" sẽ hiện ra.');
   } else {
     console.log(`Đã thu quyền quản trị của "${row.username}".`);
   }

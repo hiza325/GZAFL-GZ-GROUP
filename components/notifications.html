@@ -11,49 +11,55 @@
         <p class="text-sm text-slate-500 mt-1 font-medium">Theo dõi cập nhật về đơn hàng, hoàn tiền và rút tiền</p>
       </div>
     </div>
-    <button data-action="mark-read" class="text-sm font-semibold text-red-500 hover:text-red-600 flex items-center gap-2 transition px-3 py-2 rounded-xl hover:bg-red-50">
-      <i data-lucide="check-check" class="w-4 h-4"></i>
-      Đánh dấu đã đọc
-    </button>
+    <div class="flex items-center gap-3">
+      <span id="noti-unread-badge" class="hidden bg-red-50 text-red-500 px-3 py-1.5 rounded-full text-xs font-bold border border-red-100">0 chưa đọc</span>
+      <button data-action="mark-read" class="text-sm font-semibold text-red-500 hover:text-red-600 flex items-center gap-2 transition px-3 py-2 rounded-xl hover:bg-red-50">
+        <i data-lucide="check-check" class="w-4 h-4"></i>
+        Đánh dấu đã đọc
+      </button>
+    </div>
   </div>
 
-  <!-- Danh sách các thông báo -->
-  <div class="space-y-4">
-    
-    <!-- Thông báo 1 (Hướng dẫn/Thành công) -->
-    <div class="notification-item bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
-      <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-500 flex-shrink-0 mt-1">
-        <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
+  <!-- Danh sách thông báo thật (script.js tự điền) -->
+  <div id="notifications-list" class="space-y-4">
+    <div class="py-12 flex flex-col items-center justify-center text-center">
+      <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+        <i data-lucide="loader-2" class="w-8 h-8 text-slate-300 animate-spin"></i>
       </div>
-      <div class="flex-1">
-        <div class="flex items-center gap-2">
-          <h3 class="font-bold text-slate-800 text-lg">Hướng dẫn tạo link hoàn tiền</h3>
-          <span class="notification-dot w-2 h-2 rounded-full bg-red-500"></span>
-        </div>
-        <p class="text-slate-500 text-sm mt-2 leading-relaxed">
-          Bước 1: Copy link sản phẩm từ Shopee. Bước 2: Dán vào ô "Tạo đơn hàng" và nhấn tạo link. Bước 3: Mua hàng qua link đó để ghi nhận hoa hồng trong vòng 24h.
-        </p>
-        <div class="text-xs font-semibold text-slate-400 mt-4">Hôm nay</div>
-      </div>
+      <p class="text-slate-400 text-sm">Đang tải thông báo...</p>
     </div>
+  </div>
 
-    <!-- Thông báo 2 (Lưu ý/Cảnh báo) -->
-    <div class="notification-item bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
-      <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0 mt-1">
-        <i data-lucide="triangle-alert" class="w-6 h-6"></i>
-      </div>
-      <div class="flex-1">
-        <div class="flex items-center gap-2">
-          <h3 class="font-bold text-slate-800 text-lg">Lưu ý quan trọng khi đặt hàng</h3>
-          <span class="notification-dot w-2 h-2 rounded-full bg-red-500"></span>
+  <!-- Mẹo & lưu ý: nội dung tĩnh, KHÔNG phải thông báo -->
+  <div class="mt-10">
+    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4 pl-1">Hướng dẫn &amp; lưu ý</div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-500 flex-shrink-0 mt-1">
+          <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
         </div>
-        <p class="text-slate-500 text-sm mt-2 leading-relaxed">
-          Xóa sản phẩm cùng loại khỏi giỏ hàng trước khi mua. Không nhảy sang link khác (live, video, quảng cáo) trong cùng phiên. Hoàn tất đơn trong cùng một trình duyệt.
-        </p>
-        <div class="text-xs font-semibold text-slate-400 mt-4">Hôm qua</div>
+        <div class="flex-1">
+          <h3 class="font-bold text-slate-800">Cách tạo link hoàn tiền</h3>
+          <p class="text-slate-500 text-sm mt-2 leading-relaxed">
+            Bước 1: Sao chép link sản phẩm từ Shopee, TikTok hoặc Lazada. Bước 2: Dán vào ô "Tạo đơn hàng" và bấm tạo link. Bước 3: Mua hàng qua link hoàn tiền đó để được ghi nhận hoa hồng.
+          </p>
+        </div>
       </div>
-    </div>
 
+      <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0 mt-1">
+          <i data-lucide="triangle-alert" class="w-6 h-6"></i>
+        </div>
+        <div class="flex-1">
+          <h3 class="font-bold text-slate-800">Lưu ý quan trọng khi đặt hàng</h3>
+          <p class="text-slate-500 text-sm mt-2 leading-relaxed">
+            Xoá sản phẩm cùng loại khỏi giỏ hàng trước khi mua. Không bấm sang link khác (live, video, quảng cáo) trong cùng phiên. Hoàn tất đơn trong cùng một trình duyệt.
+          </p>
+        </div>
+      </div>
+
+    </div>
   </div>
 
 </main>

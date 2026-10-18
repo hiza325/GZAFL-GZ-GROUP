@@ -28,12 +28,28 @@ function toOrder(row) {
   if (!row) return null;
   return {
     id: row.code,
-    link: row.link,
+    link: row.original_link || row.link,
+    affiliateLink: row.affiliate_link || null,
+    subId: row.sub_id || null,
+    clicks: Number(row.click_count) || 0,
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
     date: formatDate(row.created_at),
     createdAt: row.created_at
+  };
+}
+
+function toNotification(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body || '',
+    icon: row.icon || 'bell',
+    isRead: !!row.is_read,
+    createdAt: row.created_at,
+    date: formatDateTime(row.created_at)
   };
 }
 
@@ -91,7 +107,8 @@ function toAdminOrder(row) {
       name: row.user_name || '(đã xoá)',
       username: row.user_username || ''
     },
-    link: row.link,
+    link: row.original_link || row.link,
+    affiliateLink: row.affiliate_link || null,
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
@@ -150,6 +167,7 @@ module.exports = {
   toUser,
   toOrder,
   toWithdrawal,
+  toNotification,
   toAdminUser,
   toAdminOrder,
   toAdminWithdrawal,

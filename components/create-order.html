@@ -57,6 +57,35 @@
       <i data-lucide="sparkles" class="w-5 h-5 text-yellow-400"></i>
       <span>Tạo link & kiểm tra hoa hồng</span>
     </button>
+
+    <!-- Kết quả: link hoàn tiền vừa tạo (script.js tự điền, mặc định ẩn) -->
+    <div id="link-result" class="hidden mt-6 p-5 rounded-2xl border border-emerald-100 bg-emerald-50/50">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-slate-800 text-sm">
+            Đã tạo link hoàn tiền cho đơn <span id="link-result-code" class="text-emerald-600"></span>
+          </div>
+          <p id="link-result-note" class="text-xs text-slate-500 mt-1.5 leading-relaxed"></p>
+
+          <div class="mt-4 flex flex-col sm:flex-row gap-2">
+            <input id="link-result-url" readonly class="flex-1 min-w-0 bg-white border border-emerald-200 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-700 focus:outline-none">
+            <button id="btn-copy-affiliate" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 rounded-xl font-bold text-xs transition whitespace-nowrap">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>Copy link</span>
+            </button>
+            <a id="link-result-open" href="#" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold text-xs transition whitespace-nowrap">
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+              <span>Mua ngay</span>
+            </a>
+          </div>
+
+          <p class="text-[11px] text-slate-400 mt-3">Hãy mua hàng qua đúng link này để đơn được ghi nhận hoa hồng.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Hai cột nội dung thông tin (Lưu ý & Hướng dẫn) -->

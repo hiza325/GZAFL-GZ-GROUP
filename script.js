@@ -129,6 +129,7 @@ async function loadComponent(elementId, filePath) {
     else if (filePath.includes('wallet.html')) updateWalletData();
     else if (filePath.includes('orders.html')) updateOrdersData();
     else if (filePath.includes('referral.html')) initReferralPage();
+    else if (filePath.includes('notifications.html')) updateNotificationsData();
   } catch (error) {
     console.error('Lỗi khi tải component:', error);
   }
@@ -159,6 +160,10 @@ async function checkAuth() {
     updateActiveMenu('dashboard');
     renderHeaderUser(user);
     applyAdminVisibility(user);
+
+    // Nếu người dùng vừa dán link ở trang chủ rồi mới đăng nhập,
+    // đưa họ thẳng tới trang Tạo đơn với link đã điền sẵn.
+    await handlePendingLandingLink();
   } else {
     appRoot.classList.add('hidden');
     landingRoot.classList.remove('hidden');
@@ -223,8 +228,10 @@ document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   const authModal = document.getElementById('auth-modal');
   const withdrawModal = document.getElementById('withdraw-modal');
+  const guideModal = document.getElementById('guide-modal');
   if (authModal && !authModal.classList.contains('hidden')) { closeAuthModal(); return; }
-  if (withdrawModal && !withdrawModal.classList.contains('hidden')) { closeWithdrawModal(); }
+  if (withdrawModal && !withdrawModal.classList.contains('hidden')) { closeWithdrawModal(); return; }
+  if (guideModal && !guideModal.classList.contains('hidden')) { closeGuideModal(); }
 });
 
 window.openAuthModal = function(loginMode = true) {
@@ -422,6 +429,7 @@ const PAGE_ROUTES = {
   wallet: { file: 'components/wallet.html', title: 'Ví hoàn tiền' },
   referral: { file: 'components/referral.html', title: 'Mời bạn bè' },
   profile: { file: 'components/profile.html', title: 'Cá nhân' },
+  guide: { file: 'components/guide.html', title: 'Trợ giúp' },
   admin: { file: 'components/admin.html', title: 'Trang quản trị' }
 };
 
@@ -471,7 +479,7 @@ async function navigateTo(page) {
   }
 }
 
-document.addEventListener('click', function(event) {
+document.addEventListener('click', async function(event) {
   // 1. Nút Rút tiền (đánh dấu bằng data-action)
   const withdrawBtn = event.target.closest('[data-action="withdraw"]');
   if (withdrawBtn) {
@@ -480,20 +488,41 @@ document.addEventListener('click', function(event) {
     return;
   }
 
-  // 2. Đánh dấu thông báo đã đọc
+  // 2. Đánh dấu tất cả thông báo đã đọc (gọi API thật, không chỉ ẩn chấm đỏ)
   const markReadBtn = event.target.closest('[data-action="mark-read"]');
   if (markReadBtn) {
-    const dots = document.querySelectorAll('.notification-dot');
-    if (dots.length === 0) {
+    event.preventDefault();
+    if (notificationsState.unreadCount === 0) {
       showToast('Không có thông báo chưa đọc.', 'info');
-    } else {
-      dots.forEach(dot => dot.classList.add('hidden'));
+      return;
+    }
+    markReadBtn.disabled = true;
+    try {
+      await api('/notifications/read-all', { method: 'POST' });
+      await updateNotificationsData();
       showToast('Đã đánh dấu tất cả thông báo là đã đọc.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      markReadBtn.disabled = false;
     }
     return;
   }
 
-  // 3. Điều hướng (menu, logo, nút cùng trang) — đánh dấu bằng data-page
+  // 3. Copy link hoàn tiền (trang Đơn hàng)
+  const copyLinkBtn = event.target.closest('[data-action="copy-link"]');
+  if (copyLinkBtn) {
+    event.preventDefault();
+    copyTextToClipboard(copyLinkBtn.dataset.link || '').then((ok) => {
+      showToast(
+        ok ? 'Đã copy link hoàn tiền.' : 'Không copy được. Hãy bôi đen link và copy thủ công.',
+        ok ? 'success' : 'error'
+      );
+    });
+    return;
+  }
+
+  // 4. Điều hướng (menu, logo, nút cùng trang) — đánh dấu bằng data-page
   const navEl = event.target.closest('[data-page]');
   if (navEl) {
     event.preventDefault();
@@ -567,9 +596,10 @@ document.addEventListener('click', async function(event) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
   try {
-    await api('/orders', { method: 'POST', body: { link: singleLink } });
-    showToast('🎉 Tạo link hoàn tiền thành công! Đơn hàng đã được ghi nhận.', 'success');
+    const data = await api('/orders', { method: 'POST', body: { link: singleLink } });
+    showToast('Tạo link hoàn tiền thành công! Đơn hàng đã được ghi nhận.', 'success');
     inputElement.value = '';
+    renderLinkResult(data.order, data.affiliate);
     if (document.getElementById('dash-recent-orders')) updateDashboardData();
   } catch (err) {
     showError(err.message);
@@ -579,6 +609,45 @@ document.addEventListener('click', async function(event) {
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 });
+
+// Hiển thị link hoàn tiền vừa tạo kèm nút Copy và Mua ngay
+function renderLinkResult(order, affiliate) {
+  const box = document.getElementById('link-result');
+  if (!box || !order) return;
+
+  const link = order.affiliateLink || order.link;
+  const isReal = !!(affiliate && affiliate.isReal);
+
+  setText('link-result-code', order.id);
+
+  const urlInput = document.getElementById('link-result-url');
+  if (urlInput) urlInput.value = link;
+
+  const openLink = document.getElementById('link-result-open');
+  if (openLink) openLink.href = link;
+
+  const note = document.getElementById('link-result-note');
+  if (note) {
+    note.innerText = isReal
+      ? 'Link hoàn tiền đã sẵn sàng. Hãy mua hàng qua đúng link này để đơn được ghi nhận.'
+      : 'Hệ thống chưa kết nối API của sàn nên chưa ghi nhận hoa hồng tự động. Bạn vẫn mua hàng bình thường, quản trị viên sẽ chốt hoa hồng cho đơn này.';
+  }
+
+  const copyBtn = document.getElementById('btn-copy-affiliate');
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      copyTextToClipboard(link).then((ok) => {
+        showToast(
+          ok ? 'Đã copy link hoàn tiền.' : 'Không copy được. Hãy bôi đen link và copy thủ công.',
+          ok ? 'success' : 'error'
+        );
+      });
+    };
+  }
+
+  box.classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
 
 
 /* ==========================================
@@ -594,26 +663,42 @@ async function fetchOrders() {
   }
 }
 
+// Lấy số dư thật (đã trừ các lệnh rút) — dùng cho header và thẻ số dư
+async function fetchWallet() {
+  try {
+    return await api('/wallet');
+  } catch (err) {
+    return null;
+  }
+}
+
+function setHeaderBalance(balance) {
+  setText('header-balance', formatCurrency(balance));
+}
+
 async function updateDashboardData() {
   const orders = await fetchOrders();
+  const wallet = await fetchWallet();
   const user = currentUser;
   const total = orders.length;
   const pending = orders.filter(o => o.status === 'Đang xử lý').length;
   const completed = orders.filter(o => o.status === 'Hoàn thành').length;
   // Đơn đã huỷ không được tính vào hoa hồng
-  const commission = orders
-    .filter(o => o.status !== 'Đã huỷ')
-    .reduce((sum, o) => sum + parseCommissionValue(o.commission), 0);
+  const commission = wallet
+    ? Number(wallet.totalCommission) || 0
+    : orders.filter(o => o.status !== 'Đã huỷ').reduce((sum, o) => sum + parseCommissionValue(o.commission), 0);
+  const balance = wallet ? Number(wallet.balance) || 0 : commission;
 
   setText('dashboard-username', (user && user.name) ? user.name : 'bạn');
   setText('dash-commission', formatCurrency(commission));
   setText('dash-completed-note', completed + ' đơn hoàn thành');
   setText('dash-order-count', total);
   setText('dash-pending-note', pending > 0 ? (pending + ' đơn đang chờ') : 'Không có đơn chờ');
-  setText('dash-balance', formatCurrency(commission));
+  setText('dash-balance', formatCurrency(balance));
   setText('dash-total-commission', formatCurrency(commission));
   setText('dash-total-note', total + ' đơn tất cả');
-  setText('dash-card-balance', formatCurrency(commission));
+  setText('dash-card-balance', formatCurrency(balance));
+  setHeaderBalance(balance);
 
   renderDashboardRecentOrders(orders);
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -669,6 +754,7 @@ async function updateWalletData() {
   setText('stat-completed-orders', data.stats.completed);
   setText('stat-paid-orders', data.stats.paid);
   setText('wallet-balance', formatCurrency(data.balance));
+  setHeaderBalance(data.balance);
 
   renderWithdrawHistory(data.withdrawals || []);
 }
@@ -749,26 +835,42 @@ async function updateOrdersData() {
     }
     let htmlList = `<div class="space-y-4">`;
     orders.forEach(order => {
+      const hasTrackedLink = !!(order.affiliateLink && order.affiliateLink !== order.link);
       htmlList += `
-        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div class="flex items-start gap-4">
-            <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-              <i data-lucide="shopping-bag" class="w-6 h-6"></i>
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-slate-800">${escapeHtml(order.platform)}</span>
-                <span class="text-xs text-slate-400 font-medium">(${escapeHtml(order.id)})</span>
+        <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div class="flex items-start gap-4 min-w-0">
+              <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="shopping-bag" class="w-6 h-6"></i>
               </div>
-              <p class="text-xs text-slate-400 mt-1 truncate max-w-md">${escapeHtml(order.link)}</p>
-              <div class="text-xs font-semibold text-slate-500 mt-2">Ngày tạo: ${escapeHtml(order.date)}</div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-bold text-slate-800">${escapeHtml(order.platform)}</span>
+                  <span class="text-xs text-slate-400 font-medium">(${escapeHtml(order.id)})</span>
+                  ${order.clicks > 0 ? `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">${Number(order.clicks) || 0} lượt bấm</span>` : ''}
+                </div>
+                <a href="${escapeHtml(order.link)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(order.link)}" class="text-xs text-slate-400 hover:text-red-500 mt-1 block truncate max-w-md transition">${escapeHtml(order.link)}</a>
+                <div class="text-xs font-semibold text-slate-500 mt-2">Ngày tạo: ${escapeHtml(order.date)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 self-end sm:self-start flex-shrink-0">
+              <span class="text-sm font-bold text-slate-800">${formatCurrency(order.commission)}</span>
+              <span class="px-3 py-1 border rounded-full text-xs font-bold ${statusBadgeClass(order.status)}">${escapeHtml(order.status)}</span>
             </div>
           </div>
-          <div class="flex items-center gap-3 self-end sm:self-center">
-            <span class="px-3 py-1 border rounded-full text-xs font-bold ${statusBadgeClass(order.status)}">
-              ${escapeHtml(order.status)}
+          ${hasTrackedLink ? `
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t border-slate-50">
+            <span class="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 uppercase tracking-wider flex-shrink-0">
+              <i data-lucide="link-2" class="w-3.5 h-3.5"></i> Link hoàn tiền
             </span>
-          </div>
+            <input readonly value="${escapeHtml(order.affiliateLink)}" class="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs text-slate-600 focus:outline-none">
+            <button data-action="copy-link" data-link="${escapeHtml(order.affiliateLink)}" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy
+            </button>
+            <a href="${escapeHtml(order.affiliateLink)}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold text-xs transition whitespace-nowrap">
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Mua ngay
+            </a>
+          </div>` : ''}
         </div>
       `;
     });
@@ -1175,10 +1277,21 @@ window.changePassword = async function() {
 /* ==========================================
    PHẦN 7: LOGIC MODAL RÚT TIỀN
 ========================================== */
-window.openWithdrawModal = function() {
+window.openWithdrawModal = async function() {
   const modal = document.getElementById('withdraw-modal');
   const content = document.getElementById('withdraw-modal-content');
   if (!modal || !content) return;
+
+  // Điền sẵn thông tin nhận tiền đã lưu (nếu có)
+  if (currentUser && currentUser.bank) {
+    const bankEl = document.getElementById('withdraw-bank');
+    const numEl = document.getElementById('withdraw-acc-number');
+    const nameEl = document.getElementById('withdraw-acc-name');
+    if (bankEl && currentUser.bank.bank) bankEl.value = currentUser.bank.bank;
+    if (numEl && currentUser.bank.accNum) numEl.value = currentUser.bank.accNum;
+    if (nameEl && currentUser.bank.accName) nameEl.value = currentUser.bank.accName;
+  }
+
   modal.classList.remove('hidden');
 
   setTimeout(() => {
@@ -1187,7 +1300,49 @@ window.openWithdrawModal = function() {
   }, 10);
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  await refreshWithdrawBalance();
 };
+
+// Nạp số dư + mức rút tối thiểu vào modal và chặn gửi nếu chưa đủ tiền.
+// Việc chặn thật vẫn do server quyết định (backend/routes/wallet.js).
+async function refreshWithdrawBalance() {
+  const availableEl = document.getElementById('withdraw-available');
+  const noteEl = document.getElementById('withdraw-note');
+  const btn = document.getElementById('withdraw-submit-btn');
+  if (!availableEl || !noteEl || !btn) return;
+
+  let data;
+  try {
+    data = await api('/wallet');
+  } catch (err) {
+    availableEl.innerText = '--';
+    noteEl.innerText = 'Không tải được số dư. Vui lòng đóng hộp thoại và thử lại.';
+    btn.disabled = true;
+    return;
+  }
+
+  const balance = Number(data.balance) || 0;
+  const min = Number(data.minWithdraw) || 0;
+
+  availableEl.innerText = formatCurrency(balance);
+
+  if (balance < min) {
+    noteEl.innerText =
+      'Mức rút tối thiểu là ' + formatCurrency(min) + '. ' +
+      (balance > 0
+        ? 'Bạn còn thiếu ' + formatCurrency(min - balance) + '.'
+        : 'Bạn chưa có hoa hồng khả dụng để rút.');
+    btn.disabled = true;
+    btn.title = 'Số dư chưa đủ để rút';
+  } else {
+    noteEl.innerText =
+      'Hệ thống sẽ rút toàn bộ ' + formatCurrency(balance) + ' đang có. ' +
+      'Mức tối thiểu: ' + formatCurrency(min) + '.';
+    btn.disabled = false;
+    btn.title = '';
+  }
+}
 
 window.closeWithdrawModal = function() {
   const modal = document.getElementById('withdraw-modal');
@@ -1197,21 +1352,14 @@ window.closeWithdrawModal = function() {
   modal.classList.add('opacity-0');
   content.classList.add('scale-95');
 
-  setTimeout(() => {
-    modal.classList.add('hidden');
-    const bankEl = document.getElementById('withdraw-bank');
-    const numEl = document.getElementById('withdraw-acc-number');
-    const nameEl = document.getElementById('withdraw-acc-name');
-    if (bankEl) bankEl.value = '';
-    if (numEl) numEl.value = '';
-    if (nameEl) nameEl.value = '';
-  }, 300);
+  setTimeout(() => modal.classList.add('hidden'), 300);
 };
 
 window.submitWithdraw = async function() {
   const bankEl = document.getElementById('withdraw-bank');
   const numEl = document.getElementById('withdraw-acc-number');
   const nameEl = document.getElementById('withdraw-acc-name');
+  const btn = document.getElementById('withdraw-submit-btn');
   if (!bankEl || !numEl || !nameEl) return;
 
   const bank = bankEl.value;
@@ -1227,6 +1375,13 @@ window.submitWithdraw = async function() {
     return;
   }
 
+  const originalHTML = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang gửi...';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
   try {
     const data = await api('/wallet/withdrawals', {
       method: 'POST',
@@ -1238,11 +1393,201 @@ window.submitWithdraw = async function() {
 
     if (document.getElementById('tx-container')) {
       await updateWalletData();
+    } else if (document.getElementById('dash-recent-orders')) {
+      await updateDashboardData();
     }
 
-    showToast(`✅ Đã gửi yêu cầu rút tiền!\nNgân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`, 'success');
+    const amount = (data.withdrawal && data.withdrawal.amount) || 0;
+    showToast(
+      `✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\nNgân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`,
+      'success'
+    );
     closeWithdrawModal();
   } catch (err) {
     showToast(err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.innerHTML = originalHTML;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    // Nạp lại số dư: nếu vừa gửi thành công thì nút sẽ tự bị khoá
+    await refreshWithdrawBalance();
   }
+};
+
+
+/* ==========================================
+   PHẦN 8: THÔNG BÁO (bảng notifications trong SQLite)
+========================================== */
+
+let notificationsState = { items: [], unreadCount: 0 };
+
+const NOTIFICATION_ICON_STYLE = {
+  'shopping-cart': 'bg-red-50 text-red-500',
+  banknote: 'bg-blue-50 text-blue-500',
+  'file-text': 'bg-indigo-50 text-indigo-500',
+  'user-plus': 'bg-emerald-50 text-emerald-500',
+  bell: 'bg-slate-100 text-slate-500'
+};
+
+async function updateNotificationsData() {
+  const area = document.getElementById('notifications-list');
+  if (!area) return;
+
+  let data;
+  try {
+    data = await api('/notifications');
+  } catch (err) {
+    area.innerHTML = `
+      <div class="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm text-center text-sm text-slate-500">
+        Không tải được thông báo. Vui lòng thử lại sau.
+      </div>
+    `;
+    return;
+  }
+
+  notificationsState.items = (data && data.notifications) || [];
+  notificationsState.unreadCount = Number(data && data.unreadCount) || 0;
+  renderNotifications();
+}
+
+function renderNotifications() {
+  const area = document.getElementById('notifications-list');
+  if (!area) return;
+
+  const badge = document.getElementById('noti-unread-badge');
+  if (badge) {
+    if (notificationsState.unreadCount > 0) {
+      badge.innerText = notificationsState.unreadCount + ' chưa đọc';
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  const list = notificationsState.items;
+
+  if (list.length === 0) {
+    area.innerHTML = `
+      <div class="bg-white p-12 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
+        <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-5 shadow-inner border border-slate-100">
+          <i data-lucide="bell-off" class="w-10 h-10 text-slate-300"></i>
+        </div>
+        <h4 class="text-lg font-bold text-slate-800 mb-2">Chưa có thông báo nào</h4>
+        <p class="text-slate-500 text-sm max-w-sm leading-relaxed">
+          Khi bạn tạo đơn hàng, rút tiền hoặc đơn hàng được cập nhật, thông báo sẽ xuất hiện tại đây.
+        </p>
+      </div>
+    `;
+  } else {
+    let html = '';
+    list.forEach((item) => {
+      const style = NOTIFICATION_ICON_STYLE[item.icon] || NOTIFICATION_ICON_STYLE.bell;
+      html += `
+        <div class="bg-white p-6 rounded-3xl border ${item.isRead ? 'border-slate-100' : 'border-red-100'} shadow-sm flex items-start gap-4">
+          <div class="w-12 h-12 rounded-2xl ${style} flex items-center justify-center flex-shrink-0 mt-1">
+            <i data-lucide="${escapeHtml(item.icon || 'bell')}" class="w-6 h-6"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <h3 class="font-bold text-slate-800">${escapeHtml(item.title)}</h3>
+              ${item.isRead ? '' : '<span class="notification-dot w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>'}
+            </div>
+            <p class="text-slate-500 text-sm mt-2 leading-relaxed">${escapeHtml(item.body)}</p>
+            <div class="text-xs font-semibold text-slate-400 mt-4">${escapeHtml(item.date)}</div>
+          </div>
+        </div>
+      `;
+    });
+    area.innerHTML = html;
+  }
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+
+/* ==========================================
+   PHẦN 9: TRANG CHỦ (LANDING) — CHUYỂN LINK & HƯỚNG DẪN
+========================================== */
+
+// Link người dùng dán ở trang chủ, giữ lại để điền sẵn sau khi đăng nhập xong
+let pendingLandingLink = null;
+
+const LANDING_LINK_REGEX = /(shopee\.vn|shp\.ee|tiktok\.com|vt\.tiktok\.com|lazada\.vn|c\.lazada\.vn)/i;
+
+window.convertLandingLink = function() {
+  const input = document.getElementById('landing-link-input');
+  const value = input ? input.value.trim() : '';
+
+  if (!value) {
+    showToast('Vui lòng dán link sản phẩm trước khi chuyển đổi.', 'error');
+    if (input) input.focus();
+    return;
+  }
+  if (!LANDING_LINK_REGEX.test(value)) {
+    showToast('Link không hợp lệ. Vui lòng dán link Shopee, TikTok hoặc Lazada.', 'error');
+    if (input) input.focus();
+    return;
+  }
+
+  pendingLandingLink = value;
+  showToast('Đăng nhập để tạo link hoàn tiền cho sản phẩm này.', 'info');
+  openAuthModal(false);
+};
+
+// Sau khi đăng nhập, tự chuyển sang trang Tạo đơn với link người dùng đã dán
+async function handlePendingLandingLink() {
+  if (!pendingLandingLink) return;
+
+  const link = pendingLandingLink;
+  pendingLandingLink = null;
+
+  await navigateTo('create-order');
+
+  const input = document.getElementById('link-input');
+  if (input) {
+    input.value = link;
+    input.focus();
+  }
+  showToast('Đã điền sẵn link của bạn. Bấm "Tạo link" để tiếp tục.', 'info');
+}
+
+// Modal hướng dẫn ở trang chủ — nạp chung nội dung với trang Trợ giúp
+window.openGuideModal = async function() {
+  const modal = document.getElementById('guide-modal');
+  const content = document.getElementById('guide-modal-content');
+  const body = document.getElementById('guide-modal-body');
+  if (!modal || !content || !body) return;
+
+  modal.classList.remove('hidden');
+
+  setTimeout(() => {
+    modal.classList.remove('opacity-0');
+    content.classList.remove('scale-95');
+  }, 10);
+
+  if (body.dataset.loaded === '1') return;
+
+  try {
+    const res = await fetch('components/guide.html');
+    body.innerHTML = res.ok
+      ? await res.text()
+      : '<div class="p-8 text-sm text-slate-500">Không tải được nội dung hướng dẫn.</div>';
+    body.dataset.loaded = '1';
+  } catch (err) {
+    body.innerHTML = '<div class="p-8 text-sm text-slate-500">Không tải được nội dung hướng dẫn.</div>';
+  }
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+};
+
+window.closeGuideModal = function() {
+  const modal = document.getElementById('guide-modal');
+  const content = document.getElementById('guide-modal-content');
+  if (!modal || !content) return;
+
+  modal.classList.add('opacity-0');
+  content.classList.add('scale-95');
+
+  setTimeout(() => modal.classList.add('hidden'), 300);
 };

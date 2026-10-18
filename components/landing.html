@@ -20,13 +20,13 @@
       <a href="#" class="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-[#f04d4d] rounded-full font-bold text-sm border border-red-100/50 transition">
         <i data-lucide="home" class="w-4 h-4"></i> Trang chủ
       </a>
-      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+      <a href="#" onclick="event.preventDefault(); openAuthModal(true)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
         <i data-lucide="search" class="w-4 h-4"></i> Tra cứu đơn hàng
       </a>
-      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+      <a href="#" onclick="event.preventDefault(); openAuthModal(true)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
         <i data-lucide="wallet" class="w-4 h-4"></i> Ví của bạn
       </a>
-      <a href="#" onclick="openAuthModal(false)" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
+      <a href="#" onclick="event.preventDefault(); openGuideModal()" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
         <i data-lucide="help-circle" class="w-4 h-4"></i> Hướng dẫn
       </a>
     </div>
@@ -88,14 +88,14 @@
          </div>
 
          <!-- Nút Chuyển đổi -->
-         <button onclick="openAuthModal(false)" class="flex items-center justify-center gap-2 px-8 py-3.5 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-500/20 transition whitespace-nowrap w-full md:w-auto transform active:scale-95">
+         <button onclick="convertLandingLink()" class="flex items-center justify-center gap-2 px-8 py-3.5 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-500/20 transition whitespace-nowrap w-full md:w-auto transform active:scale-95">
            <i data-lucide="boxes" class="w-4 h-4 text-white"></i> Chuyển đổi link
          </button>
       </div>
 
       <div class="mt-5 text-left flex items-center justify-center md:justify-start gap-2 text-xs font-medium text-slate-400">
-        <i data-lucide="list-tree" class="w-3.5 h-3.5"></i>
-        Dán nhiều link chuyển đổi cùng lúc, mỗi link 1 dòng
+        <i data-lucide="info" class="w-3.5 h-3.5"></i>
+        Mỗi lần chuyển đổi 1 link. Đăng nhập để hệ thống ghi nhận hoa hồng cho bạn.
       </div>
     </div>
   </div>
@@ -160,6 +160,24 @@
         <div class="mt-6 text-center text-sm font-medium text-slate-500">
           <span id="auth-toggle-text">Chưa có tài khoản?</span> 
           <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-[#f04d4d] font-bold hover:underline">Đăng ký ngay</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==============================================
+       MODAL HƯỚNG DẪN & ĐIỀU KHOẢN
+       Nội dung được nạp từ components/guide.html (dùng chung với trang Trợ giúp)
+  =============================================== -->
+  <div id="guide-modal" role="dialog" aria-modal="true" aria-labelledby="guide-modal-title" onclick="if (event.target === this) closeGuideModal()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+    <div class="bg-white w-full max-w-3xl max-h-[88vh] rounded-3xl shadow-2xl relative transform scale-95 transition-transform duration-300 flex flex-col" id="guide-modal-content">
+      <button onclick="closeGuideModal()" aria-label="Đóng" class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+      <h2 id="guide-modal-title" class="sr-only">Hướng dẫn &amp; Điều khoản</h2>
+      <div id="guide-modal-body" class="overflow-y-auto flex-1">
+        <div class="p-8 text-sm text-slate-400 flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang tải...
         </div>
       </div>
     </div>

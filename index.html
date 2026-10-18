@@ -45,6 +45,15 @@
         <h2 id="withdraw-title" class="text-2xl font-bold text-slate-800 mb-2">Rút tiền về tài khoản</h2>
         <p class="text-sm text-slate-500 mb-6">Vui lòng chọn ngân hàng và nhập chính xác số tài khoản của bạn.</p>
 
+        <!-- Số dư khả dụng + mức rút tối thiểu (script.js cập nhật) -->
+        <div class="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Số dư khả dụng</span>
+            <span id="withdraw-available" class="text-lg font-extrabold text-slate-800">đ0</span>
+          </div>
+          <p id="withdraw-note" class="text-[11px] text-slate-400 mt-2 leading-relaxed">Mức rút tối thiểu: đ50.000</p>
+        </div>
+
         <div class="space-y-4">
           <!-- Chọn Ngân hàng / Ví -->
           <div>
@@ -75,7 +84,7 @@
           </div>
         </div>
 
-        <button onclick="submitWithdraw()" class="w-full mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98] flex items-center justify-center gap-2">
+        <button id="withdraw-submit-btn" onclick="submitWithdraw()" class="w-full mt-8 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">
           <i data-lucide="send" class="w-4 h-4"></i> Gửi yêu cầu rút tiền
         </button>
       </div>

@@ -8,7 +8,7 @@ const COOKIE_NAME = 'gz_token';
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
 
 function signToken(user) {
-  return jwt.sign({ uid: user.id }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ uid: user.id, tv: Number(user.token_version) || 1 }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function setAuthCookie(res, user) {
@@ -16,7 +16,9 @@ function setAuthCookie(res, user) {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: TOKEN_TTL_MS
+    maxAge: TOKEN_TTL_MS,
+    // Chỉ gửi cookie qua HTTPS khi chạy production
+    secure: process.env.NODE_ENV === 'production'
   });
 }
 
@@ -30,7 +32,13 @@ function loadUser(req) {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    return db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid) || null;
+    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
+    if (!row) return null;
+
+    // Đổi mật khẩu sẽ tăng token_version -> mọi phiên cũ trở nên vô hiệu
+    if ((Number(payload.tv) || 1) !== (Number(row.token_version) || 1)) return null;
+
+    return row;
   } catch (err) {
     return null;
   }
