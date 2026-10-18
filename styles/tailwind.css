@@ -1,0 +1,7 @@
+/* File nguon cho Tailwind. KHONG sua truc tiep file tailwind.build.css.
+ * Sua o day (hoac trong index.html / script.js / components/) roi chay:
+ *   npm run build:css
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

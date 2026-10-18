@@ -1,0 +1,13 @@
+{
+  "name": "gzafl-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cong cu build CSS (Tailwind) cho giao dien GZ AFL",
+  "scripts": {
+    "build:css": "tailwindcss -i ./styles/tailwind.css -o ./tailwind.build.css --minify",
+    "watch:css": "tailwindcss -i ./styles/tailwind.css -o ./tailwind.build.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

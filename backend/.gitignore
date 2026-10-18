@@ -2,3 +2,10 @@ node_modules/
 data/
 uploads/*
 !uploads/.gitkeep
+
+# Bí mật cục bộ (JWT_SECRET, API key affiliate...) - KHÔNG commit
+.env
+.env.local
+*.key
+*.crt
+*.pem

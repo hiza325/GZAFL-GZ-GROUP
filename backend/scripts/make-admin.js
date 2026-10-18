@@ -11,6 +11,8 @@
  * Chạy trong thư mục `backend`.
  */
 
+require('../lib/env'); // nạp .env trước khi db.js đọc DB_PATH
+
 const db = require('../db');
 
 function listUsers() {

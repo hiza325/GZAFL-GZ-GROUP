@@ -114,6 +114,32 @@ function showToast(message, type = 'info') {
 }
 
 
+// Thông tin liên hệ hỗ trợ lấy từ server (SUPPORT_EMAIL / SUPPORT_ZALO trong backend/.env).
+// Nếu server không cấu hình thì giữ nguyên giá trị mặc định ghi trong components/guide.html.
+let supportContactPromise = null;
+
+function fetchSupportContact() {
+  if (!supportContactPromise) {
+    supportContactPromise = api('/config')
+      .then((data) => (data && data.support) || null)
+      .catch(() => null);
+  }
+  return supportContactPromise;
+}
+
+async function applySupportContact(root) {
+  const scope = root || document;
+  const emailEl = scope.querySelector('#support-email');
+  const zaloEl = scope.querySelector('#support-zalo');
+  if (!emailEl && !zaloEl) return;
+
+  const support = await fetchSupportContact();
+  if (!support) return;
+
+  if (emailEl && support.email) emailEl.textContent = support.email;
+  if (zaloEl && support.zalo) zaloEl.textContent = 'Zalo: ' + support.zalo;
+}
+
 async function loadComponent(elementId, filePath) {
   try {
     const response = await fetch(filePath);
@@ -130,6 +156,7 @@ async function loadComponent(elementId, filePath) {
     else if (filePath.includes('orders.html')) updateOrdersData();
     else if (filePath.includes('referral.html')) initReferralPage();
     else if (filePath.includes('notifications.html')) updateNotificationsData();
+    else if (filePath.includes('guide.html')) applySupportContact(document.getElementById(elementId));
   } catch (error) {
     console.error('Lỗi khi tải component:', error);
   }
@@ -1578,6 +1605,7 @@ window.openGuideModal = async function() {
     body.innerHTML = '<div class="p-8 text-sm text-slate-500">Không tải được nội dung hướng dẫn.</div>';
   }
 
+  applySupportContact(body);
   if (typeof lucide !== 'undefined') lucide.createIcons();
 };
 

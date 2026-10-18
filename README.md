@@ -2,7 +2,7 @@
 
 Ứng dụng web hoàn tiền affiliate (Shopee / TikTok Shop / Lazada) gồm 2 phần:
 
-- **Frontend**: HTML + Tailwind (CDN) + JavaScript thuần (`index.html`, `script.js`, `style.css`, `components/`).
+- **Frontend**: HTML + Tailwind CSS + JavaScript thuần (`index.html`, `script.js`, `style.css`, `components/`). Tailwind được **build sẵn thành file `tailwind.build.css`** — không phụ thuộc CDN, không cần Internet khi chạy.
 - **Backend**: Node.js + Express + SQLite (`backend/`) — quản lý tài khoản, đơn hàng, ví, rút tiền và mã giới thiệu.
 
 Backend phục vụ luôn frontend nên cả hai chạy **cùng một địa chỉ** (`http://localhost:3000`). Nhờ vậy phiên đăng nhập dùng cookie `httpOnly` và không cần cấu hình CORS.
@@ -40,22 +40,53 @@ Chạy chế độ tự nạp lại khi sửa code:
 npm run dev
 ```
 
+> Cấu hình (cổng, khoá bí mật, nhà cung cấp hoàn tiền...) đọc từ file **`backend/.env`**.
+> Sao chép `backend/.env.example` thành `backend/.env` rồi sửa. File này đã được bỏ qua khi commit.
+
+### Giao diện (Tailwind CSS)
+
+CSS đã được build sẵn thành `tailwind.build.css` và commit vào repo, nên **chạy web không cần bước build nào**.
+
+Chỉ khi bạn **thêm/sửa class Tailwind** trong `index.html`, `script.js`, `admin.js` hoặc `components/*.html` thì mới phải build lại:
+
+```bash
+npm install        # chỉ lần đầu (cài Tailwind cho phần giao diện)
+npm run build:css  # build lại tailwind.build.css
+```
+
+Khi đang sửa giao diện, có thể để nó tự build lại mỗi lần lưu file:
+
+```bash
+npm run watch:css
+```
+
+> Quên build lại thì class mới sẽ **không có tác dụng** (giao diện thiếu định dạng) — đây là đánh đổi để bỏ được CDN.
+
 ### Biến môi trường (tuỳ chọn)
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `PORT` | `3000` | Cổng của server |
-| `JWT_SECRET` | `gzafl-dev-secret-change-me` | Khóa ký token phiên — **bắt buộc đổi khi triển khai thật** (server sẽ từ chối khởi động ở `NODE_ENV=production` nếu vẫn dùng khóa mặc định) |
+| `NODE_ENV` | `development` | Đặt `production` để bật kiểm tra bảo mật nghiêm ngặt |
+| `JWT_SECRET` | `gzafl-dev-secret-change-me` | Khóa ký token phiên — **bắt buộc đổi khi triển khai thật**. Ở `NODE_ENV=production` server **từ chối khởi động** nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự |
+| `SSL_KEY_PATH`, `SSL_CERT_PATH` | – | Điền vào để server tự chạy HTTPS (không cần nếu đã có Nginx/Caddy) |
+| `TRUST_PROXY` | – | Bật khi chạy sau reverse proxy (`1` / `true` / danh sách IP) — cần để cookie `secure` và link hoàn tiền dùng đúng `https` |
+| `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 | `WITHDRAWAL_MIN` | `50000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
+| `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp (bỏ trống thì dùng giá trị mặc định trong `components/guide.html`) |
 
-Ví dụ (PowerShell):
+Tạo khoá `JWT_SECRET` ngẫu nhiên:
 
-```powershell
-$env:JWT_SECRET="mot-khoa-bi-mat-that-dai"; npm start
+```bash
+cd backend
+npm run gen-secret              # chỉ in ra màn hình
+npm run gen-secret -- --write   # ghi thẳng vào backend/.env
 ```
+
+> Đổi `JWT_SECRET` làm mọi phiên đăng nhập hiện tại hết hiệu lực — mọi người chỉ cần đăng nhập lại.
 
 ---
 
@@ -63,7 +94,11 @@ $env:JWT_SECRET="mot-khoa-bi-mat-that-dai"; npm start
 
 ```
 index.html                 # Khung trang + modal rút tiền
-style.css                  # CSS dùng chung
+style.css                  # CSS viết tay dùng chung
+tailwind.build.css         # CSS Tailwind đã build (KHÔNG sửa tay - xem mục "Giao diện")
+package.json               # Công cụ build CSS (không phải gói chạy server)
+tailwind.config.js         # Cấu hình Tailwind: nơi Tailwind quét tên class
+styles/tailwind.css        # File nguồn của Tailwind
 script.js                  # Toàn bộ logic frontend (gọi API)
 admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
 components/                # Các mảnh giao diện (landing, sidebar, header, các trang...)
@@ -73,14 +108,20 @@ LOGO.png
 README.md
 docs/                      # Tài liệu kỹ thuật
   affiliate-integration.md # Thiết kế tích hợp chuyển đổi link hoàn tiền (chi tiết + các phương án)
+  deployment.md            # Hướng dẫn đưa lên production (HTTPS, JWT_SECRET, Nginx, PM2...)
 
 backend/
   server.js                # Khởi tạo Express: API + link rút gọn /r/<mã đơn> + phục vụ frontend tĩnh
   db.js                    # Kết nối SQLite + tạo bảng + tự nâng cấp cột khi có bản mới
   package.json
+  .env.example             # Mẫu cấu hình - sao chép thành .env rồi điền
   scripts/
     make-admin.js          # Cấp / thu quyền quản trị từ dòng lệnh
+    reset-password.js      # Đặt lại mật khẩu khi quên / bị khoá tài khoản
+    generate-secret.js     # Sinh JWT_SECRET ngẫu nhiên
+    start-prod.js          # Khởi động ở chế độ production (chạy được trên Windows)
   lib/
+    env.js                 # Nạp backend/.env + các cờ cấu hình dùng chung
     auth.js                # JWT, cookie phiên, middleware requireAuth / requireAdmin
     constants.js           # Trạng thái đơn/lệnh rút, vai trò, mức rút tối thiểu
     validate.js            # Kiểm tra email/SĐT, sinh mã đơn/mã giới thiệu
@@ -110,6 +151,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/api/health` | Kiểm tra server sống |
+| GET | `/api/config` | Cấu hình công khai cho giao diện (hiện tại: thông tin liên hệ hỗ trợ) |
 | POST | `/api/auth/register` | Đăng ký `{ username, password, name }` |
 | POST | `/api/auth/login` | Đăng nhập, đặt cookie phiên |
 | POST | `/api/auth/logout` | Đăng xuất |
@@ -202,6 +244,16 @@ npm run make-admin -- quantri@example.com     # cấp quyền quản trị
 npm run make-admin -- quantri@example.com --demote   # thu quyền
 ```
 
+Quên mật khẩu (hoặc bị khoá tài khoản khỏi hệ thống):
+
+```bash
+npm run reset-password -- --list                       # xem danh sách người dùng
+npm run reset-password -- quantri@example.com           # sinh mật khẩu ngẫu nhiên và in ra
+npm run reset-password -- quantri@example.com MatKhauMoi123   # đặt mật khẩu cụ thể
+```
+
+Đổi mật khẩu bằng công cụ này cũng làm **mọi phiên đăng nhập cũ hết hiệu lực**.
+
 `quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
 
 Trang quản trị gồm 4 tab:
@@ -237,11 +289,13 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 
 ### Lưu ý khi triển khai thật
 
-- Đổi `JWT_SECRET` (server đã **từ chối khởi động** ở `NODE_ENV=production` nếu vẫn dùng khóa mặc định) và bật HTTPS — khi đó cookie tự động được đặt `secure: true`.
+> 📘 Hướng dẫn từng bước (HTTPS, `.env`, Nginx/Caddy, PM2/systemd, xử lý sự cố): **[docs/deployment.md](docs/deployment.md)**.
+
+- Đổi `JWT_SECRET` và bật HTTPS — khi đó cookie tự động được đặt `secure: true`. Server đã **từ chối khởi động** ở `NODE_ENV=production` nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự.
+- Nếu chạy sau Nginx/Caddy/Cloudflare thì **phải** đặt `TRUST_PROXY` — thiếu biến này cookie `secure` sẽ bị trình duyệt từ chối (đăng nhập xong vẫn như chưa đăng nhập) và link hoàn tiền sẽ bị tạo với `http://`.
 - Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
-- Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**.
-- Tailwind hiện nạp từ CDN — chỉ nên dùng khi phát triển. Khi triển khai thật nên build Tailwind thành file CSS tĩnh.
-- Nhớ thay thông tin liên hệ thật trong `components/guide.html` (email/Zalo đang là giá trị mẫu).
+- Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**. Nhớ backup `backend/data/gzafl.sqlite` và `backend/uploads/`.
+- Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML.
 
 > 📄 Muốn biến nút **"Tạo link & kiểm tra hoa hồng"** thành chức năng chuyển đổi link thật (trả về link mua hàng có ghi nhận hoa hồng), xem thiết kế chi tiết tại **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
 

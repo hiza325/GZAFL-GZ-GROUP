@@ -2,6 +2,7 @@
 
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { cookieSecure } = require('./env');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'gzafl-dev-secret-change-me';
 const COOKIE_NAME = 'gz_token';
@@ -17,8 +18,8 @@ function setAuthCookie(res, user) {
     sameSite: 'lax',
     path: '/',
     maxAge: TOKEN_TTL_MS,
-    // Chỉ gửi cookie qua HTTPS khi chạy production
-    secure: process.env.NODE_ENV === 'production'
+    // Chỉ gửi cookie qua HTTPS khi chạy production (đổi bằng COOKIE_SECURE trong .env)
+    secure: cookieSecure()
   });
 }
 

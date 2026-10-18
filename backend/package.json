@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "make-admin": "node scripts/make-admin.js"
+    "start:prod": "node scripts/start-prod.js",
+    "gen-secret": "node scripts/generate-secret.js",
+    "make-admin": "node scripts/make-admin.js",
+    "reset-password": "node scripts/reset-password.js"
   },
   "engines": {
     "node": ">=22.5.0"
