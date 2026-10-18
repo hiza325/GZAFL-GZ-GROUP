@@ -4,11 +4,11 @@
     <div>
       <div class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">BẢNG ĐIỀU KHIỂN</div>
       <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
-        Xin chào, Huy <span class="inline-block animate-bounce">👋</span>
+        Xin chào, <span id="dashboard-username">bạn</span> <span class="inline-block animate-bounce">👋</span>
       </h2>
       <p class="text-sm text-slate-400 mt-1">Đây là tổng quan hoạt động hoa hồng của bạn tháng này</p>
     </div>
-    <button class="btn-primary hover:bg-red-600 text-white font-medium px-5 py-2.5 rounded-xl shadow-sm flex items-center gap-2 text-sm transition">
+    <button data-page="create-order" class="btn-primary hover:bg-red-600 text-white font-medium px-5 py-2.5 rounded-xl shadow-sm flex items-center gap-2 text-sm transition">
       <span>+ Tạo đơn hàng</span>
     </button>
   </div>
@@ -21,8 +21,8 @@
       </div>
       <div>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">HOA HỒNG THÁNG NÀY</div>
-        <div class="text-2xl font-bold text-red-500 mt-1">đ0</div>
-        <div class="text-xs text-slate-400 mt-1">0 đơn hoàn thành</div>
+        <div class="text-2xl font-bold text-red-500 mt-1" id="dash-commission">đ0</div>
+        <div class="text-xs text-slate-400 mt-1" id="dash-completed-note">0 đơn hoàn thành</div>
       </div>
     </div>
     <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-start gap-4">
@@ -31,8 +31,8 @@
       </div>
       <div>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">ĐƠN HÀNG THÁNG NÀY</div>
-        <div class="text-2xl font-bold text-red-500 mt-1">0</div>
-        <div class="text-xs text-slate-400 mt-1">Không có đơn chờ</div>
+        <div class="text-2xl font-bold text-red-500 mt-1" id="dash-order-count">0</div>
+        <div class="text-xs text-slate-400 mt-1" id="dash-pending-note">Không có đơn chờ</div>
       </div>
     </div>
     <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-start gap-4">
@@ -41,8 +41,8 @@
       </div>
       <div>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SỐ DƯ KHẢ DỤNG</div>
-        <div class="text-2xl font-bold text-indigo-600 mt-1">đ0</div>
-        <a href="#" class="text-xs text-red-500 font-medium mt-1 inline-block hover:underline">Xem ví →</a>
+        <div class="text-2xl font-bold text-indigo-600 mt-1" id="dash-balance">đ0</div>
+        <a href="#" data-page="wallet" class="text-xs text-red-500 font-medium mt-1 inline-block hover:underline">Xem ví →</a>
       </div>
     </div>
     <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-start gap-4">
@@ -51,8 +51,8 @@
       </div>
       <div>
         <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TỔNG HOA HỒNG TẤT CẢ</div>
-        <div class="text-2xl font-bold text-red-500 mt-1">đ0</div>
-        <div class="text-xs text-slate-400 mt-1">0 đơn tất cả</div>
+        <div class="text-2xl font-bold text-red-500 mt-1" id="dash-total-commission">đ0</div>
+        <div class="text-xs text-slate-400 mt-1" id="dash-total-note">0 đơn tất cả</div>
       </div>
     </div>
   </div>
@@ -64,16 +64,10 @@
       <div class="stat-card bg-white p-6 rounded-2xl border border-slate-100">
         <div class="flex items-center justify-between pb-4 mb-6 border-b border-slate-100">
           <h3 class="font-bold text-slate-800">Đơn hàng gần đây</h3>
-          <a href="#" class="text-xs font-semibold text-red-500 hover:underline">Xem tất cả</a>
+          <a href="#" data-page="orders" class="text-xs font-semibold text-red-500 hover:underline">Xem tất cả</a>
         </div>
-        <div class="py-8 flex items-center gap-4">
-          <div class="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-400 flex-shrink-0">
-            <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <div class="font-bold text-slate-800 text-sm">Chưa có đơn hàng</div>
-            <div class="text-xs text-slate-400 mt-0.5">Các đơn hàng hoàn tiền của bạn sẽ xuất hiện tại đây.</div>
-          </div>
+        <div id="dash-recent-orders">
+          <!-- Nội dung sẽ được JavaScript tự động điền vào đây -->
         </div>
       </div>
 
@@ -104,10 +98,10 @@
         <div class="absolute right-10 -bottom-10 w-40 h-40 bg-blue-500/10 rounded-full blur-xl pointer-events-none"></div>
         <div class="relative z-10">
           <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider">SỐ DƯ KHẢ DỤNG</div>
-          <div class="text-4xl font-extrabold mt-2 tracking-tight">đ0</div>
+          <div class="text-4xl font-extrabold mt-2 tracking-tight" id="dash-card-balance">đ0</div>
         </div>
         <div class="relative z-10 pt-4">
-          <button class="bg-transparent hover:bg-white/10 text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-600 flex items-center gap-2 transition">
+          <button data-action="withdraw" class="bg-transparent hover:bg-white/10 text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-600 flex items-center gap-2 transition">
             <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
             <span>Rút tiền về ngân hàng</span>
           </button>

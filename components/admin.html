@@ -1,0 +1,381 @@
+<!-- ==========================================
+     TRANG QUẢN TRỊ (chỉ hiện với tài khoản role = 'admin')
+     Logic nằm trong admin.js, được nạp khi mở trang này.
+========================================== -->
+<main class="p-6 md:p-8 max-w-7xl mx-auto animation-fade-in space-y-6">
+
+  <!-- Tiêu đề -->
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div>
+      <div class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">Khu vực quản trị</div>
+      <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Trang quản trị</h2>
+      <p class="text-slate-500 mt-2 text-sm">Duyệt đơn hàng, chốt hoa hồng, chi trả yêu cầu rút tiền và quản lý người dùng.</p>
+    </div>
+    <button id="adm-reload" class="self-start bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-sm transition flex items-center gap-2 shadow-sm">
+      <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+      <span>Tải lại</span>
+    </button>
+  </div>
+
+  <!-- 6 thẻ thống kê -->
+  <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="users" class="w-3.5 h-3.5"></i> Người dùng
+      </div>
+      <div class="text-2xl font-bold text-slate-800 mt-2" id="adm-stat-users">0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-users-note">0 quản trị viên</div>
+    </div>
+
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Đơn hàng
+      </div>
+      <div class="text-2xl font-bold text-slate-800 mt-2" id="adm-stat-orders">0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-orders-note">0 đơn hoàn thành</div>
+    </div>
+
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="loader-2" class="w-3.5 h-3.5"></i> Chờ duyệt
+      </div>
+      <div class="text-2xl font-bold text-amber-500 mt-2" id="adm-stat-pending">0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-pending-note">0 đã thanh toán</div>
+    </div>
+
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="landmark" class="w-3.5 h-3.5"></i> Lệnh rút chờ
+      </div>
+      <div class="text-2xl font-bold text-blue-500 mt-2" id="adm-stat-wd-pending">0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-wd-note">0 lệnh rút</div>
+    </div>
+
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="wallet" class="w-3.5 h-3.5"></i> Hoa hồng
+      </div>
+      <div class="text-2xl font-bold text-emerald-600 mt-2" id="adm-stat-commission">đ0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-commission-note">Còn phải trả đ0</div>
+    </div>
+
+    <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
+      <div class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <i data-lucide="banknote" class="w-3.5 h-3.5"></i> Đã chi trả
+      </div>
+      <div class="text-2xl font-bold text-slate-800 mt-2" id="adm-stat-paid">đ0</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-paid-note">0 điểm giới thiệu</div>
+    </div>
+  </div>
+
+  <!-- Bảng dữ liệu + tab -->
+  <div class="bg-white rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+
+    <!-- Thanh tab -->
+    <div class="flex items-center gap-1 px-4 pt-4 border-b border-slate-100 overflow-x-auto">
+      <button data-adm-tab="orders" class="adm-tab flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition">
+        <i data-lucide="file-text" class="w-4 h-4"></i> Đơn hàng
+      </button>
+      <button data-adm-tab="withdrawals" class="adm-tab flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition">
+        <i data-lucide="landmark" class="w-4 h-4"></i> Rút tiền
+      </button>
+      <button data-adm-tab="users" class="adm-tab flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition">
+        <i data-lucide="users" class="w-4 h-4"></i> Người dùng
+      </button>
+      <button data-adm-tab="referrals" class="adm-tab flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition">
+        <i data-lucide="user-plus" class="w-4 h-4"></i> Giới thiệu
+      </button>
+    </div>
+
+    <!-- ===== Tab: Đơn hàng ===== -->
+    <div id="adm-panel-orders" class="adm-panel p-4 md:p-6">
+      <div class="flex flex-col sm:flex-row gap-3 mb-5">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
+          <input id="adm-orders-search" type="text" placeholder="Tìm theo mã đơn, link, sàn hoặc khách hàng..."
+                 class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-700 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+        </div>
+        <select id="adm-orders-status" class="bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all cursor-pointer">
+          <option value="">Tất cả trạng thái</option>
+          <option value="Đang xử lý">Đang xử lý</option>
+          <option value="Hoàn thành">Hoàn thành</option>
+          <option value="Đã thanh toán">Đã thanh toán</option>
+          <option value="Đã huỷ">Đã huỷ</option>
+        </select>
+      </div>
+
+      <div class="overflow-x-auto -mx-1">
+        <table class="w-full text-sm min-w-[760px]">
+          <thead>
+            <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
+              <th class="px-3 py-3">Mã đơn</th>
+              <th class="px-3 py-3">Khách hàng</th>
+              <th class="px-3 py-3">Sàn</th>
+              <th class="px-3 py-3">Hoa hồng</th>
+              <th class="px-3 py-3">Trạng thái</th>
+              <th class="px-3 py-3">Ngày tạo</th>
+              <th class="px-3 py-3 text-right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adm-orders-body"></tbody>
+        </table>
+        <div id="adm-orders-empty" class="hidden py-12 flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+            <i data-lucide="package-open" class="w-8 h-8 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Không có đơn hàng nào khớp với bộ lọc.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-50">
+        <span class="text-xs font-semibold text-slate-400" id="adm-orders-count">0 đơn hàng</span>
+        <button id="adm-orders-more" class="hidden text-xs font-bold text-red-500 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition">Tải thêm</button>
+      </div>
+    </div>
+
+    <!-- ===== Tab: Rút tiền ===== -->
+    <div id="adm-panel-withdrawals" class="adm-panel hidden p-4 md:p-6">
+      <div class="flex flex-col sm:flex-row gap-3 mb-5">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
+          <input id="adm-wd-search" type="text" placeholder="Tìm theo mã lệnh, ngân hàng, số tài khoản hoặc khách hàng..."
+                 class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-700 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+        </div>
+        <select id="adm-wd-status" class="bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all cursor-pointer">
+          <option value="">Tất cả trạng thái</option>
+          <option value="Đang xử lý">Đang xử lý</option>
+          <option value="Đã thanh toán">Đã thanh toán</option>
+          <option value="Đã huỷ">Đã huỷ</option>
+        </select>
+      </div>
+
+      <div class="overflow-x-auto -mx-1">
+        <table class="w-full text-sm min-w-[860px]">
+          <thead>
+            <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
+              <th class="px-3 py-3">Mã lệnh</th>
+              <th class="px-3 py-3">Khách hàng</th>
+              <th class="px-3 py-3">Nhận tiền</th>
+              <th class="px-3 py-3">Số tiền</th>
+              <th class="px-3 py-3">Số dư khả dụng</th>
+              <th class="px-3 py-3">Trạng thái</th>
+              <th class="px-3 py-3">Ngày tạo</th>
+              <th class="px-3 py-3 text-right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adm-wd-body"></tbody>
+        </table>
+        <div id="adm-wd-empty" class="hidden py-12 flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+            <i data-lucide="receipt" class="w-8 h-8 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Không có lệnh rút tiền nào khớp với bộ lọc.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-50">
+        <span class="text-xs font-semibold text-slate-400" id="adm-wd-count">0 lệnh rút</span>
+        <button id="adm-wd-more" class="hidden text-xs font-bold text-red-500 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition">Tải thêm</button>
+      </div>
+    </div>
+
+    <!-- ===== Tab: Người dùng ===== -->
+    <div id="adm-panel-users" class="adm-panel hidden p-4 md:p-6">
+      <div class="flex flex-col sm:flex-row gap-3 mb-5">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
+          <input id="adm-users-search" type="text" placeholder="Tìm theo tên, email, số điện thoại hoặc mã giới thiệu..."
+                 class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-700 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+        </div>
+      </div>
+
+      <div class="overflow-x-auto -mx-1">
+        <table class="w-full text-sm min-w-[900px]">
+          <thead>
+            <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
+              <th class="px-3 py-3">Người dùng</th>
+              <th class="px-3 py-3">Vai trò</th>
+              <th class="px-3 py-3">Điểm</th>
+              <th class="px-3 py-3">Đơn hàng</th>
+              <th class="px-3 py-3">Hoa hồng</th>
+              <th class="px-3 py-3">Đã rút</th>
+              <th class="px-3 py-3">Số dư</th>
+              <th class="px-3 py-3 text-right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adm-users-body"></tbody>
+        </table>
+        <div id="adm-users-empty" class="hidden py-12 flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+            <i data-lucide="users" class="w-8 h-8 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Không có người dùng nào khớp với tìm kiếm.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-50">
+        <span class="text-xs font-semibold text-slate-400" id="adm-users-count">0 người dùng</span>
+        <button id="adm-users-more" class="hidden text-xs font-bold text-red-500 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition">Tải thêm</button>
+      </div>
+    </div>
+
+    <!-- ===== Tab: Giới thiệu ===== -->
+    <div id="adm-panel-referrals" class="adm-panel hidden p-4 md:p-6">
+      <div class="overflow-x-auto -mx-1">
+        <table class="w-full text-sm min-w-[640px]">
+          <thead>
+            <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
+              <th class="px-3 py-3">Mã đã nhập</th>
+              <th class="px-3 py-3">Người nhập</th>
+              <th class="px-3 py-3">Chủ mã</th>
+              <th class="px-3 py-3">Điểm</th>
+              <th class="px-3 py-3">Thời gian</th>
+            </tr>
+          </thead>
+          <tbody id="adm-ref-body"></tbody>
+        </table>
+        <div id="adm-ref-empty" class="hidden py-12 flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+            <i data-lucide="user-plus" class="w-8 h-8 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Chưa có lượt nhập mã giới thiệu nào.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-50">
+        <span class="text-xs font-semibold text-slate-400" id="adm-ref-count">0 lượt</span>
+        <button id="adm-ref-more" class="hidden text-xs font-bold text-red-500 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition">Tải thêm</button>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ==========================================
+     MODAL: Xử lý đơn hàng
+========================================== -->
+<div id="adm-order-modal" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[120] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+  <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="adm-order-modal-content">
+    <button data-adm-close="order" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+
+    <div class="p-8">
+      <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-6">
+        <i data-lucide="shopping-bag" class="w-6 h-6 text-blue-500"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-800 mb-1">Xử lý đơn hàng</h2>
+      <p class="text-sm text-slate-500 mb-6" id="adm-order-info">—</p>
+      <a id="adm-order-link" href="#" target="_blank" rel="noopener" class="hidden text-xs font-semibold text-red-500 hover:underline break-all mb-4"></a>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Trạng thái</label>
+          <select id="adm-order-status" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
+            <option value="Đang xử lý">Đang xử lý</option>
+            <option value="Hoàn thành">Hoàn thành</option>
+            <option value="Đã thanh toán">Đã thanh toán</option>
+            <option value="Đã huỷ">Đã huỷ</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Hoa hồng (đồng)</label>
+          <input id="adm-order-commission" type="number" min="0" step="1000" placeholder="0"
+                 class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
+          <p class="text-[11px] text-slate-400 mt-2">Hoa hồng được cộng vào số dư ví của khách. Đơn "Đã huỷ" không được tính.</p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-8">
+        <button data-adm-close="order" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">Đóng</button>
+        <button id="adm-order-save" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">Lưu lại</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==========================================
+     MODAL: Xử lý lệnh rút tiền
+========================================== -->
+<div id="adm-wd-modal" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[120] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+  <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="adm-wd-modal-content">
+    <button data-adm-close="wd" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+
+    <div class="p-8">
+      <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-6">
+        <i data-lucide="landmark" class="w-6 h-6 text-emerald-500"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-800 mb-1">Xử lý lệnh rút tiền</h2>
+      <p class="text-sm text-slate-500 mb-6" id="adm-wd-info">—</p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Trạng thái</label>
+          <select id="adm-wd-status" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
+            <option value="Đang xử lý">Đang xử lý</option>
+            <option value="Đã thanh toán">Đã thanh toán</option>
+            <option value="Đã huỷ">Đã huỷ</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Số tiền thực trả (đồng)</label>
+          <input id="adm-wd-amount" type="number" min="0" step="1000" placeholder="0"
+                 class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
+          <p class="text-[11px] text-slate-400 mt-2" id="adm-wd-payable">Số dư khả dụng: đ0</p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-8">
+        <button data-adm-close="wd" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">Đóng</button>
+        <button id="adm-wd-save" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">Lưu lại</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==========================================
+     MODAL: Sửa người dùng
+========================================== -->
+<div id="adm-user-modal" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[120] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+  <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="adm-user-modal-content">
+    <button data-adm-close="user" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+
+    <div class="p-8">
+      <div class="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center mb-6">
+        <i data-lucide="user" class="w-6 h-6 text-indigo-500"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-800 mb-1">Sửa người dùng</h2>
+      <p class="text-sm text-slate-500 mb-6" id="adm-user-info">—</p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Vai trò</label>
+          <select id="adm-user-role" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
+            <option value="user">Người dùng</option>
+            <option value="admin">Quản trị viên</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Điểm thưởng</label>
+          <input id="adm-user-points" type="number" min="0" step="10"
+                 class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-8">
+        <button id="adm-user-delete" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-4 py-3.5 rounded-xl transition flex items-center justify-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+        <button data-adm-close="user" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">Đóng</button>
+        <button id="adm-user-save" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">Lưu lại</button>
+      </div>
+    </div>
+  </div>
+</div>

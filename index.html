@@ -10,7 +10,7 @@
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@1.59.0"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-[#f4f6f9] text-slate-700 m-0 p-0">
@@ -30,10 +30,10 @@
   <!-- ==============================================
        MODAL YÊU CẦU RÚT TIỀN (DÙNG CHUNG)
   =============================================== -->
-  <div id="withdraw-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+  <div id="withdraw-modal" role="dialog" aria-modal="true" aria-labelledby="withdraw-title" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="withdraw-modal-content">
       
-      <button onclick="closeWithdrawModal()" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <button onclick="closeWithdrawModal()" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
 
@@ -42,7 +42,7 @@
           <i data-lucide="landmark" class="w-6 h-6 text-blue-500"></i>
         </div>
         
-        <h2 class="text-2xl font-bold text-slate-800 mb-2">Rút tiền về tài khoản</h2>
+        <h2 id="withdraw-title" class="text-2xl font-bold text-slate-800 mb-2">Rút tiền về tài khoản</h2>
         <p class="text-sm text-slate-500 mb-6">Vui lòng chọn ngân hàng và nhập chính xác số tài khoản của bạn.</p>
 
         <div class="space-y-4">

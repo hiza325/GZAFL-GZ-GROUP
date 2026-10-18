@@ -22,10 +22,10 @@
             <div class="flex items-center gap-2 text-slate-500 text-xs font-semibold mb-1">
               <i data-lucide="building-2" class="w-3.5 h-3.5"></i> Ngân hàng
             </div>
-            <div class="font-bold text-slate-800 text-lg">MBBank ****1277</div>
-            <div class="text-xs text-slate-400 font-medium uppercase mt-0.5">CO HUU GIA HUY</div>
+            <div id="profile-bank-name" class="font-bold text-slate-800 text-lg">Chưa liên kết</div>
+            <div id="profile-bank-owner" class="text-xs text-slate-400 font-medium uppercase mt-0.5">Thêm tài khoản khi rút tiền</div>
           </div>
-          <span class="bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1 rounded-full border border-red-100">
+          <span id="profile-bank-badge" class="hidden bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1 rounded-full border border-red-100">
             Mặc định
           </span>
         </div>
@@ -43,14 +43,46 @@
             </div>
             <div>
               <div class="font-bold text-slate-800 text-sm">Zalo</div>
-              <div class="text-xs text-slate-400">ID: 2801393035060538542</div>
+              <div id="profile-zalo-id" class="text-xs text-slate-400">Chưa kết nối</div>
             </div>
           </div>
-          <div class="flex items-center gap-1.5 text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-100">
-            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Đã kết nối
+          <div id="profile-zalo-badge" class="flex items-center gap-1.5 text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full text-xs font-bold border border-slate-200">
+            Chưa kết nối
           </div>
         </div>
-        <p class="text-[10px] text-slate-400 italic">Cần liên kết thêm tài khoản trước khi huỷ Zalo</p>
+        <p class="text-[10px] text-slate-400 italic">Liên kết Zalo để đăng nhập nhanh và nhận thông báo đơn hàng.</p>
+      </div>
+
+      <!-- Box Bảo mật / Đổi mật khẩu -->
+      <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <h3 class="font-bold text-slate-800 text-lg mb-1">Bảo mật</h3>
+        <p class="text-xs text-slate-500 mb-5">Đổi mật khẩu dùng để đăng nhập</p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-2">Mật khẩu hiện tại</label>
+            <input type="password" id="pwd-current" autocomplete="current-password" placeholder="••••••••" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-2">Mật khẩu mới</label>
+            <input type="password" id="pwd-new" autocomplete="new-password" placeholder="Ít nhất 6 ký tự" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-2">Nhập lại mật khẩu mới</label>
+            <input type="password" id="pwd-confirm" autocomplete="new-password" placeholder="••••••••" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+        </div>
+
+        <button onclick="changePassword()" id="pwd-submit-btn" class="mt-5 w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 flex items-center justify-center gap-2">
+          <i data-lucide="key-round" class="w-4 h-4"></i> Đổi mật khẩu
+        </button>
+
+        <p class="text-[11px] text-slate-400 mt-4 flex items-start gap-1.5">
+          <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"></i>
+          Nếu quên mật khẩu, hiện chưa có cách tự khôi phục. Vui lòng liên hệ quản trị viên.
+        </p>
       </div>
     </div>
 
@@ -68,7 +100,7 @@
           </div>
           <div>
             <!-- Input file ẩn -->
-            <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg" class="hidden">
+            <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg, image/webp" class="hidden">
             <button onclick="document.getElementById('profile-avatar-upload').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition flex items-center gap-2 mb-2 shadow-sm">
               <i data-lucide="image" class="w-4 h-4"></i> Thay đổi ảnh
             </button>
@@ -92,6 +124,11 @@
             <label class="block text-xs font-bold text-slate-500 mb-2">Số điện thoại *</label>
             <input type="text" id="profile-phone" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all" placeholder="Chưa cập nhật">
           </div>
+
+          <p class="text-[11px] text-slate-400 flex items-start gap-1.5">
+            <i data-lucide="info" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5"></i>
+            Lưu ý: Email/Số điện thoại dùng để đăng nhập không thay đổi khi bạn sửa ở đây.
+          </p>
         </div>
 
         <div class="mt-8 pt-6 border-t border-slate-100 flex items-center gap-4">

@@ -11,7 +11,7 @@
         <p class="text-sm text-slate-500 mt-1 font-medium">Theo dõi cập nhật về đơn hàng, hoàn tiền và rút tiền</p>
       </div>
     </div>
-    <button class="text-sm font-semibold text-red-500 hover:text-red-600 flex items-center gap-2 transition px-3 py-2 rounded-xl hover:bg-red-50">
+    <button data-action="mark-read" class="text-sm font-semibold text-red-500 hover:text-red-600 flex items-center gap-2 transition px-3 py-2 rounded-xl hover:bg-red-50">
       <i data-lucide="check-check" class="w-4 h-4"></i>
       Đánh dấu đã đọc
     </button>
@@ -21,12 +21,15 @@
   <div class="space-y-4">
     
     <!-- Thông báo 1 (Hướng dẫn/Thành công) -->
-    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
+    <div class="notification-item bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
       <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-500 flex-shrink-0 mt-1">
         <i data-lucide="arrow-left-right" class="w-6 h-6"></i>
       </div>
       <div class="flex-1">
-        <h3 class="font-bold text-slate-800 text-lg">Hướng dẫn tạo link hoàn tiền</h3>
+        <div class="flex items-center gap-2">
+          <h3 class="font-bold text-slate-800 text-lg">Hướng dẫn tạo link hoàn tiền</h3>
+          <span class="notification-dot w-2 h-2 rounded-full bg-red-500"></span>
+        </div>
         <p class="text-slate-500 text-sm mt-2 leading-relaxed">
           Bước 1: Copy link sản phẩm từ Shopee. Bước 2: Dán vào ô "Tạo đơn hàng" và nhấn tạo link. Bước 3: Mua hàng qua link đó để ghi nhận hoa hồng trong vòng 24h.
         </p>
@@ -35,12 +38,15 @@
     </div>
 
     <!-- Thông báo 2 (Lưu ý/Cảnh báo) -->
-    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
+    <div class="notification-item bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-start gap-4 hover:shadow-md transition cursor-pointer">
       <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0 mt-1">
         <i data-lucide="triangle-alert" class="w-6 h-6"></i>
       </div>
       <div class="flex-1">
-        <h3 class="font-bold text-slate-800 text-lg">Lưu ý quan trọng khi đặt hàng</h3>
+        <div class="flex items-center gap-2">
+          <h3 class="font-bold text-slate-800 text-lg">Lưu ý quan trọng khi đặt hàng</h3>
+          <span class="notification-dot w-2 h-2 rounded-full bg-red-500"></span>
+        </div>
         <p class="text-slate-500 text-sm mt-2 leading-relaxed">
           Xóa sản phẩm cùng loại khỏi giỏ hàng trước khi mua. Không nhảy sang link khác (live, video, quảng cáo) trong cùng phiên. Hoàn tất đơn trong cùng một trình duyệt.
         </p>
@@ -51,14 +57,3 @@
   </div>
 
 </main>
-
-<style>
-  /* Giữ lại hiệu ứng mượt khi chuyển trang */
-  .animation-fade-in {
-    animation: fadeIn 0.3s ease-out;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-</style>
