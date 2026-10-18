@@ -156,6 +156,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | POST | `/api/auth/login` | Đăng nhập, đặt cookie phiên |
 | POST | `/api/auth/logout` | Đăng xuất |
 | GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập) |
+| POST | `/api/auth/forgot-password` | Gửi yêu cầu khôi phục mật khẩu `{ username, note }` |
 | GET | `/api/orders` | Danh sách đơn hàng của mình (kèm link hoàn tiền, `sub_id`, số lượt bấm) |
 | POST | `/api/orders` | Tạo đơn `{ link }` → trả về `{ order, affiliate }` với link hoàn tiền |
 | GET | `/api/wallet` | Thống kê ví + lịch sử rút tiền + `minWithdraw`, `canWithdraw` |
@@ -180,7 +181,7 @@ Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. N
 
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
-| GET | `/api/admin/overview` | Thống kê toàn hệ thống (người dùng, đơn, lệnh rút, tiền) |
+| GET | `/api/admin/overview` | Thống kê toàn hệ thống (người dùng, đơn, lệnh rút, tiền, yêu cầu khôi phục mật khẩu đang chờ) |
 | GET | `/api/admin/users` | Danh sách người dùng (`q`, `limit`, `offset`) |
 | PATCH | `/api/admin/users/:id` | Đổi `{ role, points }` |
 | DELETE | `/api/admin/users/:id` | Xoá người dùng (xoá kèm đơn hàng/lệnh rút/lịch sử giới thiệu) |
@@ -189,6 +190,9 @@ Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. N
 | GET | `/api/admin/withdrawals` | Danh sách lệnh rút tiền (`status`, `q`, `limit`, `offset`) |
 | PATCH | `/api/admin/withdrawals/:code` | Đổi `{ status, amount }` |
 | GET | `/api/admin/referrals` | Lịch sử nhập mã giới thiệu (`limit`, `offset`) |
+| GET | `/api/admin/password-resets` | Hàng đợi yêu cầu khôi phục mật khẩu (`status`, `limit`, `offset`) |
+| POST | `/api/admin/password-resets/:id/reset` | Đặt lại mật khẩu, trả về `tempPassword` **đúng một lần** (không lưu vào DB) |
+| POST | `/api/admin/password-resets/:id/cancel` | Từ chối yêu cầu khôi phục |
 
 Trạng thái hợp lệ:
 
@@ -229,6 +233,7 @@ Nếu gọi nhà cung cấp thất bại, đơn **vẫn được tạo** với l
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
+| `password_resets` | Yêu cầu khôi phục mật khẩu: người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
 
 `db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
 
@@ -252,11 +257,13 @@ npm run reset-password -- quantri@example.com           # sinh mật khẩu ng�
 npm run reset-password -- quantri@example.com MatKhauMoi123   # đặt mật khẩu cụ thể
 ```
 
-Đổi mật khẩu bằng công cụ này cũng làm **mọi phiên đăng nhập cũ hết hiệu lực**.
+Đổi mật khẩu bằng công cụ này cũng làm **mọi phiên đăng nhập cũ hết hiệu lực**, và tự đóng mọi yêu cầu khôi phục đang chờ của tài khoản đó trong trang quản trị.
+
+Người dùng cũng có thể tự gửi yêu cầu ngay trên web (bấm **"Quên mật khẩu?"** ở màn hình đăng nhập). Hệ thống chưa có kênh gửi email/SMS nên yêu cầu sẽ vào hàng đợi cho quản trị viên — xem tab **Khôi phục mật khẩu** bên dưới. Cách làm này **không tiết lộ** tài khoản nào có tồn tại hay không.
 
 `quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
 
-Trang quản trị gồm 4 tab:
+Trang quản trị gồm 5 tab:
 
 | Tab | Việc làm được |
 |---|---|
@@ -264,6 +271,18 @@ Trang quản trị gồm 4 tab:
 | **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** của khách; nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
 | **Người dùng** | Xem điểm, số đơn, hoa hồng, đã rút, số dư; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
+| **Khôi phục mật khẩu** | Xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
+
+### Cấp lại mật khẩu cho khách
+
+1. Khách bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, nhập tài khoản và cách liên hệ lại.
+2. Vào **Quản trị → Khôi phục mật khẩu** (tab có **huy hiệu đỏ** đếm số yêu cầu đang chờ).
+3. Bấm **Đặt lại** hai lần → hệ thống hiện **mật khẩu tạm**.
+4. Chép mật khẩu rồi gửi cho khách qua Zalo/điện thoại, nhắc khách đổi mật khẩu sau khi đăng nhập.
+
+Mật khẩu tạm **chỉ hiện đúng một lần**, không được lưu vào database. Sau khi đặt lại, **mọi phiên đăng nhập cũ của khách hết hiệu lực** và khách nhận được một thông báo.
+
+Không thể đặt lại mật khẩu cho **chính tài khoản đang đăng nhập** (sẽ tự văng ra ngay giữa lúc làm việc) — hãy dùng **Cá nhân → Đổi mật khẩu**.
 
 Một vài ràng buộc an toàn đã được chặn ở server:
 
@@ -286,6 +305,8 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
 - Thư mục nội bộ (`/backend`, `/data`, `/node_modules`, `package.json`) bị chặn không cho tải qua HTTP.
 - Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
+- Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản.
+- **Mật khẩu tạm** do quản trị viên cấp không được lưu dưới dạng văn bản thường — chỉ hiện một lần cho quản trị viên rồi thôi.
 
 ### Lưu ý khi triển khai thật
 

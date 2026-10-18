@@ -16,7 +16,6 @@ function toUser(row) {
     bank: row.bank_acc_num
       ? { bank: row.bank_bank || '', accNum: row.bank_acc_num, accName: row.bank_acc_name || '' }
       : null,
-    zalo: null,
     points: row.points || 0,
     role: row.role || 'user',
     referralCode: row.referral_code,
@@ -163,6 +162,26 @@ function toAdminReferral(row) {
   };
 }
 
+function toAdminPasswordReset(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    status: row.status,
+    note: row.note || '',
+    createdAt: row.created_at,
+    date: formatDateTime(row.created_at),
+    resolvedAt: row.resolved_at || null,
+    user: {
+      id: row.user_id,
+      name: row.user_name || '(đã xoá)',
+      username: row.user_username || '',
+      email: row.user_email || '',
+      phone: row.user_phone || ''
+    }
+  };
+}
+
 module.exports = {
   toUser,
   toOrder,
@@ -171,5 +190,6 @@ module.exports = {
   toAdminUser,
   toAdminOrder,
   toAdminWithdrawal,
-  toAdminReferral
+  toAdminReferral,
+  toAdminPasswordReset
 };

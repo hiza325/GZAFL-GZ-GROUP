@@ -83,8 +83,18 @@ db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 
   row.id
 );
 
+// Đóng luôn mọi yêu cầu khôi phục đang chờ của tài khoản này (nếu có),
+// để hàng đợi trong trang quản trị không còn hiện việc đã làm xong.
+const { RESET_PENDING } = require('../lib/constants');
+const closed = db
+  .prepare('UPDATE password_resets SET status = ?, resolved_at = ? WHERE user_id = ? AND status = ?')
+  .run('Đã xử lý', new Date().toISOString(), row.id, RESET_PENDING);
+
 console.log('');
 console.log(`Đã đặt lại mật khẩu cho "${row.username}" (${row.name}).`);
 console.log(`  Mật khẩu mới: ${newPassword}`);
+if (closed.changes) {
+  console.log(`  Đã đóng ${closed.changes} yêu cầu khôi phục mật khẩu đang chờ trong trang quản trị.`);
+}
 console.log('');
 console.log('Mọi phiên đăng nhập cũ đã hết hiệu lực. Hãy đăng nhập lại rồi đổi mật khẩu nếu muốn.');

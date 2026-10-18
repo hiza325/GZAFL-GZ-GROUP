@@ -18,16 +18,26 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
+const bcrypt = require('bcryptjs');
 const {
   toAdminUser,
   toAdminOrder,
   toAdminWithdrawal,
-  toAdminReferral
+  toAdminReferral,
+  toAdminPasswordReset
 } = require('../lib/serialize');
 const { formatMoney } = require('../lib/format');
-const { ORDER_STATUSES, WITHDRAWAL_STATUSES, ROLES, CANCELLED } = require('../lib/constants');
+const {
+  ORDER_STATUSES,
+  WITHDRAWAL_STATUSES,
+  ROLES,
+  CANCELLED,
+  RESET_PENDING,
+  RESET_STATUSES
+} = require('../lib/constants');
 const { requireAdmin } = require('../lib/auth');
 const { notify } = require('../lib/notify');
+const { generateTempPassword } = require('../lib/validate');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -161,6 +171,14 @@ router.get('/overview', (req, res) => {
     .prepare('SELECT COUNT(*) AS total, COALESCE(SUM(points), 0) AS points FROM referrals')
     .get();
 
+  const passwordResets = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS pending
+       FROM password_resets`
+    )
+    .get(RESET_PENDING);
+
   const totalCommission = Number(orders.commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
 
@@ -187,6 +205,10 @@ router.get('/overview', (req, res) => {
     referrals: {
       total: Number(referrals.total) || 0,
       points: Number(referrals.points) || 0
+    },
+    passwordResets: {
+      total: Number(passwordResets.total) || 0,
+      pending: Number(passwordResets.pending) || 0
     },
     money: {
       totalCommission,
@@ -548,6 +570,101 @@ router.get('/referrals', (req, res) => {
     .all(limit, offset);
 
   return res.json({ total, limit, offset, referrals: rows.map(toAdminReferral) });
+});
+
+/* ==========================================
+   Yêu cầu khôi phục mật khẩu
+
+   Người dùng gửi yêu cầu ở trang chủ (POST /api/auth/forgot-password).
+   Quản trị viên xem hàng đợi ở đây, đặt lại mật khẩu rồi gửi mật khẩu tạm
+   cho người dùng qua Zalo/điện thoại. Mật khẩu tạm CHỈ trả về một lần
+   trong phản hồi, không lưu vào database.
+========================================== */
+
+router.get('/password-resets', (req, res) => {
+  const status = String(req.query.status || '').trim();
+  const { limit, offset } = readPaging(req.query);
+
+  const params = [];
+  let whereSql = '';
+  if (status) {
+    if (!RESET_STATUSES.includes(status)) {
+      return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
+    }
+    whereSql = 'WHERE p.status = ?';
+    params.push(status);
+  }
+
+  const total =
+    Number(db.prepare(`SELECT COUNT(*) AS c FROM password_resets p ${whereSql}`).get(...params).c) || 0;
+
+  const rows = db
+    .prepare(
+      `SELECT p.*, u.name AS user_name, u.username AS user_username,
+              u.email AS user_email, u.phone AS user_phone
+       FROM password_resets p
+       LEFT JOIN users u ON u.id = p.user_id
+       ${whereSql}
+       ORDER BY CASE WHEN p.status = '${RESET_PENDING}' THEN 0 ELSE 1 END, p.created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset);
+
+  return res.json({ total, limit, offset, resets: rows.map(toAdminPasswordReset) });
+});
+
+// Đặt lại mật khẩu: sinh mật khẩu tạm, trả về đúng một lần cho quản trị viên
+router.post('/password-resets/:id/reset', (req, res) => {
+  const id = Number(req.params.id);
+  const request = db.prepare('SELECT * FROM password_resets WHERE id = ?').get(id);
+  if (!request) return res.status(404).json({ error: 'Không tìm thấy yêu cầu.' });
+  if (request.status !== RESET_PENDING) {
+    return res.status(409).json({ error: 'Yêu cầu này đã được xử lý trước đó.' });
+  }
+
+  const user = findUserById(request.user_id);
+  if (!user) return res.status(404).json({ error: 'Tài khoản của yêu cầu này không còn tồn tại.' });
+
+  const tempPassword = generateTempPassword();
+  const hash = bcrypt.hashSync(tempPassword, 10);
+  const now = new Date().toISOString();
+
+  // token_version + 1: mọi phiên đăng nhập cũ của tài khoản bị vô hiệu hoá
+  db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
+    hash,
+    user.id
+  );
+  db.prepare(
+    'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
+  ).run('Đã xử lý', now, req.user.id, id);
+
+  notify(user.id, {
+    title: 'Mật khẩu đã được đặt lại',
+    body: 'Quản trị viên vừa đặt lại mật khẩu cho tài khoản của bạn. Hãy đổi mật khẩu mới ngay sau khi đăng nhập.',
+    icon: 'key-round'
+  });
+
+  return res.json({
+    ok: true,
+    tempPassword,
+    user: { id: user.id, name: user.name, username: user.username }
+  });
+});
+
+// Từ chối yêu cầu (người dùng không xác minh được, hoặc tự nhớ ra mật khẩu)
+router.post('/password-resets/:id/cancel', (req, res) => {
+  const id = Number(req.params.id);
+  const request = db.prepare('SELECT * FROM password_resets WHERE id = ?').get(id);
+  if (!request) return res.status(404).json({ error: 'Không tìm thấy yêu cầu.' });
+  if (request.status !== RESET_PENDING) {
+    return res.status(409).json({ error: 'Yêu cầu này đã được xử lý trước đó.' });
+  }
+
+  db.prepare(
+    'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
+  ).run(CANCELLED, new Date().toISOString(), req.user.id, id);
+
+  return res.json({ ok: true });
 });
 
 module.exports = router;

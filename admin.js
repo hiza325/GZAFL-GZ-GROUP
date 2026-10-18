@@ -10,7 +10,8 @@
   'use strict';
 
   const PAGE_SIZE = 50;
-  const TABS = ['orders', 'withdrawals', 'users', 'referrals'];
+  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets'];
+  const RESET_PENDING = 'Chờ xử lý';
 
   const state = {
     tab: 'orders',
@@ -18,11 +19,15 @@
     withdrawals: { items: [], total: 0, q: '', status: '', offset: 0, loading: false },
     users: { items: [], total: 0, q: '', offset: 0, loading: false },
     referrals: { items: [], total: 0, offset: 0, loading: false },
+    resets: { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false },
     editing: { order: null, withdrawal: null, user: null }
   };
 
   let listenersBound = false;
   let searchTimer = null;
+  // Nút "Đặt lại" phải bấm 2 lần (giống nút xoá người dùng) để tránh bấm nhầm
+  let resetArmed = null;
+  let resetArmTimer = null;
 
   /* ==========================================
      Tiện ích
@@ -88,6 +93,18 @@
     return Number.isFinite(n) ? n : NaN;
   }
 
+  // Một chỗ duy nhất xử lý lỗi gọi API ở trang quản trị.
+  // 401 = phiên đăng nhập đã hết hiệu lực (hết hạn, hoặc mật khẩu vừa bị đổi),
+  // phải đưa về màn hình đăng nhập thay vì chỉ hiện toast rồi để bảng "đứng".
+  function handleApiError(err) {
+    if (err && err.status === 401) {
+      showToast('Phiên đăng nhập đã hết hiệu lực. Vui lòng đăng nhập lại.', 'error');
+      if (typeof window.logoutUser === 'function') window.logoutUser();
+      return;
+    }
+    showToast((err && err.message) || 'Có lỗi xảy ra.', 'error');
+  }
+
   /* ==========================================
      Tổng quan
   ========================================== */
@@ -112,6 +129,18 @@
     setText('adm-stat-commission-note', 'Còn phải trả ' + formatCurrency(data.money.systemBalance));
     setText('adm-stat-paid', formatCurrency(data.money.totalPaidOut));
     setText('adm-stat-paid-note', data.referrals.points + ' điểm giới thiệu');
+
+    renderResetBadge(data.passwordResets ? data.passwordResets.pending : 0);
+  }
+
+  // Huy hiệu đỏ trên tab "Khôi phục mật khẩu" khi còn yêu cầu chờ xử lý
+  function renderResetBadge(pending) {
+    const badge = document.getElementById('adm-reset-badge');
+    if (!badge) return;
+    const count = Number(pending) || 0;
+    badge.innerText = String(count);
+    badge.classList.toggle('hidden', count === 0);
+    badge.classList.toggle('flex', count > 0);
   }
 
   /* ==========================================
@@ -138,7 +167,7 @@
       s.offset = s.items.length;
       renderOrders();
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       s.loading = false;
     }
@@ -221,7 +250,7 @@
       closeModal('adm-order-modal');
       await Promise.all([loadOrders({ reset: true }), loadOverview()]);
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       setBusy(button, false);
     }
@@ -251,7 +280,7 @@
       s.offset = s.items.length;
       renderWithdrawals();
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       s.loading = false;
     }
@@ -332,7 +361,7 @@
       closeModal('adm-wd-modal');
       await Promise.all([loadWithdrawals({ reset: true }), loadOverview()]);
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       setBusy(button, false);
     }
@@ -361,7 +390,7 @@
       s.offset = s.items.length;
       renderUsers();
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       s.loading = false;
     }
@@ -445,7 +474,7 @@
       closeModal('adm-user-modal');
       await Promise.all([loadUsers({ reset: true }), loadOverview()]);
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       setBusy(button, false);
     }
@@ -492,7 +521,7 @@
       closeModal('adm-user-modal');
       await Promise.all([loadUsers({ reset: true }), loadOverview()]);
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
       disarmDelete();
     }
   }
@@ -519,7 +548,7 @@
       s.offset = s.items.length;
       renderReferrals();
     } catch (err) {
-      showToast(err.message, 'error');
+      handleApiError(err);
     } finally {
       s.loading = false;
     }
@@ -557,6 +586,176 @@
   }
 
   /* ==========================================
+     Khôi phục mật khẩu
+
+     Khách gửi yêu cầu ở trang chủ (xem showForgotPassword trong script.js).
+     Quản trị viên bấm "Đặt lại" -> server sinh mật khẩu tạm và trả về đúng
+     một lần; mật khẩu tạm KHÔNG được lưu trong database.
+  ========================================== */
+
+  async function loadResets({ reset = false } = {}) {
+    const s = state.resets;
+    if (s.loading) return;
+    if (reset) {
+      s.offset = 0;
+      s.items = [];
+    }
+    s.loading = true;
+
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(s.offset) });
+    if (s.status) params.set('status', s.status);
+
+    try {
+      const data = await api('/admin/password-resets?' + params.toString());
+      s.total = data.total || 0;
+      s.items = reset ? data.resets || [] : s.items.concat(data.resets || []);
+      s.offset = s.items.length;
+      renderResets();
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      s.loading = false;
+    }
+  }
+
+  function resetActionButton(item) {
+    if (item.status !== RESET_PENDING) {
+      return '<span class="text-xs text-slate-300 font-semibold">—</span>';
+    }
+    const armed = resetArmed === String(item.id);
+    const cls = armed
+      ? 'bg-red-600 hover:bg-red-700 text-white'
+      : 'text-blue-600 bg-blue-50 hover:bg-blue-100';
+    return (
+      `<button data-adm-reset="${escapeHtml(item.id)}" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${cls}">` +
+      (armed ? 'Chắc chắn?' : 'Đặt lại') +
+      '</button>' +
+      `<button data-adm-cancel-reset="${escapeHtml(item.id)}" class="ml-2 text-xs font-bold px-3 py-1.5 rounded-lg text-slate-500 bg-slate-100 hover:bg-slate-200 transition">Từ chối</button>`
+    );
+  }
+
+  function renderResets() {
+    const tbody = document.getElementById('adm-reset-body');
+    if (!tbody) return;
+    const { items, total } = state.resets;
+
+    tbody.innerHTML = items
+      .map((r) => {
+        const contact = r.note
+          ? `<div class="text-slate-600 break-all">${escapeHtml(r.note)}</div>`
+          : '<div class="text-slate-300">Không ghi</div>';
+        return `
+      <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+        <td class="px-3 py-3">
+          <div class="font-semibold text-slate-700">${escapeHtml(r.user.name)}</div>
+          <div class="text-xs text-slate-400">${escapeHtml(r.user.username)}</div>
+        </td>
+        <td class="px-3 py-3 text-xs">${contact}</td>
+        <td class="px-3 py-3">${badge(r.status)}</td>
+        <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(r.date || '')}</td>
+        <td class="px-3 py-3 text-right whitespace-nowrap">${resetActionButton(r)}</td>
+      </tr>`;
+      })
+      .join('');
+
+    toggleEmpty('adm-reset-empty', items.length === 0);
+    setText('adm-reset-count', total + ' yêu cầu');
+    toggleMore('adm-reset-more', items.length < total);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  function findReset(id) {
+    return state.resets.items.find((r) => String(r.id) === String(id)) || null;
+  }
+
+  // Yêu cầu của chính quản trị viên đang đăng nhập. Đặt lại mật khẩu sẽ huỷ
+  // luôn phiên hiện tại, làm bảng quản trị "đứng" -> chặn và chỉ sang mục khác.
+  function isSelfReset(item) {
+    return (
+      item &&
+      item.user &&
+      typeof currentUser !== 'undefined' &&
+      currentUser &&
+      item.user.id === currentUser.id
+    );
+  }
+
+  function confirmReset(id) {
+    const item = findReset(id);
+    if (isSelfReset(item)) {
+      showToast('Đây là tài khoản của chính bạn. Hãy dùng Cá nhân → Đổi mật khẩu.', 'error');
+      return;
+    }
+
+    if (resetArmed !== String(id)) {
+      resetArmed = String(id);
+      renderResets();
+      clearTimeout(resetArmTimer);
+      resetArmTimer = setTimeout(() => {
+        resetArmed = null;
+        renderResets();
+      }, 4000);
+      return;
+    }
+
+    resetArmed = null;
+    clearTimeout(resetArmTimer);
+    resetPassword(id);
+  }
+
+  async function resetPassword(id) {
+    // Đánh dấu đang xử lý để không bấm lại nhiều lần
+    const button = document.querySelector('[data-adm-reset="' + id + '"]');
+    setBusy(button, true);
+
+    try {
+      const data = await api('/admin/password-resets/' + encodeURIComponent(id) + '/reset', {
+        method: 'POST'
+      });
+      const user = data.user || {};
+      setText('adm-reset-info', `${user.name || ''} (${user.username || ''})`);
+      setText('adm-reset-password', data.tempPassword || '');
+      openModal('adm-reset-modal');
+      await Promise.all([loadResets({ reset: true }), loadOverview()]);
+    } catch (err) {
+      handleApiError(err);
+      await loadResets({ reset: true });
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function cancelReset(id) {
+    const button = document.querySelector('[data-adm-cancel-reset="' + id + '"]');
+    setBusy(button, true);
+
+    try {
+      await api('/admin/password-resets/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
+      showToast('Đã từ chối yêu cầu.', 'success');
+      await Promise.all([loadResets({ reset: true }), loadOverview()]);
+    } catch (err) {
+      handleApiError(err);
+      await loadResets({ reset: true });
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  function copyTempPassword() {
+    const el = document.getElementById('adm-reset-password');
+    const value = el ? el.innerText.trim() : '';
+    if (!value || value === '—') return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(
+        () => showToast('Đã chép mật khẩu tạm.', 'success'),
+        () => showToast('Không chép được. Hãy bôi đen và chép tay.', 'error')
+      );
+    } else {
+      showToast('Trình duyệt không hỗ trợ chép tự động. Hãy bôi đen và chép tay.', 'error');
+    }
+  }
+
+  /* ==========================================
      Tab
   ========================================== */
 
@@ -583,6 +782,7 @@
       else if (tab === 'withdrawals' && state.withdrawals.items.length === 0) loadWithdrawals({ reset: true });
       else if (tab === 'users' && state.users.items.length === 0) loadUsers({ reset: true });
       else if (tab === 'referrals' && state.referrals.items.length === 0) loadReferrals({ reset: true });
+      else if (tab === 'password-resets' && state.resets.items.length === 0) loadResets({ reset: true });
     }
   }
 
@@ -631,6 +831,20 @@
         return;
       }
 
+      const resetBtn = event.target.closest('[data-adm-reset]');
+      if (resetBtn) {
+        event.preventDefault();
+        confirmReset(resetBtn.dataset.admReset);
+        return;
+      }
+
+      const cancelResetBtn = event.target.closest('[data-adm-cancel-reset]');
+      if (cancelResetBtn) {
+        event.preventDefault();
+        cancelReset(cancelResetBtn.dataset.admCancelReset);
+        return;
+      }
+
       if (event.target.closest('#adm-reload')) {
         event.preventDefault();
         return reloadAll();
@@ -639,10 +853,12 @@
       if (event.target.closest('#adm-wd-more')) return loadWithdrawals();
       if (event.target.closest('#adm-users-more')) return loadUsers();
       if (event.target.closest('#adm-ref-more')) return loadReferrals();
+      if (event.target.closest('#adm-reset-more')) return loadResets();
       if (event.target.closest('#adm-order-save')) return saveOrder();
       if (event.target.closest('#adm-wd-save')) return saveWithdrawal();
       if (event.target.closest('#adm-user-save')) return saveUser();
       if (event.target.closest('#adm-user-delete')) return handleDeleteClick();
+      if (event.target.closest('#adm-reset-copy')) return copyTempPassword();
     });
 
     // Gõ tìm kiếm (chờ 350ms sau lần gõ cuối)
@@ -676,13 +892,17 @@
       } else if (id === 'adm-wd-status') {
         state.withdrawals.status = event.target.value;
         loadWithdrawals({ reset: true });
+      } else if (id === 'adm-reset-status') {
+        state.resets.status = event.target.value;
+        resetArmed = null;
+        loadResets({ reset: true });
       }
     });
 
     // Đóng modal bằng Esc
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
-      ['adm-order-modal', 'adm-wd-modal', 'adm-user-modal'].forEach((id) => {
+      ['adm-order-modal', 'adm-wd-modal', 'adm-user-modal', 'adm-reset-modal'].forEach((id) => {
         const modal = document.getElementById(id);
         if (modal && !modal.classList.contains('hidden')) closeModal(id);
       });
@@ -694,24 +914,29 @@
     state.withdrawals = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
+    state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
+    resetArmed = null;
 
     const ordersSearch = document.getElementById('adm-orders-search');
     const ordersStatus = document.getElementById('adm-orders-status');
     const wdSearch = document.getElementById('adm-wd-search');
     const wdStatus = document.getElementById('adm-wd-status');
     const usersSearch = document.getElementById('adm-users-search');
+    const resetStatus = document.getElementById('adm-reset-status');
     if (ordersSearch) ordersSearch.value = '';
     if (ordersStatus) ordersStatus.value = '';
     if (wdSearch) wdSearch.value = '';
     if (wdStatus) wdStatus.value = '';
     if (usersSearch) usersSearch.value = '';
+    if (resetStatus) resetStatus.value = RESET_PENDING;
 
     await Promise.all([
       loadOverview(),
       loadOrders({ reset: true }),
       loadWithdrawals({ reset: true }),
       loadUsers({ reset: true }),
-      loadReferrals({ reset: true })
+      loadReferrals({ reset: true }),
+      loadResets({ reset: true })
     ]);
   }
 
@@ -727,7 +952,9 @@
     state.withdrawals = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
+    state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
     state.editing = { order: null, withdrawal: null, user: null };
+    resetArmed = null;
 
     // Tab đang hiển thị tải ngay, các tab khác tải khi bấm vào (xem setTab)
     loadOverview();

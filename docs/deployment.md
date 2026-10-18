@@ -201,6 +201,14 @@ sudo systemctl enable --now gzafl
 | Đổi JWT_SECRET | `npm run gen-secret -- --write` rồi khởi động lại |
 | Sao lưu dữ liệu | copy file `backend/data/gzafl.sqlite` |
 
+Khách quên mật khẩu thường sẽ tự bấm **"Quên mật khẩu?"** ở màn hình đăng nhập. Yêu cầu
+vào hàng đợi trong **Quản trị → Khôi phục mật khẩu** (tab có huy hiệu đỏ). Bấm **Đặt lại**
+hai lần để cấp mật khẩu tạm, chép rồi gửi cho khách qua Zalo/điện thoại. Lệnh
+`npm run reset-password` ở trên cũng tự đóng các yêu cầu đang chờ của tài khoản đó.
+
+> Không đặt lại mật khẩu cho **chính tài khoản đang đăng nhập** trong trang quản trị —
+> thao tác đó huỷ phiên hiện tại ngay. Hãy dùng **Cá nhân → Đổi mật khẩu**.
+
 **Sao lưu:** toàn bộ dữ liệu nằm trong một file `backend/data/gzafl.sqlite`.
 Muốn backup thì dừng server (hoặc dùng `sqlite3 gzafl.sqlite ".backup ..."`) rồi copy file đi.
 Ảnh đại diện nằm trong `backend/uploads/` — cũng cần backup.

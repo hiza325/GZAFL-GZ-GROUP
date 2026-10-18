@@ -56,9 +56,9 @@ function formatCurrency(amount) {
   return 'đ' + n.toLocaleString('vi-VN');
 }
 
-// Màu badge theo trạng thái đơn hàng / lệnh rút
+// Màu badge theo trạng thái đơn hàng / lệnh rút / yêu cầu khôi phục mật khẩu
 function statusBadgeClass(status) {
-  if (status === 'Hoàn thành' || status === 'Đã thanh toán') {
+  if (status === 'Hoàn thành' || status === 'Đã thanh toán' || status === 'Đã xử lý') {
     return 'bg-emerald-50 text-emerald-600 border-emerald-100';
   }
   if (status === 'Đã huỷ') {
@@ -263,6 +263,7 @@ document.addEventListener('keydown', (event) => {
 
 window.openAuthModal = function(loginMode = true) {
   isLoginMode = loginMode;
+  resetAuthPanels();
   updateAuthUI();
 
   const modal = document.getElementById('auth-modal');
@@ -291,13 +292,27 @@ window.closeAuthModal = function() {
     if (form) form.reset();
     const errorBox = document.getElementById('auth-error');
     if (errorBox) errorBox.classList.add('hidden');
+    resetAuthPanels();
   }, 300);
 };
+
+// Luôn đưa modal về trạng thái đăng nhập/đăng ký (thoát khỏi màn "quên mật khẩu")
+function resetAuthPanels() {
+  const form = document.getElementById('auth-form');
+  const forgotPanel = document.getElementById('auth-forgot-panel');
+  const toggleBlock = document.getElementById('auth-toggle-block');
+  if (forgotPanel) forgotPanel.classList.add('hidden');
+  if (form) form.classList.remove('hidden');
+  if (toggleBlock) toggleBlock.classList.remove('hidden');
+  const noteEl = document.getElementById('forgot-note');
+  if (noteEl) noteEl.value = '';
+}
 
 window.toggleAuthMode = function() {
   isLoginMode = !isLoginMode;
   const errorBox = document.getElementById('auth-error');
   if (errorBox) errorBox.classList.add('hidden');
+  resetAuthPanels();
   updateAuthUI();
 };
 
@@ -309,6 +324,7 @@ function updateAuthUI() {
   const submitBtn = document.getElementById('auth-submit-btn');
   const toggleText = document.getElementById('auth-toggle-text');
   const toggleBtn = document.getElementById('auth-toggle-btn');
+  const forgotRow = document.getElementById('auth-forgot-row');
   if (!title || !subtitle || !nameGroup || !submitBtn) return;
 
   if (isLoginMode) {
@@ -319,6 +335,7 @@ function updateAuthUI() {
     submitBtn.innerHTML = `<span>Đăng nhập</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
     toggleText.innerText = 'Chưa có tài khoản?';
     toggleBtn.innerText = 'Đăng ký ngay';
+    if (forgotRow) forgotRow.classList.remove('hidden');
   } else {
     title.innerText = 'Đăng ký tài khoản';
     subtitle.innerText = 'Tạo tài khoản mới bằng Email hoặc Số điện thoại.';
@@ -327,9 +344,96 @@ function updateAuthUI() {
     submitBtn.innerHTML = `<span>Tạo tài khoản</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
     toggleText.innerText = 'Đã có tài khoản?';
     toggleBtn.innerText = 'Đăng nhập ngay';
+    if (forgotRow) forgotRow.classList.add('hidden');
   }
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
+
+/* ==========================================
+   Quên mật khẩu
+
+   Hệ thống chưa có kênh gửi email/SMS nên người dùng không thể tự đặt lại
+   mật khẩu. Yêu cầu được gửi tới quản trị viên (xem tab "Khôi phục mật khẩu"
+   trong trang quản trị), quản trị viên đặt lại rồi gửi mật khẩu tạm.
+========================================== */
+
+window.showForgotPassword = function() {
+  const form = document.getElementById('auth-form');
+  const panel = document.getElementById('auth-forgot-panel');
+  const toggleBlock = document.getElementById('auth-toggle-block');
+  const forgotRow = document.getElementById('auth-forgot-row');
+  const title = document.getElementById('auth-title');
+  const subtitle = document.getElementById('auth-subtitle');
+  if (!panel) return;
+
+  // Điền sẵn tài khoản người dùng vừa gõ ở form đăng nhập
+  const usernameEl = document.getElementById('auth-username');
+  const forgotUsername = document.getElementById('forgot-username');
+  if (usernameEl && forgotUsername && !forgotUsername.value) {
+    forgotUsername.value = usernameEl.value.trim();
+  }
+
+  if (form) form.classList.add('hidden');
+  if (toggleBlock) toggleBlock.classList.add('hidden');
+  if (forgotRow) forgotRow.classList.add('hidden');
+  panel.classList.remove('hidden');
+  if (title) title.innerText = 'Quên mật khẩu';
+  if (subtitle) subtitle.innerText = 'Gửi yêu cầu khôi phục tới quản trị viên.';
+
+  const errorBox = document.getElementById('auth-error');
+  if (errorBox) errorBox.classList.add('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+};
+
+window.hideForgotPassword = function() {
+  resetAuthPanels();
+  const errorBox = document.getElementById('auth-error');
+  if (errorBox) errorBox.classList.add('hidden');
+  updateAuthUI();
+};
+
+window.submitForgotPassword = async function() {
+  const usernameEl = document.getElementById('forgot-username');
+  const noteEl = document.getElementById('forgot-note');
+  const btn = document.getElementById('forgot-submit-btn');
+  const errorBox = document.getElementById('auth-error');
+  if (errorBox) errorBox.classList.add('hidden');
+  if (!usernameEl) return;
+
+  const username = usernameEl.value.trim();
+  const note = noteEl ? noteEl.value.trim() : '';
+
+  if (!username) return showAuthMessage('Vui lòng nhập Email hoặc Số điện thoại.');
+  if (!validateUsername(username)) {
+    return showAuthMessage('Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.');
+  }
+  if (!note) {
+    return showAuthMessage('Vui lòng nhập Zalo hoặc Số điện thoại để quản trị viên liên hệ lại.');
+  }
+
+  const originalText = btn ? btn.innerText : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('opacity-70');
+    btn.innerText = 'Đang gửi...';
+  }
+
+  try {
+    const data = await api('/auth/forgot-password', {
+      method: 'POST',
+      body: { username, note }
+    });
+    showAuthMessage(data.message || 'Đã gửi yêu cầu khôi phục mật khẩu.', true);
+  } catch (err) {
+    showAuthMessage(err.message || 'Không gửi được yêu cầu. Vui lòng thử lại.');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-70');
+      btn.innerText = originalText;
+    }
+  }
+};
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // SĐT Việt Nam: 0 hoặc +84/84, đầu số 3/5/7/8/9, tổng 10 chữ số
@@ -1092,27 +1196,6 @@ function renderProfileBank(bank) {
   }
 }
 
-function renderProfileZalo(zalo) {
-  const idEl = document.getElementById('profile-zalo-id');
-  const badgeEl = document.getElementById('profile-zalo-badge');
-  if (!idEl) return;
-
-  const connected = !!(zalo && zalo.id);
-  idEl.innerText = connected ? ('ID: ' + zalo.id) : 'Chưa kết nối';
-
-  if (badgeEl) {
-    badgeEl.classList.remove('bg-emerald-50', 'text-emerald-500', 'border-emerald-100', 'bg-slate-100', 'text-slate-500', 'border-slate-200');
-    if (connected) {
-      badgeEl.classList.add('bg-emerald-50', 'text-emerald-500', 'border-emerald-100');
-      badgeEl.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Đã kết nối';
-    } else {
-      badgeEl.classList.add('bg-slate-100', 'text-slate-500', 'border-slate-200');
-      badgeEl.innerText = 'Chưa kết nối';
-    }
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-  }
-}
-
 function initProfilePage() {
   const user = currentUser;
   if (!user) return;
@@ -1146,9 +1229,8 @@ function initProfilePage() {
     }
   }
 
-  // 3b. Tài khoản nhận tiền & liên kết
+  // 3b. Tài khoản nhận tiền
   renderProfileBank(user.bank);
-  renderProfileZalo(user.zalo);
 
   // 4. Xử lý sự kiện Upload ảnh (tải lên ngay, lưu ở backend)
   const uploadInput = document.getElementById('profile-avatar-upload');

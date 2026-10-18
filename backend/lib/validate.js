@@ -43,6 +43,19 @@ function generateReferralCode(db) {
   throw new Error('Không sinh được mã giới thiệu duy nhất.');
 }
 
+// Mật khẩu tạm khi quản trị viên đặt lại mật khẩu hộ người dùng.
+// Bỏ các ký tự dễ nhầm khi đọc lại qua điện thoại (0/O, 1/l/I).
+const TEMP_PASSWORD_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+const TEMP_PASSWORD_LENGTH = 10;
+
+function generateTempPassword() {
+  let out = '';
+  for (let i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
+    out += TEMP_PASSWORD_ALPHABET[randomInt(TEMP_PASSWORD_ALPHABET.length)];
+  }
+  return out;
+}
+
 function generateOrderCode() {
   return 'GZ' + randomDigits(6);
 }
@@ -68,5 +81,6 @@ module.exports = {
   generateReferralCode,
   generateOrderCode,
   generateWithdrawalCode,
+  generateTempPassword,
   detectPlatform
 };

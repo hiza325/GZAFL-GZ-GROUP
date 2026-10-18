@@ -7,6 +7,7 @@ const { toUser } = require('../lib/serialize');
 const { isValidUsername, isValidEmail, generateReferralCode } = require('../lib/validate');
 const { setAuthCookie, clearAuthCookie, loadUser } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
+const { RESET_PENDING } = require('../lib/constants');
 
 const router = express.Router();
 
@@ -78,6 +79,51 @@ router.post('/logout', (req, res) => {
 router.get('/me', (req, res) => {
   const row = loadUser(req);
   return res.json({ user: toUser(row) });
+});
+
+/* ==========================================
+   Quên mật khẩu
+
+   Người dùng KHÔNG thể tự đặt lại mật khẩu ngay, vì hệ thống chưa có kênh
+   gửi email/SMS để xác minh danh tính. Thay vào đó yêu cầu được đưa vào
+   hàng đợi cho quản trị viên (xem routes/admin.js -> /password-resets),
+   quản trị viên đặt lại rồi gửi mật khẩu tạm qua kênh liên hệ.
+
+   Luôn trả về CÙNG MỘT thông báo dù tài khoản có tồn tại hay không, để
+   người ngoài không dò được danh sách tài khoản đang có.
+   ========================================== */
+const FORGOT_PASSWORD_MESSAGE =
+  'Nếu tài khoản tồn tại, yêu cầu đã được gửi tới quản trị viên. Vui lòng liên hệ Zalo/email hỗ trợ để nhận mật khẩu mới.';
+
+router.post('/forgot-password', (req, res) => {
+  const username = String((req.body && req.body.username) || '').trim();
+  const note = String((req.body && req.body.note) || '').trim().slice(0, 300);
+
+  if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại.' });
+
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+  if (row) {
+    const now = new Date().toISOString();
+    const pending = db
+      .prepare('SELECT id, note FROM password_resets WHERE user_id = ? AND status = ?')
+      .get(row.id, RESET_PENDING);
+
+    if (pending) {
+      // Đã có yêu cầu đang chờ: cập nhật lại nội dung và đẩy lên đầu danh sách
+      db.prepare('UPDATE password_resets SET note = ?, created_at = ? WHERE id = ?').run(
+        note || pending.note || '',
+        now,
+        pending.id
+      );
+    } else {
+      db.prepare(
+        'INSERT INTO password_resets (user_id, status, note, created_at) VALUES (?, ?, ?, ?)'
+      ).run(row.id, RESET_PENDING, note, now);
+    }
+  }
+
+  return res.json({ ok: true, message: FORGOT_PASSWORD_MESSAGE });
 });
 
 module.exports = router;

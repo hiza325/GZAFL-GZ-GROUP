@@ -156,8 +156,36 @@
           </button>
         </form>
 
+        <!-- Quên mật khẩu (chỉ hiện ở chế độ đăng nhập) -->
+        <div id="auth-forgot-row" class="mt-4 text-center">
+          <button type="button" onclick="showForgotPassword()" class="text-xs font-semibold text-slate-400 hover:text-[#f04d4d] transition">Quên mật khẩu?</button>
+        </div>
+
+        <!-- Quên mật khẩu: gửi yêu cầu cho quản trị viên -->
+        <div id="auth-forgot-panel" class="hidden">
+          <p class="text-sm text-slate-500 mb-5">Nhập tài khoản cần khôi phục. Yêu cầu sẽ được gửi tới quản trị viên, người phụ trách sẽ liên hệ lại và cấp mật khẩu tạm.</p>
+
+          <div class="mb-4">
+            <label for="forgot-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
+            <input type="text" id="forgot-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <div class="mb-6">
+            <label for="forgot-note" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách liên hệ lại</label>
+            <input type="text" id="forgot-note" placeholder="Ví dụ: Zalo 0987 654 321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+          </div>
+
+          <button type="button" id="forgot-submit-btn" onclick="submitForgotPassword()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+            Gửi yêu cầu
+          </button>
+
+          <div class="mt-6 text-center text-sm font-medium text-slate-500">
+            <button type="button" onclick="hideForgotPassword()" class="text-[#f04d4d] font-bold hover:underline">Quay lại đăng nhập</button>
+          </div>
+        </div>
+
         <!-- Nút Toggle -->
-        <div class="mt-6 text-center text-sm font-medium text-slate-500">
+        <div id="auth-toggle-block" class="mt-6 text-center text-sm font-medium text-slate-500">
           <span id="auth-toggle-text">Chưa có tài khoản?</span> 
           <button onclick="toggleAuthMode()" id="auth-toggle-btn" class="text-[#f04d4d] font-bold hover:underline">Đăng ký ngay</button>
         </div>

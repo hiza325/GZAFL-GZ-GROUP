@@ -82,6 +82,17 @@ db.exec(`
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'Chờ xử lý',
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    resolved_at TEXT,
+    resolved_by INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
 `);
 
 /**
@@ -117,6 +128,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_withdrawals_user   ON withdrawals (user_id);
   CREATE INDEX IF NOT EXISTS idx_referrals_user     ON referrals (user_id);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
+  CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);
 `);
 
 module.exports = db;
