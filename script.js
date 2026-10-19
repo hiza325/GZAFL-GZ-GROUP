@@ -1472,7 +1472,7 @@ function renderWithdrawHistory(list = []) {
       // Không nhập số tài khoản (chỉ tải ảnh QR) thì ghi rõ để người dùng dễ hiểu
       const accountLabel = tx.accNum
         ? `${escapeHtml(tx.bank)} ****${escapeHtml(String(tx.accNum).slice(-4))}`
-        : `${escapeHtml(tx.bank)} • nhận qua ảnh QR`;
+        : `${tx.bank ? escapeHtml(tx.bank) + ' • ' : ''}nhận qua ảnh QR`;
       const ownerLabel = escapeHtml((tx.accName || '').toUpperCase()) || (hasQr ? 'Ảnh QR nhận tiền' : '');
       const meta = [ownerLabel, escapeHtml(tx.date)].filter(Boolean).join(' • ');
       html += `
@@ -2086,6 +2086,47 @@ const BANK_OTHER_VALUE = '__other__';
 const BANK_QR_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
 const BANK_QR_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 
+// Cách nhận tiền khi rút: 'account' = nhập số tài khoản, 'qr' = tải ảnh QR.
+// Người dùng chỉ cần chọn 1 trong 2 cách (xem index.html -> #withdraw-method-*).
+let withdrawMode = 'account';
+
+// Đổi giữa 2 cách nhận tiền
+window.setWithdrawMode = function(mode) {
+  withdrawMode = mode === 'qr' ? 'qr' : 'account';
+
+  const accountBox = document.getElementById('withdraw-fields-account');
+  const qrBox = document.getElementById('withdraw-fields-qr');
+  if (accountBox) accountBox.classList.toggle('hidden', withdrawMode !== 'account');
+  if (qrBox) qrBox.classList.toggle('hidden', withdrawMode !== 'qr');
+
+  // Tô đậm nút đang được chọn
+  const onClasses = ['bg-[#18253f]', 'text-white', 'border-[#18253f]'];
+  const offClasses = ['bg-white', 'text-slate-600', 'border-slate-200', 'hover:bg-slate-50'];
+  [
+    [document.getElementById('withdraw-method-account'), withdrawMode === 'account'],
+    [document.getElementById('withdraw-method-qr'), withdrawMode === 'qr']
+  ].forEach(function(item) {
+    const btn = item[0];
+    if (!btn) return;
+    onClasses.concat(offClasses).forEach(function(cls) {
+      btn.classList.remove(cls);
+    });
+    (item[1] ? onClasses : offClasses).forEach(function(cls) {
+      btn.classList.add(cls);
+    });
+  });
+
+  updateWithdrawQrNote();
+};
+
+// Nhắc người dùng tải ảnh QR khi đang chọn cách "Ảnh QR" mà chưa có ảnh nào
+function updateWithdrawQrNote() {
+  const note = document.getElementById('withdraw-qr-missing');
+  if (!note) return;
+  const hasQr = !!(currentUser && currentUser.bank && currentUser.bank.qrUrl);
+  note.classList.toggle('hidden', !(withdrawMode === 'qr' && !hasQr));
+}
+
 // Nạp danh sách ngân hàng/ví từ /api/config (xem backend/lib/banks.js).
 // Nếu không gọi được API thì giữ nguyên vài lựa chọn ghi sẵn trong index.html.
 function populateBankOptions() {
@@ -2199,6 +2240,9 @@ function renderWithdrawQr(qrUrl) {
   }
   if (removeBtn) removeBtn.classList.toggle('hidden', !qrUrl);
   if (label) label.innerText = qrUrl ? 'Đổi ảnh QR khác' : 'Tải ảnh QR lên';
+
+  // Có ảnh QR rồi thì không cần nhắc tải nữa
+  updateWithdrawQrNote();
 }
 
 // Gắn sự kiện chọn file cho ô tải ảnh QR.
@@ -2268,6 +2312,11 @@ window.openWithdrawModal = async function() {
   // Ảnh QR nhận tiền đã lưu (nếu có)
   initWithdrawQr();
   renderWithdrawQr(currentUser && currentUser.bank ? currentUser.bank.qrUrl : null);
+
+  // Mở đúng cách người dùng đã dùng: có số tài khoản thì mở cách nhập số tài khoản,
+  // chỉ có ảnh QR thì mở cách ảnh QR (người dùng mới thì mặc định nhập số tài khoản).
+  const savedBank = (currentUser && currentUser.bank) || {};
+  setWithdrawMode(savedBank.accNum ? 'account' : savedBank.qrUrl ? 'qr' : 'account');
 
   modal.classList.remove('hidden');
 
@@ -2342,20 +2391,28 @@ window.submitWithdraw = async function() {
   const accNum = numEl.value.trim();
   const accName = nameEl.value.trim();
 
-  // Có ảnh QR đã lưu thì không cần số tài khoản / tên chủ tài khoản
+  // Người dùng chỉ cần chọn 1 trong 2: nhập số tài khoản HOẶC tải ảnh QR
+  const isQrMode = withdrawMode === 'qr';
   const hasQr = !!(currentUser && currentUser.bank && currentUser.bank.qrUrl);
 
-  if (!bank) {
-    showToast('Vui lòng chọn ngân hàng/ví điện tử nhận tiền (hoặc ghi rõ tên ngân hàng khác).', 'error');
-    return;
-  }
-  if (!hasQr && (!accNum || !accName)) {
-    showToast('Vui lòng nhập số tài khoản và tên chủ tài khoản, hoặc tải lên ảnh QR nhận tiền.', 'error');
-    return;
-  }
-  if (accNum && !/^[0-9]{6,20}$/.test(accNum)) {
-    showToast('Số tài khoản/số điện thoại ví phải là 6-20 chữ số.', 'error');
-    return;
+  if (isQrMode) {
+    if (!hasQr) {
+      showToast('Bạn chưa tải lên ảnh QR nhận tiền. Vui lòng tải ảnh QR lên, hoặc chuyển sang cách nhập số tài khoản.', 'error');
+      return;
+    }
+  } else {
+    if (!bank) {
+      showToast('Vui lòng chọn ngân hàng/ví điện tử nhận tiền (hoặc ghi rõ tên ngân hàng khác).', 'error');
+      return;
+    }
+    if (!accNum || !accName) {
+      showToast('Vui lòng nhập đầy đủ số tài khoản và tên chủ tài khoản, hoặc chuyển sang cách tải ảnh QR.', 'error');
+      return;
+    }
+    if (!/^[0-9]{6,20}$/.test(accNum)) {
+      showToast('Số tài khoản/số điện thoại ví phải là 6-20 chữ số.', 'error');
+      return;
+    }
   }
 
   const originalHTML = btn ? btn.innerHTML : '';
@@ -2366,9 +2423,12 @@ window.submitWithdraw = async function() {
   }
 
   try {
+    // Cách "Ảnh QR" thì không gửi kèm thông tin ngân hàng/STK vì ảnh QR đã có sẵn
     const data = await api('/wallet/withdrawals', {
       method: 'POST',
-      body: { bank, accNum, accName }
+      body: isQrMode
+        ? { mode: 'qr', bank: '', accNum: '', accName: '' }
+        : { mode: 'account', bank, accNum, accName }
     });
 
     currentUser = data.user || currentUser;
@@ -2381,9 +2441,9 @@ window.submitWithdraw = async function() {
     }
 
     const amount = (data.withdrawal && data.withdrawal.amount) || 0;
-    const detail = accNum
-      ? `Ngân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`
-      : `Ngân hàng: ${bank}\nNhận tiền qua ảnh QR`;
+    const detail = isQrMode
+      ? 'Nhận tiền qua ảnh QR'
+      : `Ngân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`;
     showToast(`✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\n${detail}`, 'success');
     closeWithdrawModal();
   } catch (err) {

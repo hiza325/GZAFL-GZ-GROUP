@@ -317,7 +317,7 @@
                 : ''
             }
             <div class="min-w-0">
-              <div class="font-semibold text-slate-700 truncate">${escapeHtml(w.bank)}</div>
+              <div class="font-semibold text-slate-700 truncate">${escapeHtml(w.bank || 'Qua ảnh QR')}</div>
               <div class="text-xs text-slate-400 truncate">${accLine}</div>
             </div>
           </div>
@@ -344,7 +344,7 @@
 
     const accountText = wd.accNum
       ? `${wd.bank} ${wd.accNum}`
-      : `${wd.bank} (nhận qua ảnh QR)`;
+      : `nhận qua ảnh QR${wd.bank ? ' (' + wd.bank + ')' : ''}`;
     setText('adm-wd-info', `${wd.user.name} (${wd.user.username}) — ${accountText}`);
 
     // Ảnh QR nhận tiền (nếu khách có tải lên): hiện để quét khi chuyển khoản

@@ -233,7 +233,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | GET | `/api/orders` | Danh sách đơn hàng của mình (kèm link hoàn tiền, `sub_id`, số lượt bấm) |
 | POST | `/api/orders` | Tạo đơn `{ link }` → trả về `{ order, affiliate }` với link hoàn tiền |
 | GET | `/api/wallet` | Thống kê ví + lịch sử rút tiền + `minWithdraw`, `canWithdraw` |
-| POST | `/api/wallet/withdrawals` | Yêu cầu rút tiền `{ bank, accNum, accName }`. Nếu tài khoản đã có **ảnh QR nhận tiền** thì `accNum`/`accName` không bắt buộc |
+| POST | `/api/wallet/withdrawals` | Yêu cầu rút tiền. Chọn 1 trong 2: `{ mode: 'account', bank, accNum, accName }` hoặc `{ mode: 'qr' }` (dùng ảnh QR đã tải lên, không cần ngân hàng/STK) |
 | GET | `/api/referral` | Mã giới thiệu, điểm, lịch sử đã nhập |
 | POST | `/api/referral/redeem` | Nhập mã giới thiệu `{ code }` |
 | GET | `/api/notifications` | Danh sách thông báo + số chưa đọc |
@@ -282,7 +282,10 @@ Trạng thái hợp lệ:
 - Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **1.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
 - Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
 - Ngân hàng/ví được chọn từ danh sách trong `backend/lib/banks.js` (khoảng 50 ngân hàng và ví điện tử, hiện ở dropdown và ở `GET /api/config`). Người dùng cũng có thể chọn **"Ngân hàng khác"** rồi tự ghi tên (tối đa 60 ký tự).
-- Người dùng có thể tải lên **ảnh QR nhận tiền** (chỉ **PNG/JPG**, tối đa 2MB). Khi đã có ảnh QR thì **không bắt buộc** nhập `accNum`/`accName` — quản trị viên quét mã QR để chuyển tiền. Ảnh QR được **chụp lại** vào lệnh rút lúc gửi, nên đổi ảnh sau này không làm thay đổi lệnh cũ; file ảnh chỉ bị xoá khi **không còn lệnh rút nào** dùng nó.
+- Người dùng **chọn 1 trong 2** cách nhận tiền, không cần làm cả hai:
+  - **Nhập số tài khoản**: bắt buộc có ngân hàng/ví + `accNum` + `accName`.
+  - **Ảnh QR nhận tiền**: chỉ cần ảnh QR (chỉ nhận **PNG/JPG**, tối đa 2MB) — không cần nhập ngân hàng, số tài khoản hay tên chủ tài khoản vì QR đã có sẵn. Quản trị viên quét mã QR để chuyển tiền.
+  - Ảnh QR được **chụp lại** vào lệnh rút lúc gửi, nên đổi ảnh sau này không làm thay đổi lệnh cũ; file ảnh chỉ bị xoá khi **không còn lệnh rút nào** dùng nó.
 - Huỷ lệnh rút (`Đã huỷ`) sẽ **trả lại** số tiền vào số dư khả dụng.
 - Quản trị viên có thể sửa số tiền thực trả khi đánh dấu `Đã thanh toán`, nhưng không được vượt số dư khả dụng.
 
