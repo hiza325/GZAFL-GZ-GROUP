@@ -160,6 +160,8 @@ app.use('/api/referral', require('./routes/referral'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/support', require('./routes/support'));
+// Điểm nhận báo cáo chuyển đổi từ mạng affiliate (không dùng cookie phiên)
+app.use('/api/postback', require('./routes/postback'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
@@ -204,6 +206,18 @@ server.listen(PORT, () => {
   console.log(`  Tin cậy reverse proxy : ${TRUST_PROXY || 'không'}`);
   const affiliate = require('./lib/affiliate').describe();
   console.log(`  Nhà cung cấp hoàn tiền: ${affiliate.provider}${affiliate.isReal ? '' : ' (thử nghiệm, chưa tạo hoa hồng thật)'}`);
+
+  const postback = require('./lib/postback').describe();
+  const postbackHost = `http://localhost:${PORT}`;
+  if (postback.configured) {
+    console.log(`  Nhận báo cáo chuyển đổi: BẬT - khai với mạng URL ${postbackHost}${postback.url}`);
+    console.log(
+      `                          Tỷ lệ hoàn cho người dùng: ${Math.round(postback.cashbackRate * 100)}% (CASHBACK_RATE)`
+    );
+  } else {
+    console.log('  Nhận báo cáo chuyển đổi: CHƯA cấu hình POSTBACK_SECRET - mạng gọi vào sẽ bị từ chối');
+    console.log(`                          Khai URL: ${postbackHost}${postback.url}`);
+  }
 
   const otp = require('./lib/otp');
   const mail = require('./lib/mailer').describe();

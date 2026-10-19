@@ -115,11 +115,14 @@ https://shopee.vn/product/111
   → https://your-domain/r/GZ102218
 ```
 
-**Provider `accesstrade`** (REST):
+**Provider `accesstrade`** (REST) — ✅ đã đối chiếu tài liệu chính thức và cài đặt:
 
 - Cần: `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID`
-- Gửi danh sách URL + `sub_ids` lên API, nhận về link rút gọn
-- ⚠️ Đối chiếu lại tên trường/endpoint trong tài liệu chính thức lúc cài — **không đoán**
+- `POST https://api.accesstrade.vn/v1/product_link/create`, header `Authorization: token <API_KEY>`
+- Body: `campaign_id` (**chuỗi**, không phải Number), `urls: [url]`, `url_enc: true`, `sub1`, `sub2`
+- Nhận về `data.success_link[0].aff_link` (hoặc `short_link`); lỗi nằm ở `data.error_link`
+- Tài liệu: <https://developers.accesstrade.vn/api-publisher-vietnamese/tao-tracking-link.md>
+- `sub1 = gzafl-u<id>` (người dùng), `sub2 = <mã đơn>` (đơn hàng) — xem mục 3.6.3
 
 **Provider `shopee`** (Shopee Affiliate Open API — **API chính thức của sàn**, không qua trung gian):
 
@@ -140,11 +143,15 @@ https://shopee.vn/product/111
 | `AFFILIATE_PROVIDER` | `mock` | `mock` \| `accesstrade` \| `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id`, tránh trùng với hệ thống khác |
 | `ACCESSTRADE_API_KEY` | — | Token do AccessTrade cấp |
-| `ACCESSTRADE_CAMPAIGN_ID` | — | Campaign Shopee trong AccessTrade |
+| `ACCESSTRADE_CAMPAIGN_ID` | — | Campaign Shopee trong AccessTrade (giữ dạng chuỗi) |
+| `ACCESSTRADE_SHORT_DOMAIN` | — | Tuỳ chọn: domain rút gọn riêng của bạn |
 | `SHOPEE_AFFILIATE_APP_ID` / `_SECRET` | — | Do Shopee cấp |
 | `POSTBACK_SECRET` | — | Chuỗi bí mật để xác thực postback |
+| `POSTBACK_PARAM_*` | — | Ép tên tham số mạng gửi về (xem mục 3.6.2) |
+| `CASHBACK_RATE` | `1` | Tỷ lệ hoàn cho người dùng (0.7 = 70%) |
 
-Nếu provider là `accesstrade`/`shopee` mà thiếu key → **ném lỗi lúc khởi động**, không để chạy rồi mới lỗi giữa chừng.
+Nếu thiếu key thì **chỉ đơn hàng đó rơi về link gốc** (người dùng vẫn mua được, hệ thống ghi log lỗi) —
+cố ý không làm sập luồng tạo đơn vì một API bên ngoài đang lỗi.
 
 ### 3.3. Đổi link khi tạo đơn — `backend/routes/orders.js`
 
@@ -198,14 +205,14 @@ Trang **Đơn hàng đã đặt** (`updateOrdersData`) nên thêm nút copy lạ
 
 ### 3.6. Nhận báo cáo chuyển đổi — postback **hoặc** đồng bộ định kỳ
 
-Có **hai cơ chế khác nhau tuỳ nhà cung cấp** — phải biết trước khi code, vì kiến trúc khác nhau hẳn:
+Có **hai cơ chế khác nhau tuỳ nhà cung cấp** — kiến trúc khác nhau hẳn:
 
-| Cơ chế | Ai dùng | Cách làm |
-|---|---|---|
-| **Postback (webhook)** — mạng chủ động gọi server bạn | AccessTrade | Viết endpoint công khai, xử lý ngay khi có dữ liệu |
-| **Truy vấn báo cáo (polling)** — bạn chủ động gọi API hỏi | Shopee Affiliate Open API | Viết **tiến trình định kỳ (cron)** chạy mỗi 1–6 giờ để kéo báo cáo về |
+| Cơ chế | Ai dùng | Cách làm | Trạng thái trong repo |
+|---|---|---|---|
+| **Postback (webhook)** — mạng chủ động gọi server bạn | AccessTrade, MAS, Ecomobi | Endpoint công khai, xử lý ngay khi có dữ liệu | ✅ **đã làm** (`backend/routes/postback.js` + `backend/lib/postback.js`) |
+| **Truy vấn báo cáo (polling)** — bạn chủ động gọi API hỏi | Shopee Affiliate Open API | **Cron** chạy mỗi 1–6 giờ kéo báo cáo về | ⬜ chưa làm (chỉ cần nếu đi thẳng với Shopee) |
 
-⚠️ Nếu chọn Shopee trực tiếp thì **không có `routes/postback.js`** — thay vào đó là một job chạy nền:
+Nếu chọn Shopee trực tiếp thì **không dùng postback** — thay vào đó là một job chạy nền:
 
 ```
 Cron (mỗi 2 giờ)
@@ -217,51 +224,102 @@ Cron (mỗi 2 giờ)
 
 Cần lưu **mốc thời gian đồng bộ lần cuối** để lần sau chỉ hỏi phần mới. Cũng vẫn cần chống trùng y như postback.
 
-Nếu dùng cơ chế postback thì trình tự xử lý như sau:
+#### 3.6.1. Postback đã cài đặt — đường đi của một lần báo hoa hồng
 
-1. **Xác thực** — so sánh `POSTBACK_SECRET` bằng `crypto.timingSafeEqual`, sai thì trả `403` và ghi log.
-2. **Ghi log thô** — lưu nguyên payload vào `postback_logs` *trước khi* xử lý. Có log mới đối soát được.
-3. **Chống trùng** — nếu `network_order_id` đã tồn tại → trả `200` luôn, **không cộng tiền lần hai**. Mạng affiliate gửi lại postback là chuyện bình thường.
-4. **Tra người dùng** — parse `sub_id` (`gzafl-u7` → user `7`). Không parse được thì log lại và bỏ qua.
-5. **Ghi nhận** — cập nhật đơn gần nhất của user đó, đặt `commission`, `network_order_id`, đổi trạng thái.
-6. **Luôn trả `200` nhanh** — trả lỗi 5xx sẽ khiến mạng affiliate retry liên tục.
+```
+AccessTrade --GET--> /api/postback/accesstrade?secret=...&transaction_id=...&reward=...
+   ├─ 1. Kiểm tra POSTBACK_SECRET (hash SHA-256 rồi timingSafeEqual)  → sai: 403 + ghi log "Từ chối"
+   ├─ 2. Ghi NGUYÊN tham số vào postback_logs (kể cả lần gọi sai)      → có log mới đối soát được
+   ├─ 3. Chống trùng theo payload_hash                                 → trùng: chỉ tăng dup_count, trả 200
+   ├─ 4. Đọc sub1 = gzafl-u<id> → người dùng;  sub2 = <mã đơn> → đúng đơn
+   ├─ 5. Cộng dồn MỌI lần postback của cùng giao dịch (mạng gửi mỗi sản phẩm 1 lần)
+   └─ 6. Cập nhật đơn: chờ duyệt → "Chờ đối soát"; đã duyệt → "Hoàn thành" + cộng tiền; huỷ → "Đã huỷ"
+```
 
-### 3.7. Trạng thái mới & tỷ lệ hoàn tiền
+Chi tiết đáng nhớ:
 
-**Thời gian chốt hoa hồng:** Shopee thường giữ tiền **7–30 ngày** để chờ đối soát và xử lý hoàn hàng. Vì vậy không nên nhảy thẳng từ "Đang xử lý" sang "Hoàn thành". Nên thêm trạng thái:
+- **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Vì vậy tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), không lấy từng lần gọi.
+- **Chống trùng bằng `payload_hash`** (băm tham số đã sắp xếp) chứ không chỉ theo `transaction_id` — nhờ vậy 3 lần gọi khác sản phẩm vẫn được tính đủ, mà lần gọi lại y hệt thì không cộng tiền hai lần.
+- **Tiền chưa duyệt KHÔNG vào số dư.** Nằm ở cột riêng `orders.network_commission`; chỉ khi mạng báo `approved` mới ghi `orders.commission` (tiền thật của người dùng). Nhờ vậy không phải sửa lại mọi câu SQL tính số dư.
+- **Đơn đã ở trạng thái "Đã thanh toán" thì hệ thống không tự đổi** — tránh trường hợp đã chi tiền cho khách rồi mà mạng báo huỷ lại âm ví. Log ghi rõ để admin xử lý tay.
+- **Postback không khớp được đơn nào** (về trước khi đơn tồn tại, hoặc sai tên tham số) vẫn được lưu và hiện ở tab **Đối soát** với nút **Xử lý lại**.
+- **Luôn trả `200` nhanh** để mạng không gửi lại liên tục (AccessTrade chỉ gửi lại tối đa 3 lần).
+
+#### 3.6.2. Khai báo bên AccessTrade (phần bạn phải làm trong dashboard)
+
+Tài liệu: <https://support.accesstrade.global/system-integration/what-is-postback-and-how-to-use.html>
+
+1. Đặt `POSTBACK_SECRET` trong `backend/.env` thành một chuỗi ngẫu nhiên khó đoán.
+2. Vào **Account Settings → Properties → Postback**, khai URL:
+   `https://ten-mien-cua-ban/api/postback/accesstrade`
+3. Thêm một tham số có giá trị **cố định** đúng bằng `POSTBACK_SECRET` (AccessTrade gọi là *Action ID*), ví dụ tên tham số `secret`.
+4. Thêm các tham số dữ liệu: **Transaction ID**, **Product ID**, **Reward** (hoa hồng), **Conversion Status**, và các **sub id** (sub id luôn được gửi kèm tự động).
+
+Tên tham số do **người dùng tự đặt**, nên code không hard-code một tên duy nhất: nó dò lần lượt các tên thông dụng (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` hoặc mã đơn `GZ…`. Nếu tên của bạn khác hẳn, ép lại bằng biến môi trường:
+
+```
+POSTBACK_PARAM_SECRET / POSTBACK_PARAM_TRANSACTION / POSTBACK_PARAM_PRODUCT
+POSTBACK_PARAM_CONVERSION / POSTBACK_PARAM_REWARD / POSTBACK_PARAM_STATUS / POSTBACK_PARAM_SUB
+```
+
+Xem toàn bộ tham số thô đã nhận ở **trang quản trị → tab Đối soát → nút "Thô"**.
+
+#### 3.6.3. Gắn mã vào link khi tạo (đã làm)
+
+`convertAccessTrade()` gửi lên API tạo link của AccessTrade:
+
+| Tham số | Giá trị | Vì sao |
+|---|---|---|
+| `sub1` | `gzafl-u<id>` | biết hoa hồng thuộc về ai |
+| `sub2` | `<mã đơn GZ…>` | biết hoa hồng thuộc **đơn nào** → đối soát tự động được |
+| `urls`, `url_enc` | link sản phẩm | bắt buộc |
+
+Endpoint chính thức: `POST https://api.accesstrade.vn/v1/product_link/create`, header `Authorization: token <API_KEY>`.
+⚠️ `campaign_id` là số 19 chữ số → **phải giữ dạng chuỗi**, chuyển sang `Number` sẽ mất chữ số cuối và tạo link sai campaign.
+
+### 3.7. Trạng thái mới & tỷ lệ hoàn tiền ✅ (đã làm)
+
+**Thời gian chốt hoa hồng:** Shopee thường giữ tiền **7–30 ngày** để chờ đối soát và xử lý hoàn hàng. Vì vậy không nhảy thẳng từ "Đang xử lý" sang "Hoàn thành". Trạng thái đã thêm:
 
 ```
 Đang xử lý  →  Chờ đối soát  →  Hoàn thành  →  Đã thanh toán
                      └──────→  Đã huỷ (hoàn hàng / không hợp lệ)
 ```
 
-Khi thêm trạng thái mới, phải cập nhật **cả 2 nơi** (chúng đang tách rời nhau):
-- `backend/lib/constants.js` → `ORDER_STATUSES`
-- `script.js` → `statusBadgeClass()` + các `if (status === ...)`
-- và các ô `<select>` lọc trạng thái trong `components/admin.html` + `admin.js`
+Đã cập nhật đồng bộ: `backend/lib/constants.js` (`ORDER_STATUSES` + `AWAITING_RECONCILE`),
+`script.js` (`statusBadgeClass` rơi vào màu vàng mặc định, thẻ "đơn đang chờ" gộp cả 2 trạng thái),
+`components/admin.html` + `admin.js` (ô lọc trạng thái, modal xử lý đơn, tab Đối soát).
 
-**Tỷ lệ hoàn tiền (revenue share):** điểm nghiệp vụ quan trọng nhất. Sàn trả bạn ví dụ 100% hoa hồng, nhưng bạn chỉ hoàn lại người dùng một phần (thường 50–80%), phần còn lại là doanh thu. Hiện tại admin **chốt tay** toàn bộ `commission`. Khi tự động hoá:
+**Tỷ lệ hoàn tiền (revenue share):** đã tự động hoá bằng `CASHBACK_RATE` (biến môi trường toàn hệ thống):
 
 ```
-commission_ghi_cho_user = hoa_hồng_nhận_được × CASHBACK_RATE
+commission_ghi_cho_user = tổng hoa hồng mạng ĐÃ DUYỆT × CASHBACK_RATE
 ```
 
-Nên thêm cột `users.cashback_rate` (hoặc biến môi trường toàn hệ thống) và ghi rõ **tỷ lệ này ở đâu đó trên giao diện**, tránh tranh chấp sau này.
+- `CASHBACK_RATE=0.7` → hoàn 70%, giữ lại 30%.
+- **Bỏ trống = `1` (hoàn 100%).** Con số này được in ra lúc khởi động:
+  `Tỷ lệ hoàn cho người dùng: 70% (CASHBACK_RATE)` — nhớ kiểm tra trước khi chạy thật.
+- Chỉ áp dụng cho tiền do **mạng báo về tự động**; admin vẫn chốt tay được hoa hồng ở modal xử lý đơn như trước.
+- Muốn tỷ lệ riêng cho từng người (VIP, đối tác) thì bước tiếp theo là thêm cột `users.cashback_rate` và ưu tiên nó trước biến môi trường.
+
 
 ---
 
 ## 4. Checklist — cần xin những gì
 
-| Việc | Ai làm | Ghi chú |
+| Việc | Ai làm | Trạng thái |
 |---|---|---|
-| Đăng ký + được duyệt affiliate | Bạn | Quyết định tiến độ, có thể mất vài ngày |
-| Lấy API key / campaign id / app id + secret | Bạn | **Không** commit vào git, chỉ để trong `.env` |
-| Xác nhận giới hạn `sub_id` (số ký tự, số lượng) | Bạn | Ảnh hưởng cách đặt mã |
-| Viết `lib/affiliate.js` + migration DB | Dev | Bước 3.1, 3.2 |
-| Sửa `routes/orders.js` + giao diện | Dev | Bước 3.3 – 3.5 |
-| Viết `routes/postback.js` | Dev | Bước 3.6 |
-| Quyết định tỷ lệ hoàn tiền | Bạn | Bước 3.7 |
-| Kiểm tra điều khoản của sàn | Bạn | Xem mục 5 |
+| Đăng ký + được duyệt affiliate (publisher) | Bạn | ⬜ quyết định tiến độ, có thể mất vài ngày |
+| Lấy API key / campaign id | Bạn | ⬜ **không** commit vào git, chỉ để trong `.env` |
+| Xác nhận giới hạn `sub_id` (số ký tự, số lượng) | Bạn | ⬜ ảnh hưởng cách đặt mã — code đang dùng `sub1`, `sub2` |
+| Đăng ký URL postback + tham số chứa chìa khoá | Bạn | ⬜ xem mục 3.6.2 |
+| Hỏi điều khoản có cho phép mô hình hoàn tiền lại không | Bạn | ⬜ xem mục 5 |
+| `lib/affiliate.js` + cột/bảng trong DB | Dev | ✅ xong (3.1, 3.2) |
+| `routes/orders.js` + giao diện trả link | Dev | ✅ xong (3.3 – 3.5) |
+| `routes/postback.js` + `postback_logs` + chống trùng + tab Đối soát | Dev | ✅ xong (3.6) |
+| Trạng thái "Chờ đối soát" + tỷ lệ hoàn tiền | Dev | ✅ xong (3.7) |
+| Chốt `CASHBACK_RATE` (mặc định đang là 1 = hoàn 100%) | Bạn | ⬜ **nhớ đặt trước khi chạy thật** |
+| Test bằng **một đơn thật nhỏ** rồi đối chiếu hoa hồng | Cả hai | ⬜ chốt chặn cuối cùng trước khi trả tiền cho khách |
 
 ---
 
@@ -277,14 +335,14 @@ Nên thêm cột `users.cashback_rate` (hoặc biến môi trường toàn hệ 
 
 ## 6. Ước lượng khối lượng
 
-| Giai đoạn | Nội dung | Công |
-|---|---|---|
-| A | Provider `mock` + migration DB + đổi giao diện để trả link | ~1 ngày |
-| B | Nhận báo cáo chuyển đổi (postback **hoặc** job đồng bộ) + bảng log + chống trùng | ~1 ngày |
-| C | Cắm provider thật (AccessTrade hoặc Shopee) + test với đơn thật | ~1–2 ngày, **phụ thuộc lúc nào có key** |
-| D | Tỷ lệ hoàn tiền + trạng thái "Chờ đối soát" + cập nhật admin | ~0,5 ngày |
+| Giai đoạn | Nội dung | Công | Trạng thái |
+|---|---|---|---|
+| A | Provider `mock` + migration DB + đổi giao diện để trả link | ~1 ngày | ✅ xong |
+| B | Nhận postback + bảng log + chống trùng + tab Đối soát | ~1 ngày | ✅ xong |
+| C | Cắm provider thật (`accesstrade` viết xong theo tài liệu, **chờ key để test đơn thật**) | ~1 ngày | 🟡 chờ key |
+| D | Tỷ lệ hoàn tiền + trạng thái "Chờ đối soát" | ~0,5 ngày | ✅ xong |
 
-**Giai đoạn A chạy được ngay hôm nay** — không cần chờ tài khoản affiliate. Làm A trước thì khi có key, giai đoạn C chỉ là điền `.env` và viết 1 provider mới.
+Còn lại đúng **một việc phụ thuộc bạn**: có tài khoản AccessTrade → điền `.env` → **test bằng 1 đơn thật nhỏ** rồi đối chiếu `sub1`/`sub2` xem hoa hồng có về đúng người và đúng đơn không.
 
 ---
 

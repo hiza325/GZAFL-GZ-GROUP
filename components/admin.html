@@ -89,6 +89,10 @@
         <i data-lucide="key-round" class="w-4 h-4"></i> Khôi phục mật khẩu
         <span id="adm-reset-badge" class="hidden ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold items-center justify-center">0</span>
       </button>
+      <button data-adm-tab="postbacks" class="adm-tab flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold whitespace-nowrap transition">
+        <i data-lucide="plug-zap" class="w-4 h-4"></i> Đối soát
+        <span id="adm-pb-badge" class="hidden ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold items-center justify-center">0</span>
+      </button>
     </div>
 
     <!-- ===== Tab: Đơn hàng ===== -->
@@ -102,6 +106,7 @@
         <select id="adm-orders-status" class="bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all cursor-pointer">
           <option value="">Tất cả trạng thái</option>
           <option value="Đang xử lý">Đang xử lý</option>
+          <option value="Chờ đối soát">Chờ đối soát</option>
           <option value="Hoàn thành">Hoàn thành</option>
           <option value="Đã thanh toán">Đã thanh toán</option>
           <option value="Đã huỷ">Đã huỷ</option>
@@ -291,6 +296,79 @@
       </div>
     </div>
 
+    <!-- ===== Tab: Đối soát (nhật ký postback từ mạng affiliate) ===== -->
+    <div id="adm-panel-postbacks" class="adm-panel hidden p-4 md:p-6">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <div class="bg-slate-50/70 rounded-2xl p-4 border border-slate-100">
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Lần nhận</div>
+          <div class="text-xl font-bold text-slate-800 mt-1" id="adm-pb-stat-total">0</div>
+        </div>
+        <div class="bg-emerald-50/60 rounded-2xl p-4 border border-emerald-100">
+          <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Đã khớp đơn</div>
+          <div class="text-xl font-bold text-emerald-700 mt-1" id="adm-pb-stat-matched">0</div>
+        </div>
+        <div class="bg-amber-50/60 rounded-2xl p-4 border border-amber-100">
+          <div class="text-[11px] font-bold text-amber-600 uppercase tracking-wider">Chưa khớp đơn</div>
+          <div class="text-xl font-bold text-amber-700 mt-1" id="adm-pb-stat-unmatched">0</div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 border border-slate-100">
+          <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Hoa hồng mạng báo</div>
+          <div class="text-xl font-bold text-slate-800 mt-1" id="adm-pb-stat-reward">đ0</div>
+          <div class="text-[11px] text-slate-400 mt-1" id="adm-pb-stat-reward-note">Chưa duyệt đ0</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 mb-5">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2"></i>
+          <input id="adm-pb-search" type="text" placeholder="Tìm theo mã giao dịch, mã đơn, sản phẩm hoặc khách hàng..."
+                 class="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm text-slate-700 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+        </div>
+        <select id="adm-pb-status" class="bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all cursor-pointer">
+          <option value="">Mọi trạng thái</option>
+          <option value="pending">Chờ mạng duyệt</option>
+          <option value="approved">Mạng đã duyệt</option>
+          <option value="rejected">Mạng đã huỷ</option>
+        </select>
+        <select id="adm-pb-only" class="bg-slate-50/50 border border-slate-200 rounded-xl py-2.5 px-4 text-sm text-slate-700 font-medium focus:outline-none focus:border-red-400 focus:bg-white transition-all cursor-pointer">
+          <option value="">Tất cả kết quả</option>
+          <option value="unmatched">Chỉ chưa/khớp tạm</option>
+          <option value="matched">Chỉ đã khớp đơn</option>
+          <option value="refused">Chỉ bị từ chối</option>
+        </select>
+      </div>
+
+      <div class="overflow-x-auto -mx-1">
+        <table class="w-full text-sm min-w-[980px]">
+          <thead>
+            <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
+              <th class="px-3 py-3">Thời gian</th>
+              <th class="px-3 py-3">Giao dịch</th>
+              <th class="px-3 py-3">Mã đơn</th>
+              <th class="px-3 py-3">Khách hàng</th>
+              <th class="px-3 py-3">Hoa hồng</th>
+              <th class="px-3 py-3">Mạng báo</th>
+              <th class="px-3 py-3">Kết quả</th>
+              <th class="px-3 py-3 text-right">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="adm-pb-body"></tbody>
+        </table>
+        <div id="adm-pb-empty" class="hidden py-12 flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+            <i data-lucide="plug-zap" class="w-8 h-8 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Chưa nhận được báo cáo chuyển đổi nào từ mạng affiliate.</p>
+          <p class="text-xs text-slate-400 mt-2 max-w-md">Khai URL <code class="font-mono bg-slate-50 px-1 rounded">/api/postback/accesstrade</code> trong phần Postback của tài khoản publisher, nhớ thêm tham số chìa khoá trùng với <code class="font-mono bg-slate-50 px-1 rounded">POSTBACK_SECRET</code>.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-50">
+        <span class="text-xs font-semibold text-slate-400" id="adm-pb-count">0 lần nhận</span>
+        <button id="adm-pb-more" class="hidden text-xs font-bold text-red-500 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition">Tải thêm</button>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -316,6 +394,7 @@
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Trạng thái</label>
           <select id="adm-order-status" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
             <option value="Đang xử lý">Đang xử lý</option>
+            <option value="Chờ đối soát">Chờ đối soát</option>
             <option value="Hoàn thành">Hoàn thành</option>
             <option value="Đã thanh toán">Đã thanh toán</option>
             <option value="Đã huỷ">Đã huỷ</option>
@@ -461,6 +540,33 @@
       <p class="text-[11px] text-slate-400 mt-4 mb-6">Mật khẩu này chỉ hiện MỘT LẦN và không được lưu lại. Hãy gửi ngay cho khách qua Zalo/điện thoại, và nhắc khách đổi mật khẩu sau khi đăng nhập.</p>
 
       <button data-adm-close="reset" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">Đã gửi cho khách</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==========================================
+     MODAL: Xem tham số thô của một postback
+========================================== -->
+<div id="adm-pb-modal" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[120] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
+  <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="adm-pb-modal-content">
+    <button data-adm-close="pb" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+
+    <div class="p-8">
+      <div class="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-6">
+        <i data-lucide="plug-zap" class="w-6 h-6 text-slate-500"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-slate-800 mb-1">Tham số mạng gửi vào</h2>
+      <p class="text-sm text-slate-500 mb-6" id="adm-pb-info">—</p>
+
+      <div class="bg-slate-900 rounded-2xl p-4 max-h-[45vh] overflow-auto">
+        <pre id="adm-pb-raw" class="text-[11px] leading-relaxed text-emerald-200 font-mono whitespace-pre-wrap break-all">—</pre>
+      </div>
+
+      <p class="text-[11px] text-slate-400 mt-4 mb-6">Đây là dữ liệu thô, hệ thống đã lưu trước khi xử lý. Dùng để đối chiếu khi hoa hồng bị thiếu hoặc sai.</p>
+
+      <button data-adm-close="pb" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition">Đóng</button>
     </div>
   </div>
 </div>

@@ -12,6 +12,8 @@
  *  GET    /api/admin/withdrawals         Danh sách lệnh rút tiền (status, q, limit, offset)
  *  PATCH  /api/admin/withdrawals/:code   Đổi trạng thái / số tiền chi trả
  *  GET    /api/admin/referrals           Lịch sử nhập mã giới thiệu (limit, offset)
+ *  GET    /api/admin/postbacks           Nhật ký postback từ mạng affiliate (q, status, only, limit, offset)
+ *  POST   /api/admin/postbacks/:id/reapply  Xử lý lại một log postback
  */
 
 const express = require('express');
@@ -24,7 +26,8 @@ const {
   toAdminOrder,
   toAdminWithdrawal,
   toAdminReferral,
-  toAdminPasswordReset
+  toAdminPasswordReset,
+  toAdminPostback
 } = require('../lib/serialize');
 const { formatMoney } = require('../lib/format');
 const {
@@ -37,6 +40,7 @@ const {
 } = require('../lib/constants');
 const { requireAdmin } = require('../lib/auth');
 const { notify } = require('../lib/notify');
+const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
 
 const router = express.Router();
@@ -179,6 +183,17 @@ router.get('/overview', (req, res) => {
     )
     .get(RESET_PENDING);
 
+  // Nhật ký postback: đếm số lần nhận được và số lần CẦN NGƯỜI XEM LẠI
+  // (chưa khớp được đơn nào, hoặc chỉ khớp tạm) — hiện huy hiệu trên tab "Đối soát".
+  const postbacks = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN (order_code = '' AND action != 'Từ chối') OR action = 'Khớp tạm' THEN 1 ELSE 0 END), 0) AS unmatched,
+              COALESCE(SUM(CASE WHEN action != 'Từ chối' AND network_status = 'pending' THEN reward ELSE 0 END), 0) AS pending_amount
+       FROM postback_logs`
+    )
+    .get();
+
   const totalCommission = Number(orders.commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
 
@@ -209,6 +224,11 @@ router.get('/overview', (req, res) => {
     passwordResets: {
       total: Number(passwordResets.total) || 0,
       pending: Number(passwordResets.pending) || 0
+    },
+    postbacks: {
+      total: Number(postbacks.total) || 0,
+      unmatched: Number(postbacks.unmatched) || 0,
+      pendingAmount: Number(postbacks.pending_amount) || 0
     },
     money: {
       totalCommission,
@@ -665,6 +685,113 @@ router.post('/password-resets/:id/cancel', (req, res) => {
   ).run(CANCELLED, new Date().toISOString(), req.user.id, id);
 
   return res.json({ ok: true });
+});
+
+/* ==========================================
+   Đối soát postback (xem lib/postback.js)
+
+   Mạng affiliate gọi vào POST /api/postback/<tên-mạng> mỗi khi có chuyển đổi.
+   Mọi lần gọi đều được ghi nguyên tham số vào postback_logs trước khi xử lý,
+   nên ở đây xem được cả những lần KHÔNG khớp được đơn nào.
+========================================== */
+
+const NETWORK_STATUSES = ['pending', 'approved', 'rejected'];
+
+router.get('/postbacks', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const status = String(req.query.status || '').trim().toLowerCase();
+  const only = String(req.query.only || '').trim().toLowerCase(); // matched | unmatched | rejected
+  const { limit, offset } = readPaging(req.query);
+
+  if (status && status !== 'all' && !NETWORK_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Trạng thái chuyển đổi không hợp lệ.' });
+  }
+
+  const conditions = [];
+  const params = [];
+
+  if (status && status !== 'all') {
+    conditions.push('p.network_status = ?');
+    params.push(status);
+  }
+  if (only === 'matched') conditions.push("p.order_code != '' AND p.action NOT IN ('Từ chối', 'Khớp tạm')");
+  if (only === 'unmatched') {
+    conditions.push("((p.order_code = '' AND p.action != 'Từ chối') OR p.action = 'Khớp tạm')");
+  }
+  if (only === 'refused') conditions.push("p.action = 'Từ chối'");
+  if (only === 'fallback') conditions.push("p.action = 'Khớp tạm'");
+  if (q) {
+    const like = '%' + q + '%';
+    conditions.push(
+      '(p.transaction_id LIKE ? OR p.product_id LIKE ? OR p.order_code LIKE ? OR p.sub_id LIKE ? OR u.name LIKE ?)'
+    );
+    params.push(like, like, like, like, like);
+  }
+
+  const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  const joinSql = 'FROM postback_logs p LEFT JOIN users u ON u.id = p.user_id';
+
+  const total = Number(db.prepare(`SELECT COUNT(*) AS c ${joinSql} ${whereSql}`).get(...params).c) || 0;
+
+  const rows = db
+    .prepare(
+      `SELECT p.*, u.name AS user_name, u.username AS user_username
+       ${joinSql}
+       ${whereSql}
+       ORDER BY p.id DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset);
+
+  const stats = db
+    .prepare(
+      `SELECT
+         COUNT(*)                                                                  AS total,
+         SUM(CASE WHEN order_code != '' AND action NOT IN ('Từ chối', 'Khớp tạm') THEN 1 ELSE 0 END) AS matched,
+         SUM(CASE WHEN (order_code = '' AND action != 'Từ chối') OR action = 'Khớp tạm' THEN 1 ELSE 0 END) AS unmatched,
+         SUM(CASE WHEN action = 'Từ chối' THEN 1 ELSE 0 END)                        AS refused,
+         -- KHÔNG tính tiền của những lần gọi sai chìa khoá vào thống kê hoa hồng
+         COALESCE(SUM(CASE WHEN action != 'Từ chối' THEN reward ELSE 0 END), 0)     AS reward_total,
+         COALESCE(SUM(CASE WHEN action != 'Từ chối' AND network_status = 'approved' THEN reward ELSE 0 END), 0) AS approved_total,
+         COALESCE(SUM(CASE WHEN action != 'Từ chối' AND network_status = 'pending'  THEN reward ELSE 0 END), 0) AS pending_total
+       FROM postback_logs`
+    )
+    .get();
+
+  return res.json({
+    total,
+    limit,
+    offset,
+    stats: {
+      total: Number(stats.total) || 0,
+      matched: Number(stats.matched) || 0,
+      unmatched: Number(stats.unmatched) || 0,
+      refused: Number(stats.refused) || 0,
+      rewardTotal: Number(stats.reward_total) || 0,
+      approvedTotal: Number(stats.approved_total) || 0,
+      pendingTotal: Number(stats.pending_total) || 0
+    },
+    postbacks: rows.map(toAdminPostback)
+  });
+});
+
+/** Xử lý lại một log cũ — dùng khi postback về trước lúc người dùng tạo đơn. */
+router.post('/postbacks/:id/reapply', (req, res) => {
+  const id = Number(req.params.id);
+  const log = db.prepare('SELECT * FROM postback_logs WHERE id = ?').get(id);
+  if (!log) return res.status(404).json({ error: 'Không tìm thấy bản ghi postback.' });
+
+  const result = postback.reapply(id);
+  if (!result.ok) return res.status(400).json({ error: result.error || 'Không xử lý lại được.' });
+
+  const after = db
+    .prepare(
+      `SELECT p.*, u.name AS user_name, u.username AS user_username
+       FROM postback_logs p LEFT JOIN users u ON u.id = p.user_id WHERE p.id = ?`
+    )
+    .get(id);
+
+  return res.json({ ok: true, matched: Boolean(result.matched), postback: toAdminPostback(after) });
 });
 
 module.exports = router;

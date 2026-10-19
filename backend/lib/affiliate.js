@@ -59,10 +59,21 @@ function convertMock({ code, baseUrl, subId }) {
 
 /* ==========================================
    AccessTrade (mạng trung gian, phủ nhiều sàn)
+
+   Tài liệu chính thức (đã đối chiếu):
+     https://developers.accesstrade.vn/api-publisher-vietnamese/tao-tracking-link.md
+   Lưu ý quan trọng:
+   - `campaign_id` là số rất lớn (19 chữ số) -> phải giữ dạng CHUỖI,
+     chuyển sang Number sẽ mất chữ số cuối và tạo link sai campaign.
+   - Ta gắn 2 mã vào link:
+       sub1 = gzafl-u<id>  : biết hoa hồng thuộc về ai
+       sub2 = <mã đơn>     : biết hoa hồng thuộc đơn nào (để đối soát tự động)
+     AccessTrade trả lại tất cả sub khi gọi postback (không cần cấu hình thêm).
+   - Mọi tham số khác (utm_source...) để trống, tránh ghi đè dữ liệu của mạng.
 ========================================== */
-async function convertAccessTrade({ url, subId }) {
+async function convertAccessTrade({ url, subId, code }) {
   const apiKey = process.env.ACCESSTRADE_API_KEY;
-  const campaignId = process.env.ACCESSTRADE_CAMPAIGN_ID;
+  const campaignId = String(process.env.ACCESSTRADE_CAMPAIGN_ID || '').trim();
 
   if (!apiKey || !campaignId) {
     throw new AffiliateError(
@@ -70,34 +81,55 @@ async function convertAccessTrade({ url, subId }) {
     );
   }
 
-  // ⚠️ Endpoint và cấu trúc body phải đối chiếu lại tài liệu chính thức khi có
-  // tài khoản — xem docs/affiliate-integration.md mục 3.2.
-  const res = await fetch('https://api.accesstrade.vn/v1/create_link', {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      campaign_id: Number(campaignId),
-      urls: [url],
-      sub_ids: [subId]
-    })
-  });
+  const body = {
+    campaign_id: campaignId,
+    urls: [url],
+    url_enc: true,
+    sub1: subId
+  };
+  if (code) body.sub2 = code;
 
+  const shortDomain = String(process.env.ACCESSTRADE_SHORT_DOMAIN || '').trim();
+  if (shortDomain) body.short_domain = shortDomain;
+
+  let res;
+  try {
+    res = await fetch('https://api.accesstrade.vn/v1/product_link/create', {
+      method: 'POST',
+      headers: {
+        // Tài liệu ghi chữ "token" thường; AccessTrade không phân biệt hoa/thường ở đây
+        Authorization: `token ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      // Không để một API bên ngoài treo làm chậm việc tạo đơn của người dùng
+      signal: AbortSignal.timeout(10000)
+    });
+  } catch (err) {
+    throw new AffiliateError(`Không gọi được API AccessTrade: ${err.message}`);
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new AffiliateError('AccessTrade từ chối API token (kiểm tra ACCESSTRADE_API_KEY).');
+  }
   if (!res.ok) {
     throw new AffiliateError(`AccessTrade trả về lỗi HTTP ${res.status}.`);
   }
 
   const data = await res.json();
-  const item = data && data.data && Array.isArray(data.data.success_link) ? data.data.success_link[0] : null;
+  const list = data && data.data && Array.isArray(data.data.success_link) ? data.data.success_link : [];
+  const item = list[0] || null;
   const affiliateLink = item && (item.aff_link || item.short_link);
 
   if (!affiliateLink) {
-    throw new AffiliateError('AccessTrade không trả về link hoàn tiền.');
+    const failed =
+      data && data.data && Array.isArray(data.data.error_link) && data.data.error_link[0]
+        ? JSON.stringify(data.data.error_link[0])
+        : 'không rõ lý do';
+    throw new AffiliateError(`AccessTrade không tạo được link (${failed}).`);
   }
 
-  return { affiliateLink, provider: 'accesstrade', subId, isReal: true };
+  return { affiliateLink: String(affiliateLink), provider: 'accesstrade', subId, isReal: true };
 }
 
 /* ==========================================

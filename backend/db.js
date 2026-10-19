@@ -110,6 +110,30 @@ db.exec(`
     created_at   TEXT NOT NULL,
     UNIQUE (purpose, email)
   );
+
+  -- Nhật ký postback: mạng affiliate gọi vào mỗi khi có chuyển đổi.
+  -- Ghi NGUYÊN tham số nhận được TRƯỚC khi xử lý, để còn đối soát khi có khiếu nại.
+  -- payload_hash dùng để chống xử lý trùng: mạng gửi lại y hệt thì chỉ tăng dup_count.
+  CREATE TABLE IF NOT EXISTS postback_logs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider         TEXT NOT NULL DEFAULT '',
+    payload_hash     TEXT NOT NULL,
+    received_at      TEXT NOT NULL,
+    last_received_at TEXT NOT NULL,
+    dup_count        INTEGER NOT NULL DEFAULT 1,
+    ip               TEXT NOT NULL DEFAULT '',
+    query            TEXT NOT NULL DEFAULT '',
+    transaction_id   TEXT NOT NULL DEFAULT '',
+    product_id       TEXT NOT NULL DEFAULT '',
+    conversion_id    TEXT NOT NULL DEFAULT '',
+    reward           INTEGER NOT NULL DEFAULT 0,
+    network_status   TEXT NOT NULL DEFAULT '',
+    sub_id           TEXT NOT NULL DEFAULT '',
+    user_id          INTEGER,
+    order_code       TEXT NOT NULL DEFAULT '',
+    action           TEXT NOT NULL DEFAULT '',
+    note             TEXT NOT NULL DEFAULT ''
+  );
 `);
 
 /**
@@ -136,6 +160,14 @@ ensureColumn('orders', 'sub_id', 'TEXT');
 ensureColumn('orders', 'network_order_id', 'TEXT');
 ensureColumn('orders', 'click_count', 'INTEGER NOT NULL DEFAULT 0');
 
+// Hoa hồng do MẠNG AFFILIATE báo về (qua postback), tách riêng khỏi `commission`
+// là tiền thực sự ghi cho người dùng. Nhờ vậy tiền chưa được mạng duyệt
+// (đang chờ đối soát) không bị tính vào số dư khả dụng.
+ensureColumn('orders', 'network_commission', 'INTEGER NOT NULL DEFAULT 0');
+// Trạng thái chuyển đổi bên mạng: pending | approved | rejected
+ensureColumn('orders', 'network_status', 'TEXT');
+ensureColumn('orders', 'network_updated_at', 'TEXT');
+
 // Đổi / thu hồi mật khẩu sẽ tăng số này để vô hiệu hoá mọi phiên đăng nhập cũ
 ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 1');
 
@@ -153,6 +185,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_referrals_user     ON referrals (user_id);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
   CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_postback_hash ON postback_logs (payload_hash);
 `);
+
+// Chống 2 đơn cùng nhận một giao dịch của mạng. Dùng chỉ mục một phần (chỉ áp dụng
+// khi network_order_id khác NULL) nên các đơn cũ chưa có mã giao dịch không bị ảnh hưởng.
+// Bọc try/catch: nếu dữ liệu cũ đã có trùng thì KHÔNG được làm server không khởi động được.
+try {
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_network
+       ON orders (network_order_id) WHERE network_order_id IS NOT NULL`
+  );
+} catch (err) {
+  console.warn(`CẢNH BÁO: chưa tạo được chỉ mục chống trùng giao dịch (${err.message}).`);
+}
 
 module.exports = db;

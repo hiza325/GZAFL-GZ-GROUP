@@ -10,7 +10,7 @@
   'use strict';
 
   const PAGE_SIZE = 50;
-  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets'];
+  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets', 'postbacks'];
   const RESET_PENDING = 'Chờ xử lý';
 
   const state = {
@@ -20,6 +20,16 @@
     users: { items: [], total: 0, q: '', offset: 0, loading: false },
     referrals: { items: [], total: 0, offset: 0, loading: false },
     resets: { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false },
+    postbacks: {
+      items: [],
+      total: 0,
+      q: '',
+      status: '',
+      only: '',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
+    },
     editing: { order: null, withdrawal: null, user: null }
   };
 
@@ -131,6 +141,7 @@
     setText('adm-stat-paid-note', data.referrals.points + ' điểm giới thiệu');
 
     renderResetBadge(data.passwordResets ? data.passwordResets.pending : 0);
+    renderPostbackBadge(data.postbacks ? data.postbacks.unmatched : 0);
   }
 
   // Huy hiệu đỏ trên tab "Khôi phục mật khẩu" khi còn yêu cầu chờ xử lý
@@ -792,6 +803,170 @@
   }
 
   /* ==========================================
+     Đối soát postback (nhật ký mạng affiliate gọi vào)
+  ========================================== */
+
+  // Nhãn trạng thái chuyển đổi bên mạng
+  function networkBadge(status) {
+    const map = {
+      pending: ['Chờ duyệt', 'bg-amber-50 text-amber-600 border-amber-100'],
+      approved: ['Đã duyệt', 'bg-emerald-50 text-emerald-600 border-emerald-100'],
+      rejected: ['Đã huỷ', 'bg-slate-100 text-slate-500 border-slate-200']
+    };
+    const item = map[status] || ['Không rõ', 'bg-slate-100 text-slate-500 border-slate-200'];
+    return `<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${item[1]}">${escapeHtml(item[0])}</span>`;
+  }
+
+  async function loadPostbacks({ reset = false } = {}) {
+    const s = state.postbacks;
+    if (s.loading) return;
+    if (reset) {
+      s.offset = 0;
+      s.items = [];
+    }
+    s.loading = true;
+
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(s.offset) });
+    if (s.q) params.set('q', s.q);
+    if (s.status) params.set('status', s.status);
+    if (s.only) params.set('only', s.only);
+
+    try {
+      const data = await api('/admin/postbacks?' + params.toString());
+      s.total = data.total || 0;
+      s.stats = data.stats || s.stats;
+      s.items = reset ? data.postbacks || [] : s.items.concat(data.postbacks || []);
+      s.offset = s.items.length;
+      renderPostbacks();
+      // Còn log chưa khớp đơn thì nhắc trên tab
+      renderPostbackBadge(s.stats.unmatched);
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      s.loading = false;
+    }
+  }
+
+  function renderPostbackBadge(unmatched) {
+    const badge = document.getElementById('adm-pb-badge');
+    if (!badge) return;
+    const count = Number(unmatched) || 0;
+    badge.innerText = String(count);
+    badge.classList.toggle('hidden', count === 0);
+    badge.classList.toggle('flex', count > 0);
+  }
+
+  function renderPostbacks() {
+    const tbody = document.getElementById('adm-pb-body');
+    if (!tbody) return;
+    const { items, total, stats } = state.postbacks;
+
+    setText('adm-pb-stat-total', stats.total);
+    setText('adm-pb-stat-matched', stats.matched);
+    setText('adm-pb-stat-unmatched', stats.unmatched);
+    setText('adm-pb-stat-reward', formatCurrency(stats.rewardTotal));
+    setText('adm-pb-stat-reward-note', 'Chưa duyệt ' + formatCurrency(stats.pendingTotal));
+
+    tbody.innerHTML = items
+      .map((p) => {
+        const refused = p.action === 'Từ chối';
+        const when =
+          escapeHtml(p.date || '') +
+          (p.dupCount > 1
+            ? `<div class="text-[10px] text-amber-600 font-semibold">nhận lại ${p.dupCount - 1} lần</div>`
+            : '');
+
+        const transaction = p.transactionId
+          ? `<div class="font-semibold text-slate-700 text-xs">${escapeHtml(p.transactionId)}</div>`
+          : '<div class="text-xs text-slate-300">—</div>';
+        const product = p.productId
+          ? `<div class="text-[11px] text-slate-400">SP ${escapeHtml(p.productId)}</div>`
+          : '';
+
+        const user = p.user
+          ? `<div class="text-xs font-semibold text-slate-600">${escapeHtml(p.user.name)}</div>
+             <div class="text-[11px] text-slate-400">${escapeHtml(p.subId || '')}</div>`
+          : `<div class="text-[11px] text-slate-400">${escapeHtml(p.subId || '—')}</div>`;
+
+        const result = refused
+          ? `<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border bg-red-50 text-red-600 border-red-100">Bị từ chối</span>
+             <div class="text-[11px] text-slate-400 mt-1">${escapeHtml(p.note || '')}</div>`
+          : `<div class="text-xs font-semibold flex items-center gap-1.5 ${p.tentative ? 'text-amber-600' : 'text-slate-600'}">
+               ${p.tentative ? '<i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>' : ''}${escapeHtml(p.action || '')}
+             </div>
+             ${p.note ? `<div class="text-[11px] text-slate-400 mt-0.5 max-w-[240px]">${escapeHtml(p.note)}</div>` : ''}`;
+
+        const actions = [
+          actionButton('data-adm-pb-raw', p.id, 'Thô', 'text-slate-600 bg-slate-100 hover:bg-slate-200'),
+          !refused && !p.matched ? actionButton('data-adm-pb-reapply', p.id, 'Xử lý lại') : ''
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return `
+      <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition">
+        <td class="px-3 py-4 text-xs text-slate-500 whitespace-nowrap">${when}</td>
+        <td class="px-3 py-4">${transaction}${product}</td>
+        <td class="px-3 py-4 text-xs font-bold text-slate-700">${escapeHtml(p.orderCode || '—')}</td>
+        <td class="px-3 py-4">${user}</td>
+        <td class="px-3 py-4 font-bold text-emerald-600 whitespace-nowrap">${formatCurrency(p.reward)}</td>
+        <td class="px-3 py-4">${networkBadge(p.networkStatus)}</td>
+        <td class="px-3 py-4">${result}</td>
+        <td class="px-3 py-4 text-right whitespace-nowrap">${actions}</td>
+      </tr>`;
+      })
+      .join('');
+
+    toggleEmpty('adm-pb-empty', items.length === 0);
+    setText('adm-pb-count', `${total} lần nhận`);
+    toggleMore('adm-pb-more', items.length < total);
+  }
+
+  /** Mở hộp xem tham số thô mạng gửi vào (đối chiếu khi hoa hồng sai). */
+  function openPostbackRaw(id) {
+    const item = state.postbacks.items.find((p) => String(p.id) === String(id));
+    if (!item) return;
+
+    let pretty = item.query || '';
+    try {
+      pretty = JSON.stringify(JSON.parse(pretty), null, 2);
+    } catch (err) {
+      // Tham số thô không phải JSON hợp lệ thì hiện nguyên văn
+    }
+
+    setText(
+      'adm-pb-info',
+      `#${item.id} · ${item.date} · ${item.provider || 'không rõ mạng'} · IP ${item.ip || '—'}`
+    );
+    const pre = document.getElementById('adm-pb-raw');
+    if (pre) pre.innerText = pretty || '(không có tham số)';
+    openModal('adm-pb-modal');
+  }
+
+  /** Cho hệ thống khớp lại một log cũ (postback về trước khi đơn được tạo). */
+  async function reapplyPostback(id, button) {
+    setBusy(button, true);
+    try {
+      const data = await api(`/admin/postbacks/${encodeURIComponent(id)}/reapply`, { method: 'POST' });
+      showToast(
+        data.matched
+          ? `Đã khớp lại với đơn ${data.postback.orderCode}.`
+          : 'Vẫn chưa khớp được đơn nào. Kiểm tra mã đơn/mã người dùng trong tham số thô.',
+        data.matched ? 'success' : 'error'
+      );
+      await loadPostbacks({ reset: true });
+      // Đơn hàng vừa đổi trạng thái -> tải lại cả tab đơn hàng và số liệu tổng quan
+      state.orders = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
+      loadOrders({ reset: true });
+      loadOverview();
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  /* ==========================================
      Tab
   ========================================== */
 
@@ -819,6 +994,7 @@
       else if (tab === 'users' && state.users.items.length === 0) loadUsers({ reset: true });
       else if (tab === 'referrals' && state.referrals.items.length === 0) loadReferrals({ reset: true });
       else if (tab === 'password-resets' && state.resets.items.length === 0) loadResets({ reset: true });
+      else if (tab === 'postbacks' && state.postbacks.items.length === 0) loadPostbacks({ reset: true });
     }
   }
 
@@ -881,6 +1057,20 @@
         return;
       }
 
+      const rawBtn = event.target.closest('[data-adm-pb-raw]');
+      if (rawBtn) {
+        event.preventDefault();
+        openPostbackRaw(rawBtn.dataset.admPbRaw);
+        return;
+      }
+
+      const reapplyBtn = event.target.closest('[data-adm-pb-reapply]');
+      if (reapplyBtn) {
+        event.preventDefault();
+        reapplyPostback(reapplyBtn.dataset.admPbReapply, reapplyBtn);
+        return;
+      }
+
       if (event.target.closest('#adm-reload')) {
         event.preventDefault();
         return reloadAll();
@@ -890,6 +1080,7 @@
       if (event.target.closest('#adm-users-more')) return loadUsers();
       if (event.target.closest('#adm-ref-more')) return loadReferrals();
       if (event.target.closest('#adm-reset-more')) return loadResets();
+      if (event.target.closest('#adm-pb-more')) return loadPostbacks();
       if (event.target.closest('#adm-order-save')) return saveOrder();
       if (event.target.closest('#adm-wd-save')) return saveWithdrawal();
       if (event.target.closest('#adm-user-save')) return saveUser();
@@ -903,7 +1094,8 @@
       const targets = {
         'adm-orders-search': ['orders', 'q'],
         'adm-wd-search': ['withdrawals', 'q'],
-        'adm-users-search': ['users', 'q']
+        'adm-users-search': ['users', 'q'],
+        'adm-pb-search': ['postbacks', 'q']
       };
       const target = targets[id];
       if (!target) return;
@@ -915,6 +1107,7 @@
       searchTimer = setTimeout(() => {
         if (bucket === 'orders') loadOrders({ reset: true });
         else if (bucket === 'withdrawals') loadWithdrawals({ reset: true });
+        else if (bucket === 'postbacks') loadPostbacks({ reset: true });
         else loadUsers({ reset: true });
       }, 350);
     });
@@ -932,13 +1125,19 @@
         state.resets.status = event.target.value;
         resetArmed = null;
         loadResets({ reset: true });
+      } else if (id === 'adm-pb-status') {
+        state.postbacks.status = event.target.value;
+        loadPostbacks({ reset: true });
+      } else if (id === 'adm-pb-only') {
+        state.postbacks.only = event.target.value;
+        loadPostbacks({ reset: true });
       }
     });
 
     // Đóng modal bằng Esc
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
-      ['adm-order-modal', 'adm-wd-modal', 'adm-user-modal', 'adm-reset-modal'].forEach((id) => {
+      ['adm-order-modal', 'adm-wd-modal', 'adm-user-modal', 'adm-reset-modal', 'adm-pb-modal'].forEach((id) => {
         const modal = document.getElementById(id);
         if (modal && !modal.classList.contains('hidden')) closeModal(id);
       });
@@ -951,6 +1150,16 @@
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
     state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
+    state.postbacks = {
+      items: [],
+      total: 0,
+      q: '',
+      status: '',
+      only: '',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
+    };
     resetArmed = null;
 
     const ordersSearch = document.getElementById('adm-orders-search');
@@ -959,12 +1168,18 @@
     const wdStatus = document.getElementById('adm-wd-status');
     const usersSearch = document.getElementById('adm-users-search');
     const resetStatus = document.getElementById('adm-reset-status');
+    const pbSearch = document.getElementById('adm-pb-search');
+    const pbStatus = document.getElementById('adm-pb-status');
+    const pbOnly = document.getElementById('adm-pb-only');
     if (ordersSearch) ordersSearch.value = '';
     if (ordersStatus) ordersStatus.value = '';
     if (wdSearch) wdSearch.value = '';
     if (wdStatus) wdStatus.value = '';
     if (usersSearch) usersSearch.value = '';
     if (resetStatus) resetStatus.value = RESET_PENDING;
+    if (pbSearch) pbSearch.value = '';
+    if (pbStatus) pbStatus.value = '';
+    if (pbOnly) pbOnly.value = '';
 
     await Promise.all([
       loadOverview(),
@@ -972,7 +1187,8 @@
       loadWithdrawals({ reset: true }),
       loadUsers({ reset: true }),
       loadReferrals({ reset: true }),
-      loadResets({ reset: true })
+      loadResets({ reset: true }),
+      loadPostbacks({ reset: true })
     ]);
   }
 
@@ -989,6 +1205,16 @@
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
     state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
+    state.postbacks = {
+      items: [],
+      total: 0,
+      q: '',
+      status: '',
+      only: '',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
+    };
     state.editing = { order: null, withdrawal: null, user: null };
     resetArmed = null;
 

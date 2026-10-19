@@ -1368,7 +1368,7 @@ async function updateDashboardData() {
   const wallet = await fetchWallet();
   const user = currentUser;
   const total = orders.length;
-  const pending = orders.filter(o => o.status === 'Đang xử lý').length;
+  const pending = orders.filter(o => o.status === 'Đang xử lý' || o.status === 'Chờ đối soát').length;
   const completed = orders.filter(o => o.status === 'Hoàn thành').length;
   // Đơn đã huỷ không được tính vào hoa hồng
   const commission = wallet
@@ -1532,6 +1532,8 @@ async function updateOrdersData() {
     let htmlList = `<div class="space-y-4">`;
     orders.forEach(order => {
       const hasTrackedLink = !!(order.affiliateLink && order.affiliateLink !== order.link);
+      // Sàn đã ghi nhận chuyển đổi nhưng CHƯA duyệt: tiền chưa vào số dư (xem lib/postback.js)
+      const waitingReconcile = (Number(order.networkCommission) || 0) > 0 && (Number(order.commission) || 0) === 0;
       htmlList += `
         <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -1554,6 +1556,11 @@ async function updateOrdersData() {
               <span class="px-3 py-1 border rounded-full text-xs font-bold ${statusBadgeClass(order.status)}">${escapeHtml(order.status)}</span>
             </div>
           </div>
+          ${waitingReconcile ? `
+          <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-600 ${hasTrackedLink ? 'pt-1' : 'pt-4 border-t border-slate-50'}">
+            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+            Sàn đã ghi nhận ${formatCurrency(order.networkCommission)} nhưng chưa duyệt. Tiền sẽ vào số dư khi được duyệt.
+          </div>` : ''}
           ${hasTrackedLink ? `
           <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t border-slate-50">
             <span class="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 uppercase tracking-wider flex-shrink-0">

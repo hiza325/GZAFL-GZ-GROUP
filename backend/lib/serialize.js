@@ -41,6 +41,9 @@ function toOrder(row) {
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
+    // Hoa hồng mạng affiliate báo về nhưng có thể CHƯA duyệt (xem lib/postback.js)
+    networkCommission: Number(row.network_commission) || 0,
+    networkStatus: row.network_status || null,
     date: formatDate(row.created_at),
     createdAt: row.created_at
   };
@@ -119,8 +122,47 @@ function toAdminOrder(row) {
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
+    networkOrderId: row.network_order_id || null,
+    networkCommission: Number(row.network_commission) || 0,
+    networkStatus: row.network_status || null,
     createdAt: row.created_at,
     date: formatDateTime(row.created_at)
+  };
+}
+
+/**
+ * Nhật ký postback cho trang quản trị (xem lib/postback.js).
+ * `query` là tham số thô mạng gửi vào — giữ nguyên để đối soát khi có khiếu nại.
+ */
+function toAdminPostback(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    provider: row.provider || '',
+    receivedAt: row.received_at,
+    date: formatDateTime(row.received_at),
+    lastReceivedAt: row.last_received_at,
+    lastDate: formatDateTime(row.last_received_at),
+    dupCount: Number(row.dup_count) || 1,
+    ip: row.ip || '',
+    transactionId: row.transaction_id || '',
+    productId: row.product_id || '',
+    conversionId: row.conversion_id || '',
+    reward: Number(row.reward) || 0,
+    networkStatus: row.network_status || '',
+    subId: row.sub_id || '',
+    userId: row.user_id || null,
+    user: row.user_name
+      ? { id: row.user_id, name: row.user_name, username: row.user_username || '' }
+      : null,
+    orderCode: row.order_code || '',
+    action: row.action || '',
+    note: row.note || '',
+    // matched = khớp CHẮC CHẮN (theo mã giao dịch hoặc mã đơn);
+    // tentative = chỉ khớp tạm theo đơn mới nhất của khách, cần người kiểm tra lại
+    matched: Boolean(row.order_code && row.action !== 'Từ chối' && row.action !== 'Khớp tạm'),
+    tentative: row.action === 'Khớp tạm',
+    query: row.query || ''
   };
 }
 
@@ -201,5 +243,6 @@ module.exports = {
   toAdminOrder,
   toAdminWithdrawal,
   toAdminReferral,
-  toAdminPasswordReset
+  toAdminPasswordReset,
+  toAdminPostback
 };

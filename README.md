@@ -76,6 +76,11 @@ npm run watch:css
 | `WITHDRAWAL_MIN` | `1000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
+| `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
+| `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Token và campaign của AccessTrade (`campaign_id` giữ **dạng chuỗi**) |
+| `ACCESSTRADE_SHORT_DOMAIN` | – | Tuỳ chọn: domain rút gọn riêng đã đăng ký với AccessTrade |
+| `POSTBACK_SECRET` | – | Chìa khoá xác thực báo cáo chuyển đổi (postback). **Bỏ trống thì mọi postback bị từ chối** (xem mục [Nhận hoa hồng về](#nhận-hoa-hồng-về--đối-soát-postback)) |
+| `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB` |
 | `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email** |
 | `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Máy chủ gửi thư dùng cho mã xác thực. Bỏ trống `SMTP_SECURE` thì tự suy ra (`true` khi cổng `465`) |
@@ -144,6 +149,7 @@ backend/
     rateLimit.js           # Giới hạn số yêu cầu cho API đăng nhập
     banks.js               # Danh sách ngân hàng / ví điện tử cho dropdown rút tiền
     affiliate.js           # Chuyển link sản phẩm -> link hoàn tiền (mock / accesstrade / shopee)
+    postback.js            # Nhận & xử lý báo cáo chuyển đổi từ mạng affiliate (chống trùng, cộng dồn theo đơn)
     mailer.js              # Gửi email qua SMTP (in ra console khi chưa cấu hình ở môi trường dev)
     otp.js                 # Sinh / kiểm tra mã xác thực email (OTP) cho đăng ký và quên mật khẩu
     notify.js              # Ghi thông báo cho người dùng
@@ -307,6 +313,7 @@ Ngoài `/api`, server còn có một đường dẫn công khai:
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/r/:code` | Link hoàn tiền rút gọn — đếm lượt bấm rồi chuyển hướng (302) sang link đích |
+| GET/POST | `/api/postback/:provider` | **Điểm nhận báo cáo chuyển đổi** từ mạng affiliate (AccessTrade gọi GET). Không dùng cookie phiên; xác thực bằng `POSTBACK_SECRET`. Trả `403` khi sai chìa khoá, `503` khi chưa cấu hình, `200` khi đã ghi nhận (kể cả lần gọi trùng) |
 
 ### API quản trị (`/api/admin`)
 
@@ -323,14 +330,18 @@ Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. N
 | GET | `/api/admin/withdrawals` | Danh sách lệnh rút tiền (`status`, `q`, `limit`, `offset`) |
 | PATCH | `/api/admin/withdrawals/:code` | Đổi `{ status, amount }` |
 | GET | `/api/admin/referrals` | Lịch sử nhập mã giới thiệu (`limit`, `offset`) |
+| GET | `/api/admin/postbacks` | **Nhật ký đối soát**: các lần mạng gọi postback (`q`, `status` = `pending`/`approved`/`rejected`, `only` = `matched`/`unmatched`/`refused`, `limit`, `offset`) + thống kê tổng |
+| POST | `/api/admin/postbacks/:id/reapply` | Xử lý lại một log cũ (dùng khi postback về trước lúc đơn được tạo) |
 | GET | `/api/admin/password-resets` | Hàng đợi yêu cầu khôi phục mật khẩu (`status`, `limit`, `offset`) |
 | POST | `/api/admin/password-resets/:id/reset` | Đặt lại mật khẩu, trả về `tempPassword` **đúng một lần** (không lưu vào DB) |
 | POST | `/api/admin/password-resets/:id/cancel` | Từ chối yêu cầu khôi phục |
 
 Trạng thái hợp lệ:
 
-- Đơn hàng: `Đang xử lý` → `Hoàn thành` → `Đã thanh toán`, hoặc `Đã huỷ`.
+- Đơn hàng: `Đang xử lý` → `Chờ đối soát` → `Hoàn thành` → `Đã thanh toán`, hoặc `Đã huỷ`.
 - Lệnh rút tiền: `Đang xử lý` → `Đã thanh toán`, hoặc `Đã huỷ`.
+
+> `Chờ đối soát` = mạng affiliate **đã ghi nhận** chuyển đổi nhưng chưa duyệt. Tiền của đơn nằm ở cột `network_commission` và **chưa được tính vào số dư** của người dùng — chỉ khi mạng báo đã duyệt mới ghi vào `commission`.
 
 **Cách tiền được tính:** số dư ví của người dùng = tổng `commission` của các đơn **không bị huỷ** − tổng `amount` của các lệnh rút **không bị huỷ**. Vì vậy đánh dấu `Đã huỷ` sẽ loại đơn/lệnh đó khỏi phép tính, còn khi chuyển một lệnh rút sang `Đã thanh toán` thì phải nhập số tiền thực trả (không được vượt số dư khả dụng).
 
@@ -355,24 +366,53 @@ Chọn nhà cung cấp bằng biến `AFFILIATE_PROVIDER`:
 | Giá trị | Trạng thái | Ghi chú |
 |---|---|---|
 | `mock` (mặc định) | ✅ chạy được ngay | Trả về link nội bộ `http://localhost:3000/r/<mã đơn>`. Bấm vào sẽ được đếm lượt và chuyển hướng sang link gốc. **Không tạo ra hoa hồng thật** — hoa hồng vẫn do quản trị viên chốt tay. |
-| `accesstrade` | ⚠️ cần tài khoản | Cần `ACCESSTRADE_API_KEY` + `ACCESSTRADE_CAMPAIGN_ID`. |
+| `accesstrade` | ✅ đã cài đặt, chờ tài khoản để test | Cần `ACCESSTRADE_API_KEY` + `ACCESSTRADE_CAMPAIGN_ID`. Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
 | `shopee` | ⛔ chưa cài đặt | Cần `SHOPEE_AFFILIATE_APP_ID` + `SHOPEE_AFFILIATE_SECRET`, và phải đối chiếu tài liệu chính thức về cách ký request trước khi dùng. |
 
 > ⚠️ **Không thể tạo hoa hồng bằng cách tự thêm tham số vào link.** Muốn có ghi nhận thật, bắt buộc phải có tài khoản affiliate đã được duyệt rồi gọi API do họ cấp. Xem phân tích đầy đủ ở **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
 
 Nếu gọi nhà cung cấp thất bại, đơn **vẫn được tạo** với link gốc (người dùng không bị chặn) — chỉ là chưa ghi nhận được hoa hồng.
 
+### Nhận hoa hồng về — đối soát postback
+
+Khi mạng affiliate báo có người mua hàng, họ gọi vào:
+
+```
+GET /api/postback/accesstrade    ← khai URL này trong dashboard của mạng
+```
+
+Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js`):
+
+1. **Xác thực** `POSTBACK_SECRET` (băm SHA-256 rồi so sánh bằng `timingSafeEqual`). Sai → `403` và **vẫn ghi vào nhật ký**. Chưa cấu hình secret → `503` (không nhận dữ liệu không rõ nguồn).
+2. **Ghi nguyên tham số** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại.
+3. **Chống trùng** theo `payload_hash`: mạng gửi lại y hệt thì chỉ tăng số lần nhận, **không cộng tiền lần hai**.
+4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.
+5. **Cộng dồn theo đơn** rồi cập nhật trạng thái:
+   - mạng báo **chưa duyệt** → đơn chuyển **"Chờ đối soát"**, tiền nằm ở `network_commission`, **chưa vào số dư**;
+   - mạng báo **đã duyệt** → đơn **"Hoàn thành"**, cộng `commission = tiền đã duyệt × CASHBACK_RATE`;
+   - mạng báo **huỷ** → đơn **"Đã huỷ"**, hoa hồng về 0.
+6. **Luôn trả `200` nhanh** (mạng chỉ gửi lại tối đa 3 lần) và **không bao giờ tự đổi trạng thái của đơn đã ở "Đã thanh toán"** — tránh việc đã chi tiền cho khách rồi mà mạng báo huỷ.
+
+> AccessTrade gửi **mỗi sản phẩm một lần gọi** (đơn 3 món = 3 postback cùng mã giao dịch), nên tổng hoa hồng được cộng dồn theo đơn.
+
+Tên tham số do người dùng tự đặt trong dashboard của mạng nên hệ thống **dò tự động** (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và còn **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` / `GZ…`. Khác hẳn thì ép lại bằng `POSTBACK_PARAM_*` trong `.env`.
+
+Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp được đơn) và bấm **Xử lý lại** ở **trang quản trị → tab Đối soát**.
+
+Điều kiện tiên quyết, đừng bỏ qua: **hỏi mạng trung gian xem điều khoản của họ có cho phép mô hình hoàn tiền lại cho người mua hay không** — nhiều chương trình affiliate cấm và có thể khoá tài khoản, thu hồi tiền đã trả.
+
 ### Bảng dữ liệu
 
 | Bảng | Nội dung |
 |---|---|
 | `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, thông tin nhận tiền |
-| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng, `click_count` |
+| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng, `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
 | `password_resets` | Yêu cầu khôi phục mật khẩu gửi cho quản trị viên (đường dự phòng): người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
 | `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email` / `login`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
+| `postback_logs` | **Nhật ký báo cáo chuyển đổi** từ mạng affiliate: lưu **nguyên tham số thô** trước khi xử lý, mã giao dịch/sản phẩm, hoa hồng mạng báo, trạng thái bên mạng, `sub_id`, người dùng/đơn đã khớp, kết quả xử lý, số lần mạng gửi lại (`dup_count`), IP. Có khoá duy nhất trên `payload_hash` để chống xử lý trùng |
 
 `db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
 
@@ -402,7 +442,7 @@ Nếu khách **chưa có email trong tài khoản**, hoặc email sai, hoặc h�
 
 `quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
 
-Trang quản trị gồm 5 tab:
+Trang quản trị gồm 6 tab:
 
 | Tab | Việc làm được |
 |---|---|
@@ -411,6 +451,7 @@ Trang quản trị gồm 5 tab:
 | **Người dùng** | Xem điểm, số đơn, hoa hồng, đã rút, số dư; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
 | **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
+| **Đối soát** | Nhật ký mọi lần mạng affiliate báo chuyển đổi: lọc theo trạng thái mạng (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) và theo kết quả (`đã khớp đơn` / `chưa hoặc chỉ khớp tạm` / `bị từ chối`); xem **tham số thô** mạng gửi (nút **Thô**) và bấm **Xử lý lại** cho log về trước lúc đơn được tạo. Huy hiệu số trên tab là số lần postback **cần người xem lại** (chưa khớp được đơn, hoặc chỉ khớp tạm). Tiền của các lần gọi sai chìa khoá **không** được tính vào thống kê hoa hồng |
 
 ### Cấp lại mật khẩu cho khách
 
