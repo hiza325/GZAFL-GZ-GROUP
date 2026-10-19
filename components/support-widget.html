@@ -1,0 +1,72 @@
+<!-- ==========================================================
+     TRỢ LÝ HỖ TRỢ (chatbot) — nút tròn nổi ở góc phải-dưới, hiện trên mọi trang
+     (cả trang chủ cho khách chưa đăng nhập). Nội dung chat do support.js xử lý,
+     dữ liệu lấy từ POST /api/support/chat (xem backend/routes/support.js).
+
+     Không đổi id/thứ tự các phần tử ở đây nếu không sửa cả support.js.
+=========================================================== -->
+<div id="support-widget" class="fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-3">
+
+  <!-- Khung chat -->
+  <section id="support-panel" role="dialog" aria-labelledby="support-title" aria-modal="false"
+    class="hidden w-[26rem] max-w-[calc(100vw_-_2.5rem)] h-[34rem] max-h-[calc(100vh_-_7rem)] bg-white rounded-3xl border border-slate-100 shadow-2xl shadow-slate-900/20 overflow-hidden flex-col origin-bottom-right transition-all duration-200 opacity-0 translate-y-2 scale-95">
+
+    <!-- Đầu khung chat -->
+    <header class="deco-grid bg-[#18253f] text-white px-4 py-3.5 flex items-center gap-3 flex-shrink-0">
+      <div class="relative z-10 w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0">
+        <i data-lucide="sparkles" class="w-5 h-5"></i>
+      </div>
+      <div class="relative z-10 min-w-0 flex-1">
+        <h2 id="support-title" class="font-bold text-sm flex items-center gap-2">
+          Trợ lý GZ AFL
+          <span id="support-badge" class="hidden text-[10px] font-bold uppercase tracking-wider bg-white/15 px-2 py-0.5 rounded-full">AI</span>
+        </h2>
+        <p class="text-[11px] text-slate-300 flex items-center gap-1.5 mt-0.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0"></span>
+          <span id="support-subtitle" class="truncate">Đang hoạt động</span>
+        </p>
+      </div>
+      <button id="support-clear" type="button" aria-label="Xoá hội thoại" title="Xoá hội thoại"
+        class="relative z-10 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white transition flex-shrink-0">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>
+      </button>
+      <button id="support-close" type="button" aria-label="Đóng khung chat"
+        class="relative z-10 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-slate-300 hover:text-white transition flex-shrink-0">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </header>
+
+    <!-- Nội dung hội thoại (support.js đổ tin nhắn vào đây) -->
+    <div id="support-messages" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 bg-slate-50" aria-live="polite"></div>
+
+    <!-- Gợi ý câu hỏi (cuộn ngang, xem support.js) -->
+    <div id="support-suggestions" class="support-suggest-scroll flex-shrink-0 px-4 pt-3 pb-2 flex gap-2 overflow-x-auto border-t border-slate-100 bg-white"></div>
+
+    <!-- Ô nhập + nút liên hệ -->
+    <div class="flex-shrink-0 px-4 pt-3 pb-4 bg-white">
+      <div class="flex items-end gap-2">
+        <textarea id="support-input" rows="1" maxlength="1200" placeholder="Nhập câu hỏi của bạn..."
+          class="flex-1 resize-none bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 px-4 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-300 focus:bg-white transition-all max-h-28"></textarea>
+        <button id="support-send" type="button" aria-label="Gửi câu hỏi"
+          class="btn-primary w-11 h-11 rounded-2xl flex items-center justify-center text-white flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed">
+          <i data-lucide="send" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="flex items-center justify-between gap-2 mt-2.5">
+        <button id="support-contact-btn" type="button"
+          class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex items-center gap-1.5">
+          <i data-lucide="headphones" class="w-3.5 h-3.5"></i> Liên hệ hỗ trợ
+        </button>
+        <span class="text-[10px] text-slate-400">Trợ lý có thể trả lời chưa chính xác</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Nút tròn mở khung chat -->
+  <button id="support-fab" type="button" aria-label="Mở trợ lý hỗ trợ" aria-expanded="false"
+    class="relative w-14 h-14 rounded-full bg-[#18253f] text-white shadow-xl shadow-slate-900/30 hover:bg-[#233559] flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95">
+    <i data-lucide="message-circle" class="w-6 h-6"></i>
+    <span id="support-fab-dot"
+      class="hidden absolute -top-0.5 -right-0.5 min-w-[20px] h-5 px-1 rounded-full bg-[#f04d4d] text-white text-[11px] font-bold flex items-center justify-center border-2 border-white">1</span>
+  </button>
+</div>

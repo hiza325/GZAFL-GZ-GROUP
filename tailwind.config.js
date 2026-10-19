@@ -14,6 +14,7 @@ module.exports = {
   content: [
     './index.html',
     './script.js',
+    './support.js',
     './admin.js',
     './components/**/*.html'
   ],

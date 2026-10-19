@@ -31,6 +31,10 @@
   <!-- Container cho Giao diện Chờ / Landing Page (Hiện khi chưa đăng nhập) -->
   <div id="landing-root" class="w-full min-h-screen"></div>
 
+  <!-- Trợ lý hỗ trợ (chatbot) — dùng chung cho cả trang chủ và khu vực đã đăng nhập.
+       Nội dung nạp từ components/support-widget.html, xử lý bởi support.js -->
+  <div id="support-container"></div>
+
   <!-- ==============================================
        MODAL YÊU CẦU RÚT TIỀN (DÙNG CHUNG)
   =============================================== -->
@@ -135,5 +139,6 @@
 
   <!-- Script xử lý nối các file -->
   <script src="script.js"></script>
+  <script src="support.js"></script>
 </body>
 </html>

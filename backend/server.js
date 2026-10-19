@@ -127,10 +127,17 @@ app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISO
 app.get('/api/config', (req, res) => {
   const otp = require('./lib/otp');
   const { BANK_GROUPS } = require('./lib/banks');
+  const ai = require('./lib/ai');
+  const knowledge = require('./lib/supportKnowledge');
   res.json({
     support: {
       email: process.env.SUPPORT_EMAIL || '',
-      zalo: process.env.SUPPORT_ZALO || ''
+      zalo: process.env.SUPPORT_ZALO || '',
+      // Trợ lý hỗ trợ: có dùng AI hay chỉ trả lời theo kịch bản (xem lib/ai.js)
+      ai: ai.isConfigured(),
+      // Câu hỏi gợi ý + lời chào hiện trong khung chat (lib/supportKnowledge.js)
+      suggestions: knowledge.SUGGESTIONS,
+      welcome: knowledge.WELCOME
     },
     // Danh sách ngân hàng/ví cho dropdown ở hộp thoại rút tiền (xem lib/banks.js)
     banks: BANK_GROUPS,
@@ -152,6 +159,7 @@ app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/referral', require('./routes/referral'));
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/support', require('./routes/support'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
@@ -207,6 +215,17 @@ server.listen(PORT, () => {
     console.log('  Gửi thư               : CHƯA cấu hình SMTP - thư được in ra console (chỉ để thử nghiệm)');
   } else {
     console.log('  Gửi thư               : CHƯA cấu hình SMTP - KHÔNG gửi được email nào');
+  }
+
+  const ai = require('./lib/ai').describe();
+  if (ai.configured) {
+    console.log(`  Trợ lý hỗ trợ (AI)    : BẬT - ${ai.provider} / ${ai.model}`);
+    console.log(`                          API: ${ai.baseUrl}`);
+  } else if (ai.hasKey && !ai.enabled) {
+    console.log('  Trợ lý hỗ trợ (AI)    : tắt (AI_ENABLED=off) - trả lời theo kịch bản có sẵn');
+  } else {
+    console.log('  Trợ lý hỗ trợ (AI)    : CHƯA cấu hình AI_API_KEY - trả lời theo kịch bản có sẵn');
+    console.log('                          Muốn dùng AI: điền AI_* trong backend/.env rồi khởi động lại.');
   }
 
   if (!otp.otpEnabled() && otp.otpMode() === 'auto' && process.env.NODE_ENV === 'production') {

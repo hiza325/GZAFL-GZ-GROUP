@@ -188,3 +188,13 @@ html {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f1f1f1;
 }
+
+/* 10. Khung trợ lý hỗ trợ: dải gợi ý câu hỏi cuộn ngang nhưng ẩn thanh cuộn cho gọn */
+.support-suggest-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.support-suggest-scroll::-webkit-scrollbar {
+  display: none;
+}

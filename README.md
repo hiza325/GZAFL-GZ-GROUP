@@ -82,6 +82,10 @@ npm run watch:css
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail thì dùng *Mật khẩu ứng dụng* 16 ký tự) |
 | `MAIL_FROM`, `MAIL_FROM_NAME` | theo `SMTP_USER`, tên `GZ AFL` | Địa chỉ và tên người gửi hiện trên thư |
 | `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp (bỏ trống thì dùng giá trị mặc định trong `components/guide.html`) |
+| `AI_API_KEY` | – | Khoá API cho **trợ lý hỗ trợ (chatbot)**. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn trong `backend/lib/supportKnowledge.js`. Điền khoá là trợ lý trả lời bằng AI (xem mục [Trợ lý hỗ trợ (chatbot)](#trợ-lý-hỗ-trợ-chatbot)) |
+| `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API và tên model (chuẩn OpenAI). Chỉ cần khi muốn chỉ định rõ nhà cung cấp |
+| `AI_ENABLED` | `true` | `off` để tạm tắt AI (vẫn giữ khoá) mà không phải xoá cấu hình |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời |
 
 > **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).
 
@@ -108,8 +112,10 @@ tailwind.config.js         # Cấu hình Tailwind: nơi Tailwind quét tên clas
 styles/tailwind.css        # File nguồn của Tailwind
 script.js                  # Toàn bộ logic frontend (gọi API)
 admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
+support.js                 # Logic khung trợ lý hỗ trợ (chatbot) ở góc phải-dưới
 components/                # Các mảnh giao diện (landing, sidebar, header, các trang...)
   admin.html               # Giao diện trang quản trị
+  support-widget.html      # Khung chat + nút tròn của trợ lý hỗ trợ
   guide.html               # Nội dung Trợ giúp / Điều khoản (dùng cho cả trang trong app và modal ở trang chủ)
 LOGO.png
 README.md
@@ -140,6 +146,8 @@ backend/
     mailer.js              # Gửi email qua SMTP (in ra console khi chưa cấu hình ở môi trường dev)
     otp.js                 # Sinh / kiểm tra mã xác thực email (OTP) cho đăng ký và quên mật khẩu
     notify.js              # Ghi thông báo cho người dùng
+    supportKnowledge.js    # Kiến thức nền của trợ lý hỗ trợ (dùng cho cả chế độ AI và chế độ kịch bản)
+    ai.js                  # Gọi API AI chuẩn OpenAI (Gemini / Groq / OpenRouter / OpenAI...)
   routes/
     auth.js                # Đăng ký (2 bước kèm mã xác thực) / đăng nhập / đăng xuất / me / quên mật khẩu
     orders.js              # Danh sách + tạo đơn hàng (kèm chuyển đổi link)
@@ -147,6 +155,7 @@ backend/
     referral.js            # Mã giới thiệu + nhập mã
     profile.js             # Cập nhật hồ sơ, avatar, ảnh QR nhận tiền + đổi mật khẩu
     notifications.js       # Danh sách thông báo + đánh dấu đã đọc
+    support.js             # Trợ lý hỗ trợ: nhận câu hỏi, trả lời bằng AI hoặc theo kịch bản
     admin.js               # API quản trị (chỉ role = 'admin')
   data/                    # File SQLite (tự sinh, đã bỏ qua khi commit)
   uploads/                 # Ảnh đại diện + ảnh QR nhận tiền do người dùng tải lên
@@ -212,6 +221,50 @@ Cần tỉ lệ vào Inbox tốt hơn Gmail thì dùng Brevo (`smtp-relay.brevo.
 
 ---
 
+## Trợ lý hỗ trợ (chatbot)
+
+Góc phải-dưới của **mọi trang** (kể cả trang chủ với khách chưa đăng nhập) có một nút tròn mở khung chat hỗ trợ:
+
+- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
+- Nút **"Liên hệ hỗ trợ"** ngay trong khung chat: hiện số điện thoại/Zalo và email (lấy từ `SUPPORT_ZALO`, `SUPPORT_EMAIL`) kèm nút copy.
+- **Gợi ý câu hỏi** sẵn ở trên ô nhập — bấm là hỏi luôn.
+- **Nhớ hội thoại**: lịch sử chat lưu trong trình duyệt (`localStorage`), tải lại trang không mất. Server **không lưu** nội dung chat.
+
+### Hai chế độ hoạt động
+
+| Chế độ | Khi nào | Trả lời thế nào |
+|---|---|---|
+| **Theo kịch bản** | Chưa đặt `AI_API_KEY` | Khớp từ khoá trong câu hỏi (gõ có dấu hay không dấu đều được) với bộ kiến thức trong `backend/lib/supportKnowledge.js`. Miễn phí, không cần Internet |
+| **Dùng AI** | Đã đặt `AI_API_KEY` | Gọi API AI chuẩn OpenAI, kèm `system prompt` chứa đúng bộ kiến thức trên nên không bịa thêm chính sách |
+
+Nếu AI gặp lỗi (sai khoá, hết hạn mức, mất mạng), trợ lý **tự lùi về chế độ kịch bản** để khách vẫn nhận được câu trả lời.
+
+### Bật trợ lý AI (chọn 1 nhà cung cấp)
+
+Chỉ cần điền `AI_API_KEY` vào `backend/.env` rồi **khởi động lại server** — hệ thống tự đoán nhà cung cấp theo tiền tố khoá và in ra lúc khởi động. Muốn chắc chắn thì điền thêm `AI_BASE_URL` + `AI_MODEL`:
+
+| Nhà cung cấp | `AI_BASE_URL` | `AI_MODEL` gợi ý | Ghi chú |
+|---|---|---|---|
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash` | Có gói miễn phí — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Có gói miễn phí — [console.groq.com/keys](https://console.groq.com/keys) |
+| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct:free` | Có model miễn phí — [openrouter.ai/keys](https://openrouter.ai/keys) |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | Trả phí |
+
+Kiểm tra nhanh sau khi khởi động lại:
+
+```bash
+curl http://localhost:3000/api/support/status
+# {"ai":true,"provider":"Google Gemini","model":"gemini-2.5-flash","suggestions":7}
+```
+
+> Khoá API **chỉ nằm ở server**, không bao giờ gửi xuống trình duyệt. Mỗi IP được hỏi tối đa **30 tin nhắn / 10 phút** (chống spam, tránh cháy hạn mức khoá API). Muốn tạm tắt AI mà vẫn giữ khoá: đặt `AI_ENABLED=off`.
+
+### Muốn trợ lý trả lời đúng hơn?
+
+Sửa nội dung trong `backend/lib/supportKnowledge.js` — file đó là **nguồn duy nhất** cho cả 2 chế độ (chế độ AI đọc nó trong `system prompt`, chế độ kịch bản khớp từ khoá với nó). Thêm câu hỏi vào `SUGGESTIONS` là khung chat có thêm nút gợi ý.
+
+---
+
 ## API
 
 Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nhập dùng cookie phiên.
@@ -219,7 +272,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | Method | Đường dẫn | Mô tả |
 |---|---|---|
 | GET | `/api/health` | Kiểm tra server sống |
-| GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không) |
+| GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không, câu hỏi gợi ý của trợ lý) |
 | POST | `/api/auth/register/otp` | Bước 1 khi đăng ký: gửi mã xác thực `{ username, name, email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/auth/register` | Bước 2: tạo tài khoản `{ username, password, name, email, otp }` |
 | POST | `/api/auth/login` | Đăng nhập. Nếu bật xác thực khi đăng nhập thì trả về `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` thay vì đặt cookie |
@@ -238,6 +291,8 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | POST | `/api/referral/redeem` | Nhập mã giới thiệu `{ code }` |
 | GET | `/api/notifications` | Danh sách thông báo + số chưa đọc |
 | POST | `/api/notifications/read-all` | Đánh dấu tất cả thông báo là đã đọc |
+| POST | `/api/support/chat` | Hỏi trợ lý hỗ trợ `{ messages: [{ role: 'user'\|'assistant', content }] }` → `{ reply, source: 'ai'\|'faq', notice? }`. Không cần đăng nhập, giới hạn 30 lần / 10 phút mỗi IP |
+| GET | `/api/support/status` | Kiểm tra trợ lý đang ở chế độ AI hay kịch bản (dùng khi cấu hình `AI_*` trong `.env`) |
 | PUT | `/api/profile` | Cập nhật hồ sơ `{ name, email, phone }`. Nếu **đổi email** và đang bật xác thực thì phải kèm `emailOtp` |
 | POST | `/api/profile/email/otp` | Gửi mã xác thực tới **email mới** khi đổi email `{ email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/profile/avatar` | Cập nhật ảnh đại diện `{ dataUrl }` |
@@ -404,7 +459,8 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Nếu chạy sau Nginx/Caddy/Cloudflare thì **phải** đặt `TRUST_PROXY` — thiếu biến này cookie `secure` sẽ bị trình duyệt từ chối (đăng nhập xong vẫn như chưa đăng nhập) và link hoàn tiền sẽ bị tạo với `http://`.
 - Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
 - Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**. Nhớ backup `backend/data/gzafl.sqlite` và `backend/uploads/`.
-- Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML.
+- Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML. Trợ lý hỗ trợ cũng lấy hai giá trị này cho nút **"Liên hệ hỗ trợ"** trong khung chat.
+- **Trợ lý hỗ trợ chạy được ngay, không cần cấu hình** (chế độ kịch bản). Nếu đặt `AI_API_KEY` thì mỗi câu hỏi của khách là một lượt gọi API tính vào hạn mức/chi phí của khoá đó — nên đặt **hạn mức chi tiêu** ở phía nhà cung cấp và giữ nguyên giới hạn 30 tin nhắn/10 phút mỗi IP.
 - **Trước khi dùng xác thực khi đăng nhập** (`LOGIN_OTP=auto` sẽ tự bật khi đã có SMTP): phải chắc chắn tài khoản quản trị có **email thật đọc được**, nếu không bạn sẽ tự khoá mình khỏi trang quản trị. Cách làm an toàn: để `LOGIN_OTP=off`, đăng nhập, đổi email ở trang **Cá nhân**, rồi bỏ dòng đó đi. Nếu máy chủ thư gặp sự cố (hết hạn mức/sai mật khẩu ứng dụng), thêm `LOGIN_OTP=off` rồi khởi động lại là mọi người vào được ngay bằng mật khẩu.
 
 > 📄 Muốn biến nút **"Tạo link & kiểm tra hoa hồng"** thành chức năng chuyển đổi link thật (trả về link mua hàng có ghi nhận hoa hồng), xem thiết kế chi tiết tại **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.

@@ -342,7 +342,39 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |
 | `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Khi `AFFILIATE_PROVIDER=accesstrade` |
 | `SHOPEE_AFFILIATE_APP_ID`, `SHOPEE_AFFILIATE_SECRET` | – | Khi `AFFILIATE_PROVIDER=shopee` |
-| `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp |
+| `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp + nút "Liên hệ hỗ trợ" của khung chat |
+| `AI_API_KEY` | – | Khoá API cho trợ lý hỗ trợ. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn (xem mục 8) |
+| `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API + tên model (chuẩn OpenAI) |
+| `AI_ENABLED` | `true` | `off` để tạm tắt AI mà vẫn giữ khoá |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ, độ dài và độ "sáng tạo" của câu trả lời |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
+
+---
+
+## 8. Trợ lý hỗ trợ (chatbot)
+
+Khung chat ở góc phải-dưới **chạy được ngay khi vừa triển khai**, không cần cấu hình gì thêm: khi chưa có `AI_API_KEY`, trợ lý trả lời theo kịch bản có sẵn trong `backend/lib/supportKnowledge.js` (khớp từ khoá, có dấu hay không dấu đều được) dựa trên thông tin liên hệ ở `SUPPORT_EMAIL` / `SUPPORT_ZALO`.
+
+Muốn trợ lý trả lời linh hoạt hơn, thêm khoá API miễn phí (Google Gemini là dễ nhất) vào `backend/.env`:
+
+```bash
+AI_API_KEY=AIza...
+AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+AI_MODEL=gemini-2.5-flash
+```
+
+Khởi động lại rồi kiểm tra:
+
+```bash
+curl http://127.0.0.1:3000/api/support/status
+# {"ai":true,"provider":"Google Gemini","model":"gemini-2.5-flash","suggestions":7}
+```
+
+Lưu ý khi vận hành:
+
+- Khoá API **chỉ nằm ở server** (không lộ xuống trình duyệt). Đặt **hạn mức chi tiêu** ở phía nhà cung cấp để tránh phát sinh ngoài ý muốn.
+- Mỗi IP bị giới hạn **30 tin nhắn / 10 phút**; nếu AI lỗi hoặc hết hạn mức, trợ lý **tự lùi về chế độ kịch bản** nên khách vẫn được trả lời.
+- Hội thoại lưu ở `localStorage` của trình duyệt, server **không lưu** nội dung chat.
+- Muốn sửa nội dung trả lời: sửa `backend/lib/supportKnowledge.js` (nguồn duy nhất cho cả hai chế độ). Sau khi sửa **không cần build CSS**, chỉ cần khởi động lại server.
 
 Xem thêm: [`docs/affiliate-integration.md`](./affiliate-integration.md) để nối nhà cung cấp hoàn tiền thật.
