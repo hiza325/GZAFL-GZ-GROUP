@@ -73,7 +73,7 @@ npm run watch:css
 | `TRUST_PROXY` | – | Bật khi chạy sau reverse proxy (`1` / `true` / danh sách IP) — cần để cookie `secure` và link hoàn tiền dùng đúng `https` |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
-| `WITHDRAWAL_MIN` | `50000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
+| `WITHDRAWAL_MIN` | `1000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
 | `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email** |
@@ -279,7 +279,7 @@ Trạng thái hợp lệ:
 
 **Rút tiền:** người dùng không tự nhập số tiền — hệ thống ghi nhận **toàn bộ số dư khả dụng** tại thời điểm gửi. Nhờ vậy số tiền đó bị **giữ chỗ** ngay, không thể rút trùng. Các ràng buộc ở server (`backend/routes/wallet.js`):
 
-- Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **50.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
+- Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **1.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
 - Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
 - Ngân hàng/ví được chọn từ danh sách trong `backend/lib/banks.js` (khoảng 50 ngân hàng và ví điện tử, hiện ở dropdown và ở `GET /api/config`). Người dùng cũng có thể chọn **"Ngân hàng khác"** rồi tự ghi tên (tối đa 60 ký tự).
 - Người dùng có thể tải lên **ảnh QR nhận tiền** (chỉ **PNG/JPG**, tối đa 2MB). Khi đã có ảnh QR thì **không bắt buộc** nhập `accNum`/`accName` — quản trị viên quét mã QR để chuyển tiền. Ảnh QR được **chụp lại** vào lệnh rút lúc gửi, nên đổi ảnh sau này không làm thay đổi lệnh cũ; file ảnh chỉ bị xoá khi **không còn lệnh rút nào** dùng nó.

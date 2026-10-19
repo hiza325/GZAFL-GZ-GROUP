@@ -19,7 +19,7 @@ const RESET_PENDING = 'Chờ xử lý';
 const RESET_RESOLVED = 'Đã xử lý';
 
 // Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng)
-const WITHDRAWAL_MIN = Number(process.env.WITHDRAWAL_MIN) || 50000;
+const WITHDRAWAL_MIN = Number(process.env.WITHDRAWAL_MIN) || 1000;
 
 module.exports = {
   ORDER_STATUSES,

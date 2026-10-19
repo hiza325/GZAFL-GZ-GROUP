@@ -42,7 +42,7 @@ Sau đó mở `backend/.env` và điền:
 ```ini
 PORT=3000
 NODE_ENV=production
-WITHDRAWAL_MIN=50000
+WITHDRAWAL_MIN=1000
 AFFILIATE_PROVIDER=mock        # đổi khi có tài khoản affiliate thật
 ```
 
@@ -337,7 +337,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail dùng mật khẩu ứng dụng) |
 | `MAIL_FROM` | theo `SMTP_USER` | Địa chỉ người gửi |
 | `MAIL_FROM_NAME` | `GZ AFL` | Tên người gửi hiện trên thư |
-| `WITHDRAWAL_MIN` | `50000` | Số dư tối thiểu được rút (đồng) |
+| `WITHDRAWAL_MIN` | `1000` | Số dư tối thiểu được rút (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |
 | `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Khi `AFFILIATE_PROVIDER=accesstrade` |
