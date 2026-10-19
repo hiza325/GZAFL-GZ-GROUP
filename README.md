@@ -245,7 +245,7 @@ Chỉ cần điền `AI_API_KEY` vào `backend/.env` rồi **khởi động lạ
 
 | Nhà cung cấp | `AI_BASE_URL` | `AI_MODEL` gợi ý | Ghi chú |
 |---|---|---|---|
-| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.5-flash` | Có gói miễn phí — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-flash-latest` | Có gói miễn phí — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (khoá dạng `AIza...` hoặc `AQ....` đều dùng được) |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Có gói miễn phí — [console.groq.com/keys](https://console.groq.com/keys) |
 | OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct:free` | Có model miễn phí — [openrouter.ai/keys](https://openrouter.ai/keys) |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | Trả phí |
@@ -254,7 +254,7 @@ Kiểm tra nhanh sau khi khởi động lại:
 
 ```bash
 curl http://localhost:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-2.5-flash","suggestions":7}
+# {"ai":true,"provider":"Google Gemini","model":"gemini-flash-latest","suggestions":7}
 ```
 
 > Khoá API **chỉ nằm ở server**, không bao giờ gửi xuống trình duyệt. Mỗi IP được hỏi tối đa **30 tin nhắn / 10 phút** (chống spam, tránh cháy hạn mức khoá API). Muốn tạm tắt AI mà vẫn giữ khoá: đặt `AI_ENABLED=off`.

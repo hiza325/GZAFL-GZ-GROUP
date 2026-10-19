@@ -358,16 +358,16 @@ Khung chat ở góc phải-dưới **chạy được ngay khi vừa triển khai
 Muốn trợ lý trả lời linh hoạt hơn, thêm khoá API miễn phí (Google Gemini là dễ nhất) vào `backend/.env`:
 
 ```bash
-AI_API_KEY=AIza...
+AI_API_KEY=AIza...        # hoặc khoá dạng mới AQ....
 AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-AI_MODEL=gemini-2.5-flash
+AI_MODEL=gemini-flash-latest
 ```
 
 Khởi động lại rồi kiểm tra:
 
 ```bash
 curl http://127.0.0.1:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-2.5-flash","suggestions":7}
+# {"ai":true,"provider":"Google Gemini","model":"gemini-flash-latest","suggestions":7}
 ```
 
 Lưu ý khi vận hành:
