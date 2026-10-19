@@ -117,7 +117,8 @@ components/                # Các mảnh giao diện (landing, sidebar, header, 
   admin.html               # Giao diện trang quản trị
   support-widget.html      # Khung chat + nút tròn của trợ lý hỗ trợ
   guide.html               # Nội dung Trợ giúp / Điều khoản (dùng cho cả trang trong app và modal ở trang chủ)
-LOGO.png
+LOGO.png                   # Logo thương hiệu (menu trái + thanh trên trang chủ + favicon)
+CHATBOT.png                # Logo của trợ lý hỗ trợ (nút tròn + ô đầu khung chat)
 README.md
 docs/                      # Tài liệu kỹ thuật
   affiliate-integration.md # Thiết kế tích hợp chuyển đổi link hoàn tiền (chi tiết + các phương án)
@@ -229,6 +230,7 @@ Góc phải-dưới của **mọi trang** (kể cả trang chủ với khách ch
 - Nút **"Liên hệ hỗ trợ"** ngay trong khung chat: hiện số điện thoại/Zalo và email (lấy từ `SUPPORT_ZALO`, `SUPPORT_EMAIL`) kèm nút copy.
 - **Gợi ý câu hỏi** sẵn ở trên ô nhập — bấm là hỏi luôn.
 - **Nhớ hội thoại**: lịch sử chat lưu trong trình duyệt (`localStorage`), tải lại trang không mất. Server **không lưu** nội dung chat.
+- Muốn đổi ảnh của trợ lý: thay file `CHATBOT.png` ở thư mục gốc (ảnh vuông, nền tối) — dùng cho cả nút tròn lẫn ô logo ở đầu khung chat.
 
 ### Hai chế độ hoạt động
 

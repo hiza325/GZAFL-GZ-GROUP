@@ -13,8 +13,8 @@
 
     <!-- Đầu khung chat -->
     <header class="deco-grid bg-[#18253f] text-white px-4 py-3.5 flex items-center gap-3 flex-shrink-0">
-      <div class="relative z-10 w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center flex-shrink-0">
-        <i data-lucide="sparkles" class="w-5 h-5"></i>
+      <div class="relative z-10 w-10 h-10 rounded-2xl overflow-hidden bg-white/10 flex items-center justify-center flex-shrink-0">
+        <img src="CHATBOT.png" alt="" class="w-full h-full object-cover">
       </div>
       <div class="relative z-10 min-w-0 flex-1">
         <h2 id="support-title" class="font-bold text-sm flex items-center gap-2">
@@ -65,7 +65,12 @@
   <!-- Nút tròn mở khung chat -->
   <button id="support-fab" type="button" aria-label="Mở trợ lý hỗ trợ" aria-expanded="false"
     class="relative w-14 h-14 rounded-full bg-[#18253f] text-white shadow-xl shadow-slate-900/30 hover:bg-[#233559] flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95">
+    <!-- Biểu tượng dự phòng, bị logo che khi ảnh tải được -->
     <i data-lucide="message-circle" class="w-6 h-6"></i>
+    <!-- Logo trợ lý: lấp đầy nút tròn (bọc trong span để bo tròn mà không cắt mất số thông báo ở góc) -->
+    <span class="absolute inset-0 rounded-full overflow-hidden">
+      <img src="CHATBOT.png" alt="" class="w-full h-full object-cover">
+    </span>
     <span id="support-fab-dot"
       class="hidden absolute -top-0.5 -right-0.5 min-w-[20px] h-5 px-1 rounded-full bg-[#f04d4d] text-white text-[11px] font-bold flex items-center justify-center border-2 border-white">1</span>
   </button>
