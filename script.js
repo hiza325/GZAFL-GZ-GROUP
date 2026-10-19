@@ -1222,8 +1222,8 @@ function updateActiveMenu(page) {
   allLinks.forEach(link => {
     const isActive = link.dataset.page === page;
     link.className = isActive
-      ? 'flex items-center gap-4 px-3 py-3 bg-[#18253f] text-white rounded-xl font-medium text-sm shadow-sm overflow-hidden'
-      : 'flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden';
+      ? 'nav-item nav-item-active flex items-center gap-4 px-3 py-3 bg-[#18253f] text-white rounded-xl font-medium text-sm shadow-sm overflow-hidden'
+      : 'nav-item flex items-center gap-4 px-3 py-3 text-slate-500 hover:bg-slate-50 hover:text-slate-800 rounded-xl font-medium text-sm transition-colors overflow-hidden';
   });
 }
 
@@ -1456,7 +1456,7 @@ function renderWithdrawHistory(list = []) {
   if (list.length === 0) {
     container.innerHTML = `
       <div class="py-12 flex flex-col items-center justify-center text-center">
-        <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-5 shadow-inner border border-slate-100">
+        <div class="w-20 h-20 empty-orb bg-slate-50 rounded-full flex items-center justify-center mb-5 shadow-inner border border-slate-100">
           <i data-lucide="receipt" class="w-10 h-10 text-slate-300"></i>
         </div>
         <h4 class="text-lg font-bold text-slate-800 mb-2">Chưa có lịch sử giao dịch</h4>
@@ -1511,7 +1511,7 @@ async function updateOrdersData() {
     if (badge) badge.classList.add('hidden');
     area.innerHTML = `
       <div class="bg-white p-12 rounded-3xl border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col items-center justify-center text-center min-h-[400px]">
-        <div class="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-slate-100">
+        <div class="w-24 h-24 empty-orb bg-slate-50 rounded-full flex items-center justify-center mb-6 shadow-inner border border-slate-100">
           <i data-lucide="package-open" class="w-12 h-12 text-slate-300"></i>
         </div>
         <h3 class="text-xl font-bold text-slate-800 mb-2">Chưa có đơn hàng nào</h3>
@@ -1615,7 +1615,7 @@ function renderRedeemHistory() {
   if (history.length === 0) {
     area.innerHTML = `
       <div class="flex flex-col items-center justify-center text-center py-10">
-        <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 shadow-inner border border-slate-100">
+        <div class="w-16 h-16 empty-orb bg-slate-50 rounded-full flex items-center justify-center mb-4 shadow-inner border border-slate-100">
           <i data-lucide="ticket" class="w-8 h-8 text-slate-300"></i>
         </div>
         <p class="text-slate-500 text-sm max-w-sm leading-relaxed">Bạn chưa nhập mã giới thiệu nào.</p>
@@ -2100,7 +2100,7 @@ window.setWithdrawMode = function(mode) {
   if (qrBox) qrBox.classList.toggle('hidden', withdrawMode !== 'qr');
 
   // Tô đậm nút đang được chọn
-  const onClasses = ['bg-[#18253f]', 'text-white', 'border-[#18253f]'];
+  const onClasses = ['bg-[#18253f]', 'text-white', 'border-[#18253f]', 'wd-mode-on'];
   const offClasses = ['bg-white', 'text-slate-600', 'border-slate-200', 'hover:bg-slate-50'];
   [
     [document.getElementById('withdraw-method-account'), withdrawMode === 'account'],
@@ -2320,6 +2320,9 @@ window.openWithdrawModal = async function() {
 
   modal.classList.remove('hidden');
 
+  // Luôn mở ở đầu hộp thoại (khi màn hình thấp, hộp thoại sẽ cuộn bên trong)
+  content.scrollTop = 0;
+
   setTimeout(() => {
     modal.classList.remove('opacity-0');
     content.classList.remove('scale-95');
@@ -2513,7 +2516,7 @@ function renderNotifications() {
   if (list.length === 0) {
     area.innerHTML = `
       <div class="bg-white p-12 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
-        <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-5 shadow-inner border border-slate-100">
+        <div class="w-20 h-20 empty-orb bg-slate-50 rounded-full flex items-center justify-center mb-5 shadow-inner border border-slate-100">
           <i data-lucide="bell-off" class="w-10 h-10 text-slate-300"></i>
         </div>
         <h4 class="text-lg font-bold text-slate-800 mb-2">Chưa có thông báo nào</h4>

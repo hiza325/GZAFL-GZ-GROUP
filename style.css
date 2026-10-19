@@ -4,16 +4,35 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Thẻ thống kê: bóng mềm + nhấc nhẹ khi rê chuột */
 .stat-card {
+  position: relative;
   box-shadow: 0 2px 10px -4px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .stat-card:hover {
-  box-shadow: 0 4px 15px -2px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.1);
 }
 
-.btn-primary { background-color: #f04d4d; }
+/* Nút chính: gradient đỏ thương hiệu (dùng chung toàn bộ web) */
+.btn-primary {
+  background-color: #f04d4d;
+  background-image: linear-gradient(135deg, #f66666 0%, #f04d4d 48%, #d93838 100%);
+  box-shadow: 0 10px 20px -12px rgba(240, 77, 77, 0.95);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 24px -12px rgba(240, 77, 77, 1);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.99);
+}
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #f1f1f1; }
@@ -28,4 +47,144 @@ body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================
+   TRANG TRÍ DÙNG CHUNG — đồng bộ phong cách toàn bộ giao diện
+   Màu thương hiệu: xanh navy #18253f + đỏ #f04d4d
+   ========================================================== */
+
+:root {
+  --gz-ink: #18253f;
+  --gz-ink-soft: #233559;
+  --gz-brand: #f04d4d;
+  --gz-brand-dark: #d93838;
+}
+
+/* 1. Nền mềm phía sau khu vực nội dung (rất nhẹ, không ảnh hưởng chữ) */
+#main-content-container {
+  background-color: #f4f6f9;
+  background-image:
+    radial-gradient(1000px 420px at 108% -8%, rgba(24, 37, 63, 0.07), transparent 62%),
+    radial-gradient(760px 340px at -12% 108%, rgba(240, 77, 77, 0.055), transparent 62%);
+  background-repeat: no-repeat;
+}
+
+/* 2. Vạch màu nhỏ trước tiêu đề trang lớn */
+main h2.tracking-tight::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 0.82em;
+  margin-right: 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--gz-brand) 0%, var(--gz-ink) 100%);
+  vertical-align: -0.04em;
+}
+
+/* 3. Menu trái: mục đang chọn có vạch đỏ, mục khác đổi nền rất nhẹ khi rê chuột */
+.nav-item {
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+.nav-item:not(.nav-item-active):hover {
+  background-image: linear-gradient(90deg, rgba(240, 77, 77, 0.07), rgba(240, 77, 77, 0));
+}
+.nav-item-active {
+  position: relative;
+  background-image: linear-gradient(135deg, var(--gz-ink-soft) 0%, var(--gz-ink) 70%);
+  box-shadow: 0 8px 18px -12px rgba(24, 37, 63, 0.9);
+}
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 999px;
+  background: var(--gz-brand);
+}
+
+/* 4. Thanh trên cùng: bóng mềm + ô số dư và avatar có gradient */
+#header-container header {
+  background-image: linear-gradient(180deg, #ffffff 0%, #fdfdfe 100%);
+  box-shadow: 0 10px 26px -24px rgba(24, 37, 63, 0.85);
+}
+.balance-chip {
+  background-image: linear-gradient(135deg, #fff8f8 0%, #ffecec 100%);
+  box-shadow: 0 6px 14px -12px rgba(240, 77, 77, 0.9);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.balance-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px -12px rgba(240, 77, 77, 0.9);
+}
+#header-avatar {
+  background-image: linear-gradient(135deg, #2b3d63 0%, #18253f 55%, #0e1729 100%);
+  box-shadow: 0 6px 14px -10px rgba(24, 37, 63, 0.9);
+}
+
+/* 5. Ô icon thương hiệu (dùng cho đầu các hộp thoại) */
+.icon-tile-brand {
+  background-image: linear-gradient(135deg, #fff2f2 0%, #ffe3e3 100%);
+  color: var(--gz-brand);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 20px -18px rgba(240, 77, 77, 0.95);
+}
+
+/* 6. Thẻ tối (số dư) có hoạ tiết chấm mờ */
+.deco-grid {
+  position: relative;
+}
+.deco-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 7. Vòng tròn cho trạng thái trống */
+.empty-orb {
+  background-image: radial-gradient(circle at 32% 26%, #ffffff 0%, #f1f5f9 62%, #e2e8f0 100%);
+  box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.9), 0 14px 26px -22px rgba(24, 37, 63, 0.8);
+}
+
+/* 8. Nút đang chọn trong hộp thoại rút tiền (Cách nhận tiền) */
+.wd-mode-on {
+  box-shadow: 0 10px 18px -14px rgba(24, 37, 63, 0.9);
+}
+
+/* 9. Hộp thoại rút tiền: giới hạn chiều cao + cuộn bên trong để không bị cắt
+   trên màn hình thấp (trước đây nút gửi yêu cầu có thể nằm ngoài khung nhìn). */
+#withdraw-modal {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+#withdraw-modal-content {
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 9. Chi tiết nhỏ: bôi đen chữ, viền khi bấm bằng bàn phím, thanh cuộn Firefox */
+::selection {
+  background: rgba(240, 77, 77, 0.18);
+  color: var(--gz-ink);
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid rgba(240, 77, 77, 0.55);
+  outline-offset: 2px;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f1f1;
 }
