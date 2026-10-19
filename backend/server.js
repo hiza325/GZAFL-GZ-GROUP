@@ -137,7 +137,9 @@ app.get('/api/config', (req, res) => {
       delivery: otp.deliveryAvailable(),
       length: otp.CODE_LENGTH,
       ttlSeconds: otp.TTL_SECONDS,
-      resendSeconds: otp.RESEND_COOLDOWN_SECONDS
+      resendSeconds: otp.RESEND_COOLDOWN_SECONDS,
+      // Đăng nhập có bắt buộc nhập mã không (xem LOGIN_OTP trong .env)
+      loginRequired: otp.loginOtpEnabled()
     }
   });
 });
@@ -195,6 +197,7 @@ server.listen(PORT, () => {
   const otp = require('./lib/otp');
   const mail = require('./lib/mailer').describe();
   console.log(`  Xác thực email (OTP)  : ${otp.otpEnabled() ? 'BẬT' : 'tắt'} (EMAIL_OTP=${otp.otpMode()})`);
+  console.log(`  Xác thực khi đăng nhập: ${otp.loginOtpEnabled() ? 'BẬT' : 'tắt'} (LOGIN_OTP=${(process.env.LOGIN_OTP || 'auto').trim().toLowerCase()})`);
   if (mail.configured) {
     console.log(`  Gửi thư               : qua ${mail.host}:${mail.port}, người gửi ${mail.from}`);
   } else if (mail.dev) {
@@ -212,6 +215,11 @@ server.listen(PORT, () => {
     console.log('');
     console.log('  CẢNH BÁO: EMAIL_OTP=on nhưng chưa cấu hình SMTP -> KHÔNG AI ĐĂNG KÝ ĐƯỢC.');
     console.log('            Điền SMTP_* và MAIL_FROM trong backend/.env, hoặc đặt EMAIL_OTP=auto.');
+  }
+  if (otp.loginOtpEnabled() && !otp.deliveryAvailable()) {
+    console.log('');
+    console.log('  CẢNH BÁO: LOGIN_OTP=on nhưng chưa cấu hình SMTP -> KHÔNG AI ĐĂNG NHẬP ĐƯỢC.');
+    console.log('            Điền SMTP_* trong backend/.env, hoặc đặt LOGIN_OTP=auto.');
   }
 
   const cleaned = otp.cleanup();

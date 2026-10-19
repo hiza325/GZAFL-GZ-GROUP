@@ -76,7 +76,8 @@ npm run watch:css
 | `WITHDRAWAL_MIN` | `50000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
-| `EMAIL_OTP` | `auto` | Bước xác thực email khi đăng ký: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off` |
+| `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email** |
+| `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Máy chủ gửi thư dùng cho mã xác thực. Bỏ trống `SMTP_SECURE` thì tự suy ra (`true` khi cổng `465`) |
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail thì dùng *Mật khẩu ứng dụng* 16 ký tự) |
 | `MAIL_FROM`, `MAIL_FROM_NAME` | theo `SMTP_USER`, tên `GZ AFL` | Địa chỉ và tên người gửi hiện trên thư |
@@ -154,13 +155,14 @@ backend/
 
 ## Xác thực email (OTP)
 
-Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email người dùng nhập; nhập đúng mã mới tạo được tài khoản. Cùng cơ chế đó cho phép khách **tự đặt lại mật khẩu** khi quên.
+Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email người dùng nhập; nhập đúng mã mới tạo được tài khoản. Cùng cơ chế đó cho phép khách **tự đặt lại mật khẩu** khi quên, và dùng làm **xác thực 2 lớp khi đăng nhập**.
 
 - **Email là bắt buộc khi đăng ký**, kể cả khi đăng nhập bằng số điện thoại.
 - **Đổi email trong trang Cá nhân cũng phải xác thực**: mã được gửi tới *địa chỉ mới* rồi mới lưu, nên email khôi phục luôn là địa chỉ thật. Chỉ đổi tên/số điện thoại thì không cần mã.
-- Mã có hiệu lực **10 phút**, chỉ dùng được **một lần**, lưu dưới dạng **bcrypt hash** (không lưu mã gốc).
+- **Đăng nhập 2 bước** (khi `LOGIN_OTP` bật): mật khẩu đúng thì server mới gửi mã, sau đó mới cấp phiên. Mã còn hiệu lực thì **dùng lại mã cũ** — đăng xuất rồi đăng nhập lại ngay không tốn thêm thư.
+- Mã có hiệu lực **10 phút**, chỉ dùng được **một lần**, lưu dưới dạng **bcrypt hash** (không lưu mã gốc). Mã của luồng này **không dùng được** cho luồng khác.
 - Nhập sai quá **5 lần** thì phải yêu cầu mã mới; mỗi lần yêu cầu lại phải chờ **60 giây**, tối đa **5 mã/giờ** cho mỗi email.
-- Mỗi IP chỉ được yêu cầu gửi mã **10 lần / 15 phút** cho mỗi đầu API.
+- Mỗi IP chỉ được yêu cầu gửi mã **10 lần / 15 phút** (đăng ký & khôi phục mật khẩu) và **40 lần / 15 phút** (đăng nhập).
 - Bước yêu cầu gửi mã **luôn trả về cùng một thông báo** dù tài khoản có tồn tại hay không — người ngoài không dò được danh sách tài khoản.
 
 ### Chưa có tài khoản email?
@@ -174,6 +176,16 @@ Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email ngư�
 | Đã điền `SMTP_*` + `MAIL_FROM` | Gửi thư thật |
 
 Muốn tự quyết định thì đặt `EMAIL_OTP=on` (luôn bật) hoặc `EMAIL_OTP=off` (luôn tắt).
+
+Riêng bước xác thực **khi đăng nhập** có công tắc riêng là `LOGIN_OTP`:
+
+| `LOGIN_OTP` | Kết quả |
+|---|---|
+| `auto` *(mặc định)* | Bật khi `EMAIL_OTP` đang bật **và** gửi được thư. Chưa cấu hình SMTP thì đăng nhập vẫn chỉ cần mật khẩu — **tránh khoá toàn bộ người dùng ra ngoài** |
+| `on` | Luôn bắt buộc mã. CẢNH BÁO: chưa cấu hình SMTP thì **không ai đăng nhập được** |
+| `off` | Đăng nhập chỉ cần mật khẩu. Dùng khi máy chủ thư gặp sự cố |
+
+> **Lưu ý về hạn mức gửi thư**: mỗi lần đăng nhập tốn 1 email. Gmail cá nhân chỉ cho ~**500 thư/ngày** (Brevo miễn phí ~300/ngày). Nếu số lượt đăng nhập mỗi ngày lớn, hãy chuyển sang dịch vụ gửi thư chuyên dụng hoặc đặt `LOGIN_OTP=off`.
 
 ### Cấu hình gửi thư
 
@@ -209,7 +221,9 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không) |
 | POST | `/api/auth/register/otp` | Bước 1 khi đăng ký: gửi mã xác thực `{ username, name, email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/auth/register` | Bước 2: tạo tài khoản `{ username, password, name, email, otp }` |
-| POST | `/api/auth/login` | Đăng nhập, đặt cookie phiên |
+| POST | `/api/auth/login` | Đăng nhập. Nếu bật xác thực khi đăng nhập thì trả về `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` thay vì đặt cookie |
+| POST | `/api/auth/login/otp` | Bước 2 của đăng nhập: `{ ticket, otp }` → đặt cookie phiên (giới hạn 40 lần / 15 phút) |
+| POST | `/api/auth/login/otp/resend` | Gửi lại mã đăng nhập `{ ticket }` (không cần nhập lại mật khẩu) |
 | POST | `/api/auth/logout` | Đăng xuất |
 | GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập) |
 | POST | `/api/auth/forgot-password/otp` | Quên mật khẩu bước 1: gửi mã xác thực `{ username }` |
@@ -293,7 +307,7 @@ Nếu gọi nhà cung cấp thất bại, đơn **vẫn được tạo** với l
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
 | `password_resets` | Yêu cầu khôi phục mật khẩu gửi cho quản trị viên (đường dự phòng): người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
-| `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
+| `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email` / `login`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
 
 `db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
 
@@ -370,7 +384,8 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Thư mục nội bộ (`/backend`, `/data`, `/node_modules`, `package.json`) bị chặn không cho tải qua HTTP.
 - Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
 - Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản. Bước yêu cầu gửi mã xác thực cũng vậy.
-- **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email tách biệt nhau).
+- **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email / đăng nhập tách biệt nhau).
+- **Xác thực khi đăng nhập**: mã chỉ được gửi **sau khi mật khẩu đã đúng**, nên người không biết mật khẩu không làm tốn thư trong hộp của người khác. Bước 2 dùng một **phiếu đăng nhập** ký sẵn (sống 5 phút) thay cho việc gửi lại mật khẩu, và phiếu tự hết hiệu lực khi mật khẩu bị đổi.
 - **Mật khẩu tạm** do quản trị viên cấp không được lưu dưới dạng văn bản thường — chỉ hiện một lần cho quản trị viên rồi thôi.
 
 ### Lưu ý khi triển khai thật
@@ -382,6 +397,7 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
 - Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**. Nhớ backup `backend/data/gzafl.sqlite` và `backend/uploads/`.
 - Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML.
+- **Trước khi dùng xác thực khi đăng nhập** (`LOGIN_OTP=auto` sẽ tự bật khi đã có SMTP): phải chắc chắn tài khoản quản trị có **email thật đọc được**, nếu không bạn sẽ tự khoá mình khỏi trang quản trị. Cách làm an toàn: để `LOGIN_OTP=off`, đăng nhập, đổi email ở trang **Cá nhân**, rồi bỏ dòng đó đi. Nếu máy chủ thư gặp sự cố (hết hạn mức/sai mật khẩu ứng dụng), thêm `LOGIN_OTP=off` rồi khởi động lại là mọi người vào được ngay bằng mật khẩu.
 
 > 📄 Muốn biến nút **"Tạo link & kiểm tra hoa hồng"** thành chức năng chuyển đổi link thật (trả về link mua hàng có ghi nhận hoa hồng), xem thiết kế chi tiết tại **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
 
@@ -390,3 +406,5 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 ## Tài khoản
 
 Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam**, mật khẩu tối thiểu 6 ký tự, kèm **một địa chỉ email để nhận mã xác thực** — email này là bắt buộc kể cả khi bạn đăng nhập bằng số điện thoại, vì đó là nơi nhận mã khi quên mật khẩu.
+
+Khi đăng nhập, nếu hệ thống bật xác thực 2 lớp, sau khi nhập đúng mật khẩu bạn sẽ nhận thêm **mã 6 số** qua email và nhập vào ô xác thực để hoàn tất. Nếu đã có mã còn hiệu lực thì hệ thống dùng lại mã đó (không gửi thêm thư).

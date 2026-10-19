@@ -164,9 +164,9 @@
           </button>
         </form>
 
-        <!-- Đăng ký bước 2: nhập mã xác thực gửi qua email -->
+        <!-- Bước 2 (dùng chung): nhập mã xác thực gửi qua email - đăng ký hoặc đăng nhập -->
         <div id="auth-otp-panel" class="hidden">
-          <p class="text-sm text-slate-500 mb-5">Mã xác thực đã được gửi tới <span id="auth-otp-email" class="font-semibold text-slate-700 break-all"></span>. Nhập mã để hoàn tất đăng ký.</p>
+          <p class="text-sm text-slate-500 mb-5"><span id="auth-otp-lead">Mã xác thực đã được gửi tới </span><span id="auth-otp-email" class="font-semibold text-slate-700 break-all"></span><span id="auth-otp-tail">. Nhập mã để hoàn tất đăng ký.</span></p>
 
           <div id="auth-otp-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4">
             <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
@@ -175,15 +175,15 @@
 
           <div class="mb-6">
             <label for="auth-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
-            <input type="text" id="auth-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <input type="text" id="auth-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" onkeydown="if(event.key==='Enter'){event.preventDefault();submitAuthOtp();}" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
-          <button type="button" id="auth-otp-submit-btn" onclick="submitRegisterOtp()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+          <button type="button" id="auth-otp-submit-btn" onclick="submitAuthOtp()" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
             Xác nhận &amp; tạo tài khoản
           </button>
 
           <div class="mt-4 flex items-center justify-between text-xs font-semibold">
-            <button type="button" id="auth-otp-resend-btn" onclick="resendRegisterOtp()" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
+            <button type="button" id="auth-otp-resend-btn" onclick="resendAuthOtp()" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
             <button type="button" onclick="backToAuthForm()" class="text-slate-400 hover:text-slate-600 transition">Quay lại</button>
           </div>
         </div>
@@ -240,7 +240,7 @@
 
           <div class="mb-4">
             <label for="reset-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
-            <input type="text" id="reset-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <input type="text" id="reset-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPasswordReset();}" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <div class="mb-4">

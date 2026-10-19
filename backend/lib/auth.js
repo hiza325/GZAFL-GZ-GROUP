@@ -27,6 +27,35 @@ function clearAuthCookie(res) {
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 
+// ------------------------------------------------------------------
+// Phiếu đăng nhập tạm (bước 1 -> bước 2 của đăng nhập có xác thực 2 lớp).
+// Sau khi kiểm tra ĐÚNG mật khẩu, server phát một phiếu sống 5 phút; client
+// gửi kèm mã OTP ở bước 2. Nhờ vậy bước 2 không cần gửi lại mật khẩu, và
+// người chỉ biết tên tài khoản cũng không gọi được bước 2.
+// ------------------------------------------------------------------
+const LOGIN_TICKET_PURPOSE = 'login2fa';
+
+function signLoginTicket(user) {
+  return jwt.sign(
+    { uid: user.id, tv: Number(user.token_version) || 1, purpose: LOGIN_TICKET_PURPOSE },
+    JWT_SECRET,
+    { expiresIn: '5m' }
+  );
+}
+
+/** Kiểm tra phiếu đăng nhập, trả về user mới nhất từ DB (ném lỗi nếu phiếu sai/hết hạn). */
+function verifyLoginTicket(ticket) {
+  const payload = jwt.verify(String(ticket || ''), JWT_SECRET);
+  if (payload.purpose !== LOGIN_TICKET_PURPOSE) throw new Error('Sai loại phiếu đăng nhập.');
+
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
+  if (!row) throw new Error('Không tìm thấy tài khoản.');
+  if ((Number(payload.tv) || 1) !== (Number(row.token_version) || 1)) {
+    throw new Error('Phiếu đăng nhập đã hết hiệu lực.');
+  }
+  return row;
+}
+
 // Đọc user hiện tại từ cookie (trả null nếu chưa đăng nhập / token sai)
 function loadUser(req) {
   const token = req.cookies ? req.cookies[COOKIE_NAME] : null;
@@ -72,6 +101,8 @@ module.exports = {
   signToken,
   setAuthCookie,
   clearAuthCookie,
+  signLoginTicket,
+  verifyLoginTicket,
   loadUser,
   requireAuth,
   requireAdmin

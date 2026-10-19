@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { toUser } = require('../lib/serialize');
 const { isValidUsername, isValidEmail, generateReferralCode } = require('../lib/validate');
-const { setAuthCookie, clearAuthCookie, loadUser } = require('../lib/auth');
+const { setAuthCookie, clearAuthCookie, loadUser, signLoginTicket, verifyLoginTicket } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
 const { RESET_PENDING, RESET_RESOLVED } = require('../lib/constants');
 const { notify } = require('../lib/notify');
@@ -16,9 +16,16 @@ const router = express.Router();
 // Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
 router.use(rateLimit({ windowMs: 60 * 1000, max: 30 }));
 
-// Riêng việc GỬI mã OTP thì chặt hơn: 10 lần / 15 phút / IP cho mỗi endpoint.
+// Riêng việc GỬI mã OTP khi ĐĂNG KÝ / KHÔI PHỤC MẬT KHẨU thì chặt hơn:
+// 10 lần / 15 phút / IP (dùng chung một bộ đếm cho các endpoint này).
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
 const otpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+
+// Mã xác thực khi ĐĂNG NHẬP dùng bộ đếm riêng và rộng hơn (40 lần / 15 phút / IP),
+// vì mỗi lần đăng nhập đều tốn 1-2 lượt (nhập sai vài lần là hết hạn mức 10).
+// Chống dò mã vẫn nhờ lib/otp.js: mỗi mã chỉ cho sai tối đa 5 lần, và mã chỉ
+// được phát ra SAU KHI mật khẩu đã đúng.
+const loginOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40 });
 
 const BCRYPT_ROUNDS = 10;
 
@@ -31,6 +38,16 @@ function handleOtpError(res, err) {
   }
   console.error('Lỗi gửi mã xác thực:', err);
   return res.status(500).json({ error: 'Có lỗi xảy ra. Vui lòng thử lại sau.' });
+}
+
+/** Che bot dia chi email: nguyen.van.a@gmail.com -> ngu***@gmail.com */
+function maskEmail(email) {
+  const value = String(email || '');
+  const at = value.indexOf('@');
+  if (at <= 0) return value;
+  const name = value.slice(0, at);
+  const domain = value.slice(at);
+  return name.slice(0, Math.min(3, name.length)) + '***' + domain;
 }
 
 /* ==========================================
@@ -147,7 +164,18 @@ router.post('/register', async (req, res) => {
   return res.status(201).json({ user: toUser(row) });
 });
 
-router.post('/login', (req, res) => {
+/* ==========================================
+   Đăng nhập
+
+   Khi bật xác thực khi đăng nhập (LOGIN_OTP — xem lib/otp.js), đăng nhập gồm 2 bước:
+     1. POST /login      -> kiểm tra mật khẩu, gửi mã, trả về "phiếu đăng nhập" 5 phút
+     2. POST /login/otp  -> phiếu + mã đúng thì mới cấp cookie phiên
+
+   Mã CHỈ được gửi sau khi mật khẩu đúng, nên người không biết mật khẩu không
+   làm tốn thư trong hộp của người khác.
+   ========================================== */
+
+router.post('/login', async (req, res) => {
   const username = String((req.body && req.body.username) || '').trim();
   const password = String((req.body && req.body.password) || '').trim();
 
@@ -159,8 +187,102 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Mật khẩu không chính xác.' });
   }
 
+  // Tài khoản chưa có email thì không thể xác thực qua email -> cho vào luôn,
+  // tránh tự khoá mình ra ngoài (chỉ xảy ra với tài khoản cũ).
+  if (!otp.loginOtpEnabled() || !row.email) {
+    setAuthCookie(res, row);
+    return res.json({ user: toUser(row) });
+  }
+
+  // Vừa đăng xuất rồi đăng nhập lại: mã cũ còn hiệu lực thì dùng lại,
+  // không gửi thêm thư và không bắt người dùng chờ 60 giây.
+  const active = otp.activeInfo('login', row.email);
+  let sent = null;
+  if (!active) {
+    try {
+      sent = await otp.issueAndSend({
+        purpose: 'login',
+        email: row.email,
+        username: row.username,
+        name: row.name
+      });
+    } catch (err) {
+      return handleOtpError(res, err);
+    }
+  }
+
+  return res.json({
+    otpRequired: true,
+    ticket: signLoginTicket(row),
+    email: maskEmail(row.email),
+    message: active
+      ? 'Mã xác thực đã được gửi trước đó và còn hiệu lực. Bạn hãy dùng mã trong email đó.'
+      : 'Mã xác thực đã được gửi tới email của bạn. Nhớ kiểm tra cả thư rác (Spam).',
+    expiresInSeconds: otp.TTL_SECONDS,
+    resendInSeconds: active ? active.resendInSeconds : otp.RESEND_COOLDOWN_SECONDS,
+    // Chỉ có giá trị khi chưa cấu hình SMTP và đang ở môi trường phát triển
+    devCode: sent ? sent.devCode : null
+  });
+});
+
+// Bước 2 của đăng nhập: phiếu đăng nhập + mã xác thực -> cấp cookie phiên
+router.post('/login/otp', loginOtpRateLimit, (req, res) => {
+  const ticket = String((req.body && req.body.ticket) || '').trim();
+  const code = String((req.body && req.body.otp) || '').trim();
+
+  if (!ticket) return res.status(400).json({ error: 'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.' });
+  if (!code) return res.status(400).json({ error: 'Vui lòng nhập mã xác thực.' });
+
+  let row = null;
+  try {
+    row = verifyLoginTicket(ticket);
+  } catch (err) {
+    return res.status(401).json({ error: 'Phiên đăng nhập đã hết (phiếu chỉ sống 5 phút). Vui lòng đăng nhập lại.' });
+  }
+
+  if (!row.email) return res.status(400).json({ error: 'Tài khoản chưa có email để nhận mã xác thực.' });
+
+  try {
+    otp.verify({ purpose: 'login', email: row.email, code });
+  } catch (err) {
+    return handleOtpError(res, err);
+  }
+
   setAuthCookie(res, row);
   return res.json({ user: toUser(row) });
+});
+
+// Gửi lại mã đăng nhập: dùng phiếu đăng nhập nên không phải nhập lại mật khẩu
+router.post('/login/otp/resend', loginOtpRateLimit, async (req, res) => {
+  const ticket = String((req.body && req.body.ticket) || '').trim();
+  if (!ticket) return res.status(400).json({ error: 'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.' });
+
+  let row = null;
+  try {
+    row = verifyLoginTicket(ticket);
+  } catch (err) {
+    return res.status(401).json({ error: 'Phiên đăng nhập đã hết (phiếu chỉ sống 5 phút). Vui lòng đăng nhập lại.' });
+  }
+
+  if (!row.email) return res.status(400).json({ error: 'Tài khoản chưa có email để nhận mã xác thực.' });
+
+  try {
+    const sent = await otp.issueAndSend({
+      purpose: 'login',
+      email: row.email,
+      username: row.username,
+      name: row.name
+    });
+    return res.json({
+      ok: true,
+      email: maskEmail(row.email),
+      expiresInSeconds: sent.expiresInSeconds,
+      resendInSeconds: sent.resendInSeconds,
+      devCode: sent.devCode
+    });
+  } catch (err) {
+    return handleOtpError(res, err);
+  }
 });
 
 router.post('/logout', (req, res) => {

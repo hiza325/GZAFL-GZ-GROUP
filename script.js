@@ -7,8 +7,10 @@ let currentUser = null;
 
 // Thông tin form đăng ký đang chờ mã xác thực (chỉ dùng khi bật xác thực email)
 let pendingRegister = null;
-// Bộ đếm ngược cho nút "Gửi lại mã" của 3 luồng: đăng ký, quên mật khẩu và đổi email
-let otpTimers = { register: null, reset: null, profile: null };
+// Phiếu đăng nhập đang chờ mã xác thực (chỉ dùng khi bật xác thực khi đăng nhập)
+let pendingLogin = null;
+// Bộ đếm ngược cho nút "Gửi lại mã" của các luồng: đăng ký, đăng nhập, quên mật khẩu và đổi email
+let otpTimers = { register: null, login: null, reset: null, profile: null };
 
 /* ==========================================
    TIỆN ÍCH DÙNG CHUNG
@@ -133,7 +135,7 @@ function fetchAppConfig() {
 
 // Bước xác thực email do SERVER quyết định (xem backend/lib/otp.js -> otpEnabled).
 // Giao diện chỉ hiện ô nhập mã khi server báo có bật.
-let otpConfig = { enabled: false, delivery: false, length: 6, ttlSeconds: 600, resendSeconds: 60 };
+let otpConfig = { enabled: false, delivery: false, length: 6, ttlSeconds: 600, resendSeconds: 60, loginRequired: false };
 
 fetchAppConfig().then((cfg) => {
   if (cfg && cfg.otp) otpConfig = Object.assign({}, otpConfig, cfg.otp);
@@ -336,10 +338,13 @@ function resetAuthPanels() {
   setDevCode('auth-otp-dev', 'auth-otp-devcode', '');
   setDevCode('reset-dev', 'reset-devcode', '');
   clearInterval(otpTimers.register);
+  clearInterval(otpTimers.login);
   clearInterval(otpTimers.reset);
   otpTimers.register = null;
+  otpTimers.login = null;
   otpTimers.reset = null;
   pendingRegister = null;
+  pendingLogin = null;
 }
 
 window.toggleAuthMode = function() {
@@ -364,7 +369,9 @@ function updateAuthUI() {
 
   if (isLoginMode) {
     title.innerText = 'Đăng nhập';
-    subtitle.innerText = 'Vui lòng đăng nhập để theo dõi và nhận hoa hồng.';
+    subtitle.innerText = otpConfig.loginRequired
+      ? 'Nhập tài khoản và mật khẩu. Sau đó bạn cần nhập thêm mã xác thực gửi tới email.'
+      : 'Vui lòng đăng nhập để theo dõi và nhận hoa hồng.';
     nameGroup.classList.add('hidden');
     if (confirmGroup) confirmGroup.classList.add('hidden');
     if (emailGroup) emailGroup.classList.add('hidden');
@@ -447,9 +454,11 @@ function setDevCode(boxId, codeId, code) {
   }
 }
 
-// Đếm ngược nút "Gửi lại mã" (kind = 'register' | 'reset' | 'profile')
+// Đếm ngược nút "Gửi lại mã" (kind = 'register' | 'login' | 'reset' | 'profile')
+// 'register' và 'login' dùng chung một nút vì cùng nằm trong màn nhập mã của modal.
 const RESEND_BUTTONS = {
   register: 'auth-otp-resend-btn',
+  login: 'auth-otp-resend-btn',
   reset: 'reset-resend-btn',
   profile: 'profile-email-otp-btn'
 };
@@ -502,9 +511,20 @@ function showAuthErrorHidden() {
   if (errorBox) errorBox.classList.add('hidden');
 }
 
-/* ---------- Đăng ký: bước nhập mã xác thực ---------- */
+// Modal đang ở màn nhập mã xác thực hay không
+function isOtpPanelOpen() {
+  const panel = document.getElementById('auth-otp-panel');
+  return !!panel && !panel.classList.contains('hidden');
+}
 
-function showOtpPanel(email, devCode, resendSeconds) {
+/* ---------- Bước nhập mã xác thực (dùng chung cho ĐĂNG KÝ và ĐĂNG NHẬP) ---------- */
+
+/**
+ * purpose: 'register' (mặc định) hoặc 'login'.
+ * note: câu phụ đề riêng (chỉ dùng cho đăng nhập, ví dụ khi mã cũ còn hiệu lực).
+ */
+function showOtpPanel(email, devCode, resendSeconds, purpose, note) {
+  const kind = purpose === 'login' ? 'login' : 'register';
   const form = document.getElementById('auth-form');
   const panel = document.getElementById('auth-otp-panel');
   const toggleBlock = document.getElementById('auth-toggle-block');
@@ -517,13 +537,30 @@ function showOtpPanel(email, devCode, resendSeconds) {
   if (toggleBlock) toggleBlock.classList.add('hidden');
   if (forgotRow) forgotRow.classList.add('hidden');
   panel.classList.remove('hidden');
-  if (title) title.innerText = 'Xác thực email';
-  if (subtitle) subtitle.innerText = 'Nhập mã xác thực để hoàn tất đăng ký.';
+
+  if (title) title.innerText = kind === 'login' ? 'Xác thực đăng nhập' : 'Xác thực email';
+  if (subtitle) {
+    subtitle.innerText = kind === 'login'
+      ? (note || 'Nhập mã xác thực để hoàn tất đăng nhập.')
+      : 'Nhập mã xác thực để hoàn tất đăng ký.';
+  }
+
+  const tail = document.getElementById('auth-otp-tail');
+  if (tail) {
+    tail.innerText = kind === 'login'
+      ? '. Nhập mã để hoàn tất đăng nhập.'
+      : '. Nhập mã để hoàn tất đăng ký.';
+  }
+
+  const submitBtn = document.getElementById('auth-otp-submit-btn');
+  if (submitBtn) {
+    submitBtn.innerText = kind === 'login' ? 'Xác nhận đăng nhập' : 'Xác nhận & tạo tài khoản';
+  }
 
   const emailEl = document.getElementById('auth-otp-email');
   if (emailEl) emailEl.innerText = email || '';
   setDevCode('auth-otp-dev', 'auth-otp-devcode', devCode);
-  startResendCountdown('register', resendSeconds);
+  startResendCountdown(kind, resendSeconds);
 
   showAuthErrorHidden();
   const otpEl = document.getElementById('auth-otp');
@@ -542,10 +579,25 @@ window.backToAuthForm = function() {
   if (form) form.classList.remove('hidden');
   if (toggleBlock) toggleBlock.classList.remove('hidden');
   clearInterval(otpTimers.register);
+  clearInterval(otpTimers.login);
   otpTimers.register = null;
+  otpTimers.login = null;
   pendingRegister = null;
+  pendingLogin = null;
   showAuthErrorHidden();
   updateAuthUI();
+};
+
+// Nút "Xác nhận" trong màn nhập mã: rẽ nhánh theo luồng đang chờ
+window.submitAuthOtp = function() {
+  if (pendingLogin) return submitLoginOtp();
+  return submitRegisterOtp();
+};
+
+// Nút "Gửi lại mã" trong màn nhập mã: rẽ nhánh theo luồng đang chờ
+window.resendAuthOtp = function() {
+  if (pendingLogin) return resendLoginOtp();
+  return resendRegisterOtp();
 };
 
 window.submitRegisterOtp = async function() {
@@ -606,6 +658,72 @@ window.resendRegisterOtp = async function() {
     if (err.status === 429) startResendCountdown('register', otpConfig.resendSeconds);
   } finally {
     if (btn && !otpTimers.register) btn.disabled = false;
+  }
+};
+
+/* ---------- Đăng nhập: bước nhập mã xác thực ---------- */
+
+window.submitLoginOtp = async function() {
+  const otpEl = document.getElementById('auth-otp');
+  const btn = document.getElementById('auth-otp-submit-btn');
+  showAuthErrorHidden();
+
+  if (!pendingLogin) {
+    return showAuthMessage('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
+  }
+
+  const code = otpEl ? otpEl.value.trim() : '';
+  if (!isValidOtpCode(code)) {
+    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+  }
+
+  const restore = busyButton(btn, 'Đang xác thực...');
+  try {
+    const data = await api('/auth/login/otp', {
+      method: 'POST',
+      body: { ticket: pendingLogin.ticket, otp: code }
+    });
+    pendingLogin = null;
+    clearInterval(otpTimers.login);
+    otpTimers.login = null;
+    currentUser = data.user || null;
+    closeAuthModal();
+    await checkAuth();
+  } catch (err) {
+    showAuthMessage(err.message);
+    // Phiếu đăng nhập chỉ sống 5 phút: hết hạn thì đưa về form để đăng nhập lại
+    if (err.status === 401 && /Phiên đăng nhập đã hết/.test(err.message || '')) {
+      backToAuthForm();
+      showAuthMessage(err.message);
+    }
+  } finally {
+    restore();
+  }
+};
+
+window.resendLoginOtp = async function() {
+  const btn = document.getElementById('auth-otp-resend-btn');
+  if (!pendingLogin) return;
+  if (btn) btn.disabled = true;
+
+  try {
+    const data = await api('/auth/login/otp/resend', {
+      method: 'POST',
+      body: { ticket: pendingLogin.ticket }
+    });
+    if (data.devCode) setDevCode('auth-otp-dev', 'auth-otp-devcode', data.devCode);
+    startResendCountdown('login', data.resendInSeconds);
+    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+  } catch (err) {
+    showAuthMessage(err.message);
+    if (err.status === 429) startResendCountdown('login', otpConfig.resendSeconds);
+    if (err.status === 401) {
+      pendingLogin = null;
+      backToAuthForm();
+      showAuthMessage(err.message);
+    }
+  } finally {
+    if (btn && !otpTimers.login) btn.disabled = false;
   }
 };
 
@@ -913,9 +1031,17 @@ window.handleAuthSubmit = async function(event) {
         method: 'POST',
         body: { username: usernameInput, password: passwordInput }
       });
-      currentUser = data.user || null;
-      closeAuthModal();
-      await checkAuth();
+
+      if (data.otpRequired) {
+        // Đăng nhập 2 bước: mật khẩu đúng, giờ chờ mã xác thực gửi tới email
+        pendingRegister = null;
+        pendingLogin = { ticket: data.ticket, username: usernameInput };
+        showOtpPanel(data.email, data.devCode, data.resendInSeconds, 'login', data.message);
+      } else {
+        currentUser = data.user || null;
+        closeAuthModal();
+        await checkAuth();
+      }
     } else {
       // Bảo đảm đã có cấu hình OTP của server trước khi chọn luồng đăng ký
       await fetchAppConfig();
@@ -956,7 +1082,13 @@ window.handleAuthSubmit = async function(event) {
       submitBtn.disabled = false;
       submitBtn.classList.remove('opacity-70');
       if (isLoginMode) {
-        updateAuthUI();
+        // Đang ở màn nhập mã thì chỉ khôi phục nút, không ghi đè tiêu đề của màn đó
+        if (isOtpPanelOpen()) {
+          submitBtn.innerHTML = originalHTML;
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        } else {
+          updateAuthUI();
+        }
       } else {
         // giữ nguyên trạng thái đăng ký nếu còn ở chế độ đăng ký
         submitBtn.innerHTML = originalHTML;

@@ -1,10 +1,11 @@
 'use strict';
 
 /**
- * Mã OTP gửi qua email, dùng cho 3 việc:
+ * Mã OTP gửi qua email, dùng cho 4 việc:
  *   - 'register'     : xác thực email khi đăng ký tài khoản
  *   - 'reset'        : tự đặt lại mật khẩu khi quên
  *   - 'change_email' : xác nhận địa chỉ email mới khi người dùng tự đổi trong trang Cá nhân
+ *   - 'login'        : xác thực 2 lớp khi đăng nhập
  *
  * Quy tắc an toàn:
  *   - Mã 6 chữ số, hiệu lực 10 phút, chỉ dùng được một lần.
@@ -17,6 +18,9 @@
  *                     (development chưa có SMTP thì mã được in ra console)
  *   on              - luôn bật
  *   off             - luôn tắt
+ *
+ * Riêng bước xác thực KHI ĐĂNG NHẬP còn một công tắc nữa là LOGIN_OTP (auto/on/off);
+ * xem hàm loginOtpEnabled() bên dưới.
  */
 
 const { randomInt } = require('node:crypto');
@@ -33,7 +37,7 @@ const MAX_SENDS_PER_WINDOW = 5;
 const WINDOW_SECONDS = 60 * 60;
 const BCRYPT_ROUNDS = 10;
 
-const PURPOSES = ['register', 'reset', 'change_email'];
+const PURPOSES = ['register', 'reset', 'change_email', 'login'];
 
 /** Lỗi có mã trạng thái HTTP để route trả về thẳng cho client. */
 class OtpError extends Error {
@@ -65,6 +69,39 @@ function otpEnabled() {
  */
 function deliveryAvailable() {
   return mailer.isConfigured() || mailer.isDevDelivery();
+}
+
+/**
+ * Bước xác thực 2 lớp khi ĐĂNG NHẬP, bật/tắt riêng bằng LOGIN_OTP:
+ *   auto (mặc định) - bật khi xác thực email đang bật VÀ gửi được thư.
+ *                     Chưa cấu hình SMTP thì đăng nhập vẫn chỉ cần mật khẩu,
+ *                     để không khoá toàn bộ người dùng ra ngoài.
+ *   on              - luôn bật (kể cả khi chưa gửi được thư)
+ *   off             - luôn tắt
+ */
+function loginOtpEnabled() {
+  const raw = String(process.env.LOGIN_OTP || 'auto').trim().toLowerCase();
+  if (raw === 'off') return false;
+  if (raw === 'on') return true;
+  return otpEnabled() && deliveryAvailable();
+}
+
+/**
+ * Thông tin mã đang có hiệu lực: còn bao nhiêu giây dùng được, và còn phải
+ * chờ bao lâu mới được gửi mã mới. Trả null nếu chưa có hoặc đã hết hạn.
+ */
+function activeInfo(purpose, email) {
+  const row = findRow(purpose, email);
+  if (!row) return null;
+
+  const secondsLeft = Math.ceil((toMs(row.expires_at) - Date.now()) / 1000);
+  if (secondsLeft <= 0) return null;
+
+  const sinceLastSend = Math.floor((Date.now() - toMs(row.last_sent_at)) / 1000);
+  return {
+    secondsLeft,
+    resendInSeconds: Math.max(0, RESEND_COOLDOWN_SECONDS - sinceLastSend)
+  };
 }
 
 function toMs(iso) {
@@ -186,15 +223,23 @@ function escapeHtml(value) {
 const MAIL_COPY = {
   register: {
     subject: 'Mã xác thực đăng ký tài khoản GZ AFL',
-    action: 'hoàn tất đăng ký tài khoản'
+    action: 'hoàn tất đăng ký tài khoản',
+    title: 'Xác thực email'
   },
   reset: {
     subject: 'Mã đặt lại mật khẩu GZ AFL',
-    action: 'đặt lại mật khẩu'
+    action: 'đặt lại mật khẩu',
+    title: 'Đặt lại mật khẩu'
   },
   change_email: {
     subject: 'Mã xác thực email mới - GZ AFL',
-    action: 'xác nhận địa chỉ email mới'
+    action: 'xác nhận địa chỉ email mới',
+    title: 'Xác nhận email mới'
+  },
+  login: {
+    subject: 'Mã xác thực đăng nhập GZ AFL',
+    action: 'đăng nhập tài khoản',
+    title: 'Xác thực đăng nhập'
   }
 };
 
@@ -203,6 +248,7 @@ async function sendOtp({ purpose, email, code, name = '' }) {
   const copy = MAIL_COPY[purpose] || MAIL_COPY.register;
   const subject = copy.subject;
   const action = copy.action;
+  const title = copy.title || 'Xác thực email';
   const minutes = Math.round(TTL_SECONDS / 60);
   const greet = name ? `Xin chào ${name},` : 'Xin chào,';
 
@@ -221,7 +267,7 @@ async function sendOtp({ purpose, email, code, name = '' }) {
 <html lang="vi"><body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
   <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;padding:32px">
     <div style="font-size:13px;font-weight:bold;letter-spacing:1px;color:#f04d4d;text-transform:uppercase">GZ AFL</div>
-    <h1 style="font-size:20px;margin:16px 0 8px">Xác thực email</h1>
+    <h1 style="font-size:20px;margin:16px 0 8px">${escapeHtml(title)}</h1>
     <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0 0 24px">${escapeHtml(greet)} Hãy dùng mã dưới đây để ${escapeHtml(action)}.</p>
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;padding:20px;text-align:center">
       <div style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#18253f">${escapeHtml(code)}</div>
@@ -279,6 +325,8 @@ module.exports = {
   otpEnabled,
   otpMode,
   deliveryAvailable,
+  loginOtpEnabled,
+  activeInfo,
   issue,
   verify,
   clear,

@@ -48,12 +48,14 @@ AFFILIATE_PROVIDER=mock        # đổi khi có tài khoản affiliate thật
 
 ### Gửi email xác thực (OTP)
 
-Muốn bật bước **xác thực email khi đăng ký** và cho khách **tự đặt lại mật khẩu**, điền
-thêm máy chủ gửi thư. Chưa điền cũng chạy bình thường — chỉ là bước xác thực tắt đi
-(và server in cảnh báo lúc khởi động, xem mục [5](#5-vận-hành-thường-ngày)).
+Muốn bật bước **xác thực email khi đăng ký**, cho khách **tự đặt lại mật khẩu** và
+**xác thực khi đăng nhập**, điền thêm máy chủ gửi thư. Chưa điền cũng chạy bình thường —
+chỉ là bước xác thực tắt đi (và server in cảnh báo lúc khởi động, xem mục
+[5](#5-vận-hành-thường-ngày)).
 
 ```ini
 EMAIL_OTP=auto                      # auto | on | off (mặc định auto)
+LOGIN_OTP=auto                      # auto | on | off (mặc định auto)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=ten-ban@gmail.com
@@ -70,12 +72,21 @@ MAIL_FROM_NAME=GZ AFL
 - Gửi tên miền thật thì khai báo bản ghi **SPF/DKIM** cho tên miền đó, nếu không thư dễ
   vào Spam. Dù sao cũng nên nhắc khách kiểm tra thư rác.
 - **Sau khi điền, nhớ kiểm tra lại bảng khởi động**: dòng `Gửi thư` phải hiện
-  `qua smtp...` và dòng `Xác thực email (OTP)` phải là `BẬT`.
-- Khi bật, mã xác thực được dùng ở **3 chỗ**: đăng ký tài khoản, khách tự đặt lại
-  mật khẩu, và đổi email trong trang Cá nhân (mã gửi tới địa chỉ mới).
+  `qua smtp...`, dòng `Xác thực email (OTP)` và dòng `Xác thực khi đăng nhập` phải là `BẬT`.
+- Khi bật, mã xác thực được dùng ở **4 chỗ**: đăng ký tài khoản, khách tự đặt lại
+  mật khẩu, đổi email trong trang Cá nhân (mã gửi tới địa chỉ mới), và **đăng nhập**.
 
-> ⚠️ Đặt `EMAIL_OTP=on` mà **chưa** cấu hình SMTP thì **không ai đăng ký được**. Cứ để
-> `auto`: có SMTP là tự bật, không có thì tự tắt.
+> ⚠️ Đặt `EMAIL_OTP=on` mà **chưa** cấu hình SMTP thì **không ai đăng ký được**; đặt
+> `LOGIN_OTP=on` mà chưa cấu hình SMTP thì **không ai đăng nhập được**. Cứ để `auto`:
+> có SMTP là tự bật, không có thì tự tắt.
+
+> 💡 **Hạn mức gửi thư**: mỗi lần đăng nhập tốn 1 email. Gmail cá nhân ~500 thư/ngày, Brevo
+> miễn phí ~300/ngày. Nếu lượng truy cập lớn, chuyển sang dịch vụ gửi thư chuyên dụng hoặc
+> đặt `LOGIN_OTP=off` để chỉ dùng mật khẩu.
+>
+> Khi máy chủ thư gặp sự cố (hết hạn mức, sai mật khẩu ứng dụng), cách xử lý nhanh là thêm
+> `LOGIN_OTP=off` vào `backend/.env` rồi khởi động lại — khách vào được ngay bằng mật khẩu,
+> sửa xong SMTP thì bật lại `auto`.
 
 Ghi chú quan trọng:
 
@@ -220,6 +231,7 @@ sudo systemctl enable --now gzafl
 5. Đăng nhập bằng tài khoản quản trị ⇒ vào được trang Quản trị.
 6. Bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, gửi mã cho tài khoản thử ⇒ phải nhận được thư thứ hai và đặt lại được mật khẩu.
 7. Vào **Cá nhân**, sửa ô Email ⇒ phải hiện khối **Xác thực email mới**; bấm *Gửi mã*, nhập mã nhận được ở địa chỉ mới rồi bấm *Lưu thay đổi* ⇒ email mới phải được lưu.
+8. **Đăng nhập 2 lớp**: đăng xuất rồi đăng nhập lại ⇒ sau khi nhập đúng mật khẩu phải hiện màn hình **Xác thực đăng nhập** và có thư chứa mã; nhập mã mới vào được. Bấm *Quay lại* ở màn đó phải trở về form đăng nhập.
 
 ---
 
@@ -283,6 +295,8 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 1. Xem bảng khởi động của server: dòng `Gửi thư` phải ghi `qua smtp...`. Nếu ghi
    `CHƯA cấu hình SMTP` thì `.env` chưa được đọc hoặc thiếu `SMTP_HOST`/`MAIL_FROM`.
 2. Nếu dòng `Xác thực email (OTP)` ghi `tắt` ⇒ đang là `EMAIL_OTP=auto` mà chưa có SMTP.
+   Dòng `Xác thực khi đăng nhập` ghi `tắt` cùng nguyên nhân: muốn bật thì phải gửi được
+   thư (hoặc đặt `LOGIN_OTP=on`, nhưng khi đó **không ai đăng nhập được** nếu chưa có SMTP).
 3. Xem log server: lỗi gửi thư được in ra kèm lý do (`Invalid login`, `Connection timeout`...).
    - `Invalid login: 535` với Gmail ⇒ `SMTP_PASS` phải là **Mật khẩu ứng dụng**, không phải
      mật khẩu đăng nhập Gmail.
@@ -293,6 +307,15 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
    quên mật khẩu để nhờ quản trị viên cấp lại (mục 5).
 6. Nếu khách báo **"Vui lòng chờ N giây"** ⇒ đang trong thời gian chờ 60 giây giữa hai lần
    yêu cầu mã. Mã cũ vẫn còn hiệu lực, không cần gửi lại.
+
+**Không ai đăng nhập được (báo "Không gửi được email xác thực").**
+1. Đang bật xác thực khi đăng nhập mà máy chủ thư lại lỗi (hết hạn mức, sai mật khẩu ứng
+   dụng, VPS chặn cổng). Xử lý nhanh: thêm `LOGIN_OTP=off` vào `backend/.env` rồi khởi
+   động lại — khách vào được ngay bằng mật khẩu.
+2. Sửa xong SMTP (xem lỗi ở log), đổi lại `LOGIN_OTP=auto` rồi khởi động lại.
+3. **Trước khi bật**, kiểm tra tài khoản quản trị đã có **email thật đọc được** chưa: nếu
+   email tài khoản là địa chỉ không tồn tại thì bạn sẽ tự khoá mình khỏi trang quản trị.
+   Vào **Cá nhân** đổi email khi `LOGIN_OTP=off`, sau đó mới bật lại.
 
 ---
 
@@ -307,7 +330,8 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SSL_CERT_PATH` | – | Chứng chỉ TLS (chỉ dùng cho Cách B) |
 | `TRUST_PROXY` | – | `1` / `true` / danh sách IP — bật khi chạy sau reverse proxy |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
-| `EMAIL_OTP` | `auto` | Bật xác thực email khi đăng ký: `auto` / `on` / `off` |
+| `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off` |
+| `LOGIN_OTP` | `auto` | Bật xác thực khi đăng nhập: `auto` / `on` / `off` |
 | `SMTP_HOST`, `SMTP_PORT` | – | Máy chủ gửi thư (mặc định cổng `587`) |
 | `SMTP_SECURE` | theo cổng | `true` khi cổng `465`; để trống thì tự suy ra |
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail dùng mật khẩu ứng dụng) |
