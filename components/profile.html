@@ -17,17 +17,31 @@
           <i data-lucide="headphones" class="w-4 h-4 inline-block mr-1"></i> Trợ giúp &amp; liên hệ
         </button>
 
-        <div class="bg-slate-50/50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-2 text-slate-500 text-xs font-semibold mb-1">
-              <i data-lucide="building-2" class="w-3.5 h-3.5"></i> Ngân hàng
+        <div class="bg-slate-50/50 border border-slate-100 rounded-2xl p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2 text-slate-500 text-xs font-semibold mb-1">
+                <i data-lucide="building-2" class="w-3.5 h-3.5"></i> Ngân hàng
+              </div>
+              <div id="profile-bank-name" class="font-bold text-slate-800 text-lg">Chưa liên kết</div>
+              <div id="profile-bank-owner" class="text-xs text-slate-400 font-medium uppercase mt-0.5">Thêm tài khoản khi rút tiền</div>
             </div>
-            <div id="profile-bank-name" class="font-bold text-slate-800 text-lg">Chưa liên kết</div>
-            <div id="profile-bank-owner" class="text-xs text-slate-400 font-medium uppercase mt-0.5">Thêm tài khoản khi rút tiền</div>
+            <span id="profile-bank-badge" class="hidden bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1 rounded-full border border-red-100">
+              Mặc định
+            </span>
           </div>
-          <span id="profile-bank-badge" class="hidden bg-red-50 text-red-500 text-[10px] font-bold px-3 py-1 rounded-full border border-red-100">
-            Mặc định
-          </span>
+
+          <!-- Ảnh QR nhận tiền (tải lên ở hộp thoại Rút tiền). Bấm vào để xem ảnh lớn. -->
+          <a id="profile-bank-qr-wrap" href="#" target="_blank" rel="noopener" class="hidden mt-4 pt-4 border-t border-slate-200/70 flex items-center gap-3">
+            <img id="profile-bank-qr" src="" alt="Ảnh QR nhận tiền" class="w-16 h-16 rounded-xl border border-slate-200 bg-white object-contain flex-shrink-0">
+            <span class="block">
+              <span class="block text-xs font-semibold text-slate-500">Ảnh QR nhận tiền</span>
+              <span class="block text-[11px] text-slate-400 leading-relaxed">Bấm để xem ảnh lớn. Quản trị viên quét mã này khi chuyển tiền.</span>
+            </span>
+          </a>
+          <p id="profile-bank-qr-empty" class="text-[11px] text-slate-400 leading-relaxed mt-4 pt-4 border-t border-slate-200/70">
+            Chưa có ảnh QR. Khi bấm <b>Rút tiền</b>, bạn có thể tải lên ảnh QR nhận tiền (PNG hoặc JPG) — tiện khi ngân hàng của bạn không có trong danh sách.
+          </p>
         </div>
       </div>
 

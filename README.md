@@ -135,6 +135,7 @@ backend/
     serialize.js           # Chuyển dữ liệu DB -> JSON cho frontend
     format.js              # Định dạng ngày/tiền kiểu Việt Nam
     rateLimit.js           # Giới hạn số yêu cầu cho API đăng nhập
+    banks.js               # Danh sách ngân hàng / ví điện tử cho dropdown rút tiền
     affiliate.js           # Chuyển link sản phẩm -> link hoàn tiền (mock / accesstrade / shopee)
     mailer.js              # Gửi email qua SMTP (in ra console khi chưa cấu hình ở môi trường dev)
     otp.js                 # Sinh / kiểm tra mã xác thực email (OTP) cho đăng ký và quên mật khẩu
@@ -144,11 +145,11 @@ backend/
     orders.js              # Danh sách + tạo đơn hàng (kèm chuyển đổi link)
     wallet.js              # Thống kê ví + rút tiền
     referral.js            # Mã giới thiệu + nhập mã
-    profile.js             # Cập nhật hồ sơ, avatar + đổi mật khẩu
+    profile.js             # Cập nhật hồ sơ, avatar, ảnh QR nhận tiền + đổi mật khẩu
     notifications.js       # Danh sách thông báo + đánh dấu đã đọc
     admin.js               # API quản trị (chỉ role = 'admin')
   data/                    # File SQLite (tự sinh, đã bỏ qua khi commit)
-  uploads/                 # Ảnh đại diện người dùng tải lên
+  uploads/                 # Ảnh đại diện + ảnh QR nhận tiền do người dùng tải lên
 ```
 
 ---
@@ -232,7 +233,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | GET | `/api/orders` | Danh sách đơn hàng của mình (kèm link hoàn tiền, `sub_id`, số lượt bấm) |
 | POST | `/api/orders` | Tạo đơn `{ link }` → trả về `{ order, affiliate }` với link hoàn tiền |
 | GET | `/api/wallet` | Thống kê ví + lịch sử rút tiền + `minWithdraw`, `canWithdraw` |
-| POST | `/api/wallet/withdrawals` | Yêu cầu rút tiền `{ bank, accNum, accName }` |
+| POST | `/api/wallet/withdrawals` | Yêu cầu rút tiền `{ bank, accNum, accName }`. Nếu tài khoản đã có **ảnh QR nhận tiền** thì `accNum`/`accName` không bắt buộc |
 | GET | `/api/referral` | Mã giới thiệu, điểm, lịch sử đã nhập |
 | POST | `/api/referral/redeem` | Nhập mã giới thiệu `{ code }` |
 | GET | `/api/notifications` | Danh sách thông báo + số chưa đọc |
@@ -240,6 +241,8 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | PUT | `/api/profile` | Cập nhật hồ sơ `{ name, email, phone }`. Nếu **đổi email** và đang bật xác thực thì phải kèm `emailOtp` |
 | POST | `/api/profile/email/otp` | Gửi mã xác thực tới **email mới** khi đổi email `{ email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/profile/avatar` | Cập nhật ảnh đại diện `{ dataUrl }` |
+| POST | `/api/profile/bank-qr` | Lưu **ảnh QR nhận tiền** `{ dataUrl }` — chỉ nhận ảnh PNG/JPG, tối đa 2MB (server kiểm tra cả chữ ký byte đầu file) |
+| DELETE | `/api/profile/bank-qr` | Xoá ảnh QR nhận tiền đã lưu |
 | PUT | `/api/profile/password` | Đổi mật khẩu `{ currentPassword, newPassword }` (tối đa 10 lần / 15 phút) |
 
 Ngoài `/api`, server còn có một đường dẫn công khai:
@@ -278,6 +281,8 @@ Trạng thái hợp lệ:
 
 - Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **50.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
 - Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
+- Ngân hàng/ví được chọn từ danh sách trong `backend/lib/banks.js` (khoảng 50 ngân hàng và ví điện tử, hiện ở dropdown và ở `GET /api/config`). Người dùng cũng có thể chọn **"Ngân hàng khác"** rồi tự ghi tên (tối đa 60 ký tự).
+- Người dùng có thể tải lên **ảnh QR nhận tiền** (chỉ **PNG/JPG**, tối đa 2MB). Khi đã có ảnh QR thì **không bắt buộc** nhập `accNum`/`accName` — quản trị viên quét mã QR để chuyển tiền. Ảnh QR được **chụp lại** vào lệnh rút lúc gửi, nên đổi ảnh sau này không làm thay đổi lệnh cũ; file ảnh chỉ bị xoá khi **không còn lệnh rút nào** dùng nó.
 - Huỷ lệnh rút (`Đã huỷ`) sẽ **trả lại** số tiền vào số dư khả dụng.
 - Quản trị viên có thể sửa số tiền thực trả khi đánh dấu `Đã thanh toán`, nhưng không được vượt số dư khả dụng.
 
@@ -342,7 +347,7 @@ Trang quản trị gồm 5 tab:
 | Tab | Việc làm được |
 |---|---|
 | **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (hoa hồng được cộng ngay vào ví khách); huỷ đơn |
-| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** của khách; nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
+| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** của khách và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
 | **Người dùng** | Xem điểm, số đơn, hoa hồng, đã rút, số dư; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
 | **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |

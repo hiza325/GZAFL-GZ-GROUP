@@ -13,9 +13,16 @@ function toUser(row) {
     email: row.email || '',
     phone: row.phone || '',
     avatar: row.avatar_url || null,
-    bank: row.bank_acc_num
-      ? { bank: row.bank_bank || '', accNum: row.bank_acc_num, accName: row.bank_acc_name || '' }
-      : null,
+    // Có số tài khoản HOẶC có ảnh QR đều được coi là "đã có tài khoản nhận tiền"
+    bank:
+      row.bank_acc_num || row.bank_qr_url
+        ? {
+            bank: row.bank_bank || '',
+            accNum: row.bank_acc_num || '',
+            accName: row.bank_acc_name || '',
+            qrUrl: row.bank_qr_url || null
+          }
+        : null,
     points: row.points || 0,
     role: row.role || 'user',
     referralCode: row.referral_code,
@@ -59,6 +66,7 @@ function toWithdrawal(row) {
     bank: row.bank,
     accNum: row.acc_num,
     accName: row.acc_name,
+    qrUrl: row.qr_url || null,
     amount: Number(row.amount) || 0,
     status: row.status,
     date: formatDateTime(row.created_at),
@@ -132,6 +140,8 @@ function toAdminWithdrawal(row) {
     bank: row.bank,
     accNum: row.acc_num,
     accName: row.acc_name,
+    // Ảnh QR nhận tiền (nếu người dùng có tải lên) - quản trị viên quét để chuyển tiền
+    qrUrl: row.qr_url || null,
     amount: Number(row.amount) || 0,
     status: row.status,
     createdAt: row.created_at,

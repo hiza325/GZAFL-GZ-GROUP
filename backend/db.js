@@ -139,6 +139,13 @@ ensureColumn('orders', 'click_count', 'INTEGER NOT NULL DEFAULT 0');
 // Đổi / thu hồi mật khẩu sẽ tăng số này để vô hiệu hoá mọi phiên đăng nhập cũ
 ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 1');
 
+// Ảnh QR nhận tiền (VietQR...) do người dùng tải lên ở hộp thoại rút tiền
+ensureColumn('users', 'bank_qr_url', 'TEXT');
+
+// Lệnh rút chụp lại ảnh QR tại thời điểm gửi: người dùng đổi ảnh sau này
+// cũng không làm thay đổi ảnh mà quản trị viên đang dùng để chuyển tiền.
+ensureColumn('withdrawals', 'qr_url', 'TEXT');
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_user        ON orders (user_id);
   CREATE INDEX IF NOT EXISTS idx_orders_sub_id      ON orders (sub_id);

@@ -8,6 +8,7 @@ const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
 const { formatMoney } = require('../lib/format');
 const { CANCELLED, WITHDRAWAL_MIN } = require('../lib/constants');
+const { isValidBankName } = require('../lib/banks');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -68,11 +69,23 @@ router.post('/withdrawals', (req, res) => {
   const accNum = String((req.body && req.body.accNum) || '').trim();
   const accName = String((req.body && req.body.accName) || '').trim();
 
-  if (!bank || !accNum || !accName) {
-    return res.status(400).json({ error: 'Vui lòng điền đầy đủ thông tin nhận tiền!' });
+  // Ảnh QR nhận tiền người dùng đã tải lên (xem routes/profile.js -> POST /bank-qr).
+  // Có ảnh QR thì không cần số tài khoản / tên chủ tài khoản nữa vì QR đã chứa sẵn.
+  const qrUrl = req.user.bank_qr_url || null;
+
+  if (!isValidBankName(bank)) {
+    return res.status(400).json({ error: 'Vui lòng chọn ngân hàng/ví điện tử nhận tiền (hoặc ghi rõ tên ngân hàng khác).' });
   }
-  if (!/^[0-9]{6,20}$/.test(accNum)) {
+  if (!qrUrl && (!accNum || !accName)) {
+    return res.status(400).json({
+      error: 'Vui lòng điền đầy đủ số tài khoản và tên chủ tài khoản, hoặc tải lên ảnh QR nhận tiền!'
+    });
+  }
+  if (accNum && !/^[0-9]{6,20}$/.test(accNum)) {
     return res.status(400).json({ error: 'Số tài khoản/số điện thoại ví phải là 6-20 chữ số.' });
+  }
+  if (accName.length > 60) {
+    return res.status(400).json({ error: 'Tên chủ tài khoản quá dài (tối đa 60 ký tự).' });
   }
 
   // Mỗi người chỉ được có 1 lệnh chờ xử lý, tránh bấm gửi liên tục
@@ -111,10 +124,10 @@ router.post('/withdrawals', (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, amount, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'Đang xử lý', ?)`
+      `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, qr_url, amount, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', ?)`
     )
-    .run(req.user.id, code, bank, accNum, accName, amount, new Date().toISOString());
+    .run(req.user.id, code, bank, accNum, accName, qrUrl, amount, new Date().toISOString());
 
   // Lưu làm thông tin nhận tiền mặc định để hiển thị ở trang Cá nhân
   db.prepare('UPDATE users SET bank_bank = ?, bank_acc_num = ?, bank_acc_name = ? WHERE id = ?').run(
@@ -124,9 +137,12 @@ router.post('/withdrawals', (req, res) => {
     req.user.id
   );
 
+  // Nội dung thông báo: có số tài khoản thì ghi rõ, chỉ có ảnh QR thì ghi là qua ảnh QR
+  const target = accNum ? `${bank} - ${accNum}` : `${bank} (qua ảnh QR nhận tiền)`;
+
   notify(req.user.id, {
     title: `Đã gửi yêu cầu rút ${code}`,
-    body: `Số tiền ${formatMoney(amount)} về ${bank} - ${accNum}. Quản trị viên sẽ xử lý trong thời gian sớm nhất.`,
+    body: `Số tiền ${formatMoney(amount)} về ${target}. Quản trị viên sẽ xử lý trong thời gian sớm nhất.`,
     icon: 'banknote'
   });
 

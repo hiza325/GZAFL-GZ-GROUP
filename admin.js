@@ -292,8 +292,17 @@
     const { items, total } = state.withdrawals;
 
     tbody.innerHTML = items
-      .map(
-        (w) => `
+      .map((w) => {
+        // Lệnh rút chỉ có ảnh QR (không nhập số tài khoản) thì ghi rõ thay vì để trống
+        const accLine =
+          [
+            w.accNum ? escapeHtml(w.accNum) : '',
+            w.accName ? escapeHtml(String(w.accName).toUpperCase()) : ''
+          ]
+            .filter(Boolean)
+            .join(' — ') || 'Nhận qua ảnh QR';
+
+        return `
       <tr class="border-b border-slate-50 hover:bg-slate-50/60">
         <td class="px-3 py-3 font-bold text-slate-700">${escapeHtml(w.id)}</td>
         <td class="px-3 py-3">
@@ -301,16 +310,25 @@
           <div class="text-xs text-slate-400">${escapeHtml(w.user.username)}</div>
         </td>
         <td class="px-3 py-3">
-          <div class="font-semibold text-slate-700">${escapeHtml(w.bank)}</div>
-          <div class="text-xs text-slate-400">${escapeHtml(w.accNum)} — ${escapeHtml((w.accName || '').toUpperCase())}</div>
+          <div class="flex items-center gap-2">
+            ${
+              w.qrUrl
+                ? `<img src="${escapeHtml(w.qrUrl)}" alt="Ảnh QR nhận tiền" class="w-9 h-9 rounded-lg border border-slate-200 bg-white object-contain flex-shrink-0">`
+                : ''
+            }
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-700 truncate">${escapeHtml(w.bank)}</div>
+              <div class="text-xs text-slate-400 truncate">${accLine}</div>
+            </div>
+          </div>
         </td>
         <td class="px-3 py-3 font-semibold text-slate-700">${formatCurrency(w.amount)}</td>
         <td class="px-3 py-3 text-slate-600">${formatCurrency(w.payable)}</td>
         <td class="px-3 py-3">${badge(w.status)}</td>
         <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(w.date)}</td>
         <td class="px-3 py-3 text-right">${actionButton('data-adm-edit-wd', w.id, 'Xử lý', 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100')}</td>
-      </tr>`
-      )
+      </tr>`;
+      })
       .join('');
 
     toggleEmpty('adm-wd-empty', items.length === 0);
@@ -324,7 +342,25 @@
     if (!wd) return;
     state.editing.withdrawal = wd;
 
-    setText('adm-wd-info', `${wd.user.name} (${wd.user.username}) — ${wd.bank} ${wd.accNum}`);
+    const accountText = wd.accNum
+      ? `${wd.bank} ${wd.accNum}`
+      : `${wd.bank} (nhận qua ảnh QR)`;
+    setText('adm-wd-info', `${wd.user.name} (${wd.user.username}) — ${accountText}`);
+
+    // Ảnh QR nhận tiền (nếu khách có tải lên): hiện để quét khi chuyển khoản
+    const qrWrap = document.getElementById('adm-wd-qr-wrap');
+    const qrImg = document.getElementById('adm-wd-qr');
+    if (qrWrap && qrImg) {
+      if (wd.qrUrl) {
+        qrImg.src = wd.qrUrl;
+        qrWrap.href = wd.qrUrl;
+        qrWrap.classList.remove('hidden');
+      } else {
+        qrImg.removeAttribute('src');
+        qrWrap.classList.add('hidden');
+      }
+    }
+
     const statusEl = document.getElementById('adm-wd-status');
     const amountEl = document.getElementById('adm-wd-amount');
     if (statusEl) statusEl.value = wd.status;

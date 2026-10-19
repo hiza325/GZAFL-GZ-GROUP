@@ -47,7 +47,7 @@
         </div>
         
         <h2 id="withdraw-title" class="text-2xl font-bold text-slate-800 mb-2">Rút tiền về tài khoản</h2>
-        <p class="text-sm text-slate-500 mb-6">Vui lòng chọn ngân hàng và nhập chính xác số tài khoản của bạn.</p>
+        <p class="text-sm text-slate-500 mb-6">Vui lòng chọn ngân hàng và nhập chính xác số tài khoản của bạn. Nếu ngân hàng của bạn không có trong danh sách, hãy chọn "Ngân hàng khác" hoặc tải lên ảnh QR nhận tiền.</p>
 
         <!-- Số dư khả dụng + mức rút tối thiểu (script.js cập nhật) -->
         <div class="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-100">
@@ -59,10 +59,12 @@
         </div>
 
         <div class="space-y-4">
-          <!-- Chọn Ngân hàng / Ví -->
+          <!-- Chọn Ngân hàng / Ví.
+               Danh sách đầy đủ do script.js nạp từ /api/config (xem backend/lib/banks.js);
+               các <option> dưới đây chỉ là phương án dự phòng khi không gọi được API. -->
           <div>
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ngân hàng / Ví điện tử</label>
-            <select id="withdraw-bank" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
+            <select id="withdraw-bank" onchange="toggleOtherBankInput()" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
               <option value="" disabled selected>-- Chọn phương thức nhận tiền --</option>
               <option value="MBBank">Ngân hàng Quân Đội (MBBank)</option>
               <option value="Vietcombank">Vietcombank</option>
@@ -72,7 +74,10 @@
               <option value="Agribank">Agribank</option>
               <option value="Momo">Ví điện tử Momo</option>
               <option value="ZaloPay">Ví ZaloPay</option>
+              <option value="__other__">Ngân hàng khác (tự ghi tên)</option>
             </select>
+            <!-- Chỉ hiện khi chọn "Ngân hàng khác" -->
+            <input type="text" id="withdraw-bank-other" maxlength="60" placeholder="Ghi rõ tên ngân hàng, ví dụ: Ngân hàng Bản Việt" class="hidden w-full mt-2 bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
           </div>
 
           <!-- Nhập STK -->
@@ -85,6 +90,22 @@
           <div>
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên chủ tài khoản (Không dấu)</label>
             <input type="text" id="withdraw-acc-name" placeholder="VD: NGUYEN VAN A" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all uppercase">
+          </div>
+
+          <!-- Ảnh QR nhận tiền (tuỳ chọn): chỉ nhận PNG/JPG -->
+          <div class="pt-1">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ảnh QR nhận tiền (không bắt buộc)</label>
+            <input type="file" id="withdraw-qr-upload" accept="image/png,image/jpeg" class="hidden">
+            <div class="flex items-center gap-3">
+              <img id="withdraw-qr-preview" src="" alt="Ảnh QR nhận tiền" class="hidden w-20 h-20 rounded-xl border border-slate-200 bg-white object-contain flex-shrink-0">
+              <div class="flex-1 min-w-0">
+                <button type="button" onclick="document.getElementById('withdraw-qr-upload').click()" class="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition flex items-center justify-center gap-2 mb-2 shadow-sm">
+                  <i data-lucide="qr-code" class="w-4 h-4"></i> <span id="withdraw-qr-label">Tải ảnh QR lên</span>
+                </button>
+                <p class="text-[10px] text-slate-400 leading-relaxed">Chỉ nhận ảnh <b>PNG</b> hoặc <b>JPG</b> (tối đa 2MB). Có ảnh QR thì không cần nhập số tài khoản ở trên.</p>
+                <button type="button" id="withdraw-qr-remove" onclick="removeBankQr()" class="hidden mt-1 text-[11px] font-semibold text-red-500 hover:text-red-600 transition">Xoá ảnh QR</button>
+              </div>
+            </div>
           </div>
         </div>
 

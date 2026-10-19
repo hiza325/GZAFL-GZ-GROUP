@@ -263,7 +263,7 @@ Khách tự đặt lại thành công thì yêu cầu đang chờ của họ **t
 
 **Sao lưu:** toàn bộ dữ liệu nằm trong một file `backend/data/gzafl.sqlite`.
 Muốn backup thì dừng server (hoặc dùng `sqlite3 gzafl.sqlite ".backup ..."`) rồi copy file đi.
-Ảnh đại diện nằm trong `backend/uploads/` — cũng cần backup.
+Ảnh đại diện **và ảnh QR nhận tiền** nằm trong `backend/uploads/` — cũng cần backup.
 
 > Đổi `JWT_SECRET` làm **mọi phiên đăng nhập hiện tại hết hiệu lực**. Người dùng chỉ
 > cần đăng nhập lại; nếu ai đó quên mật khẩu thì dùng `npm run reset-password`.

@@ -137,8 +137,13 @@ function fetchAppConfig() {
 // Giao diện chỉ hiện ô nhập mã khi server báo có bật.
 let otpConfig = { enabled: false, delivery: false, length: 6, ttlSeconds: 600, resendSeconds: 60, loginRequired: false };
 
+// Cấu hình công khai đã tải về (hỗ trợ, OTP, danh sách ngân hàng...)
+let appConfig = null;
+
 fetchAppConfig().then((cfg) => {
+  appConfig = cfg;
   if (cfg && cfg.otp) otpConfig = Object.assign({}, otpConfig, cfg.otp);
+  if (typeof populateBankOptions === 'function') populateBankOptions();
   if (typeof updateAuthUI === 'function') updateAuthUI();
 });
 
@@ -1463,15 +1468,24 @@ function renderWithdrawHistory(list = []) {
   } else {
     let html = '<div class="space-y-4">';
     list.forEach(tx => {
+      const hasQr = !!tx.qrUrl;
+      // Không nhập số tài khoản (chỉ tải ảnh QR) thì ghi rõ để người dùng dễ hiểu
+      const accountLabel = tx.accNum
+        ? `${escapeHtml(tx.bank)} ****${escapeHtml(String(tx.accNum).slice(-4))}`
+        : `${escapeHtml(tx.bank)} • nhận qua ảnh QR`;
+      const ownerLabel = escapeHtml((tx.accName || '').toUpperCase()) || (hasQr ? 'Ảnh QR nhận tiền' : '');
+      const meta = [ownerLabel, escapeHtml(tx.date)].filter(Boolean).join(' • ');
       html += `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center flex-shrink-0">
-              <i data-lucide="landmark" class="w-5 h-5"></i>
-            </div>
+            ${hasQr
+              ? `<img src="${escapeHtml(tx.qrUrl)}" alt="Ảnh QR nhận tiền" class="w-10 h-10 rounded-xl border border-slate-200 bg-white object-contain flex-shrink-0">`
+              : `<div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="landmark" class="w-5 h-5"></i>
+                </div>`}
             <div>
-              <div class="font-bold text-slate-800 text-sm">${escapeHtml(tx.bank)} ****${escapeHtml(String(tx.accNum || '').slice(-4))}</div>
-              <div class="text-xs text-slate-400 mt-0.5">${escapeHtml((tx.accName || '').toUpperCase())} • ${escapeHtml(tx.date)}</div>
+              <div class="font-bold text-slate-800 text-sm">${accountLabel}</div>
+              <div class="text-xs text-slate-400 mt-0.5">${meta}</div>
             </div>
           </div>
           <div class="flex items-center gap-3 self-start sm:self-center">
@@ -1733,12 +1747,30 @@ function renderProfileBank(bank) {
   const nameEl = document.getElementById('profile-bank-name');
   const ownerEl = document.getElementById('profile-bank-owner');
   const badgeEl = document.getElementById('profile-bank-badge');
+  const qrEl = document.getElementById('profile-bank-qr');
+  const qrWrapEl = document.getElementById('profile-bank-qr-wrap');
+  const qrEmptyEl = document.getElementById('profile-bank-qr-empty');
   if (!nameEl || !ownerEl) return;
 
-  if (bank && bank.accNum) {
-    const last4 = String(bank.accNum).slice(-4);
-    nameEl.innerText = bank.bank + ' ****' + last4;
-    ownerEl.innerText = (bank.accName || '').toUpperCase();
+  const hasQr = !!(bank && bank.qrUrl);
+
+  if (hasQr) {
+    if (qrEl) qrEl.src = bank.qrUrl;
+    if (qrWrapEl) qrWrapEl.href = bank.qrUrl;
+  } else if (qrEl) {
+    qrEl.removeAttribute('src');
+  }
+  if (qrWrapEl) qrWrapEl.classList.toggle('hidden', !hasQr);
+  if (qrEmptyEl) qrEmptyEl.classList.toggle('hidden', hasQr);
+
+  if (bank && (bank.accNum || hasQr)) {
+    if (bank.accNum) {
+      nameEl.innerText = bank.bank + ' ****' + String(bank.accNum).slice(-4);
+    } else {
+      // Chỉ có ảnh QR, không nhập số tài khoản
+      nameEl.innerText = bank.bank || 'Nhận tiền qua ảnh QR';
+    }
+    ownerEl.innerText = (bank.accName || '').toUpperCase() || 'Nhận tiền qua ảnh QR';
     if (badgeEl) badgeEl.classList.remove('hidden');
   } else {
     nameEl.innerText = 'Chưa liên kết';
@@ -2046,20 +2078,196 @@ window.changePassword = async function() {
 /* ==========================================
    PHẦN 7: LOGIC MODAL RÚT TIỀN
 ========================================== */
+
+// Giá trị của option "Ngân hàng khác (tự ghi tên)" trong dropdown
+const BANK_OTHER_VALUE = '__other__';
+
+// Ảnh QR nhận tiền: chỉ nhận PNG/JPG, tối đa 2MB (server kiểm tra lại lần nữa)
+const BANK_QR_ALLOWED_TYPES = ['image/png', 'image/jpeg'];
+const BANK_QR_MAX_SIZE = 2 * 1024 * 1024; // 2MB
+
+// Nạp danh sách ngân hàng/ví từ /api/config (xem backend/lib/banks.js).
+// Nếu không gọi được API thì giữ nguyên vài lựa chọn ghi sẵn trong index.html.
+function populateBankOptions() {
+  const sel = document.getElementById('withdraw-bank');
+  if (!sel) return;
+
+  const groups = appConfig && Array.isArray(appConfig.banks) ? appConfig.banks : null;
+  if (!groups || !groups.length) return;
+
+  const current = sel.value;
+  sel.innerHTML = '';
+
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.disabled = true;
+  placeholder.innerText = '-- Chọn phương thức nhận tiền --';
+  sel.appendChild(placeholder);
+
+  groups.forEach((group) => {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.label || '';
+    (group.banks || []).forEach((item) => {
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.innerText = item.label || item.value;
+      optgroup.appendChild(option);
+    });
+    if (optgroup.children.length) sel.appendChild(optgroup);
+  });
+
+  const other = document.createElement('option');
+  other.value = BANK_OTHER_VALUE;
+  other.innerText = 'Ngân hàng khác (tự ghi tên)';
+  sel.appendChild(other);
+
+  // Giữ lại lựa chọn đang có nếu nó vẫn nằm trong danh sách mới
+  if (current && current !== BANK_OTHER_VALUE) {
+    const found = Array.from(sel.options).some((o) => o.value === current);
+    sel.value = found ? current : BANK_OTHER_VALUE;
+  }
+  toggleOtherBankInput();
+}
+
+// Hiện/ẩn ô tự ghi tên ngân hàng khi chọn "Ngân hàng khác"
+function toggleOtherBankInput() {
+  const sel = document.getElementById('withdraw-bank');
+  const input = document.getElementById('withdraw-bank-other');
+  if (!sel || !input) return;
+
+  const isOther = sel.value === BANK_OTHER_VALUE;
+  input.classList.toggle('hidden', !isOther);
+  if (!isOther) input.value = '';
+}
+
+// Tên ngân hàng người dùng đang chọn (hoặc tự ghi)
+function currentBankName() {
+  const sel = document.getElementById('withdraw-bank');
+  const input = document.getElementById('withdraw-bank-other');
+  if (!sel) return '';
+  if (sel.value === BANK_OTHER_VALUE) return input ? input.value.trim() : '';
+  return sel.value;
+}
+
+// Điền sẵn thông tin nhận tiền đã lưu vào hộp thoại rút tiền
+function fillWithdrawBankFields() {
+  const sel = document.getElementById('withdraw-bank');
+  const numEl = document.getElementById('withdraw-acc-number');
+  const nameEl = document.getElementById('withdraw-acc-name');
+  const otherEl = document.getElementById('withdraw-bank-other');
+  if (!sel || !currentUser || !currentUser.bank) return;
+
+  const savedBank = String(currentUser.bank.bank || '');
+  const inList = Array.from(sel.options).some((o) => o.value === savedBank && o.value !== BANK_OTHER_VALUE);
+
+  if (inList) {
+    sel.value = savedBank;
+  } else if (savedBank) {
+    // Ngân hàng không có trong danh sách (người dùng đã tự ghi tên lần trước)
+    sel.value = BANK_OTHER_VALUE;
+    if (otherEl) otherEl.value = savedBank;
+  }
+  if (numEl && currentUser.bank.accNum) numEl.value = currentUser.bank.accNum;
+  if (nameEl && currentUser.bank.accName) nameEl.value = currentUser.bank.accName;
+
+  toggleOtherBankInput();
+}
+
+// Đọc file thành data URL base64 (dùng cho ảnh QR)
+function readFileAsDataUrl(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (evt) => resolve(evt.target.result || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
+// Hiện ảnh QR đã lưu trong hộp thoại rút tiền
+function renderWithdrawQr(qrUrl) {
+  const img = document.getElementById('withdraw-qr-preview');
+  const removeBtn = document.getElementById('withdraw-qr-remove');
+  const label = document.getElementById('withdraw-qr-label');
+  if (!img) return;
+
+  if (qrUrl) {
+    img.src = qrUrl;
+    img.classList.remove('hidden');
+  } else {
+    img.removeAttribute('src');
+    img.classList.add('hidden');
+  }
+  if (removeBtn) removeBtn.classList.toggle('hidden', !qrUrl);
+  if (label) label.innerText = qrUrl ? 'Đổi ảnh QR khác' : 'Tải ảnh QR lên';
+}
+
+// Gắn sự kiện chọn file cho ô tải ảnh QR.
+// Dùng onchange (không phải addEventListener) nên mở lại hộp thoại nhiều lần cũng không trùng sự kiện.
+function initWithdrawQr() {
+  const input = document.getElementById('withdraw-qr-upload');
+  if (!input) return;
+
+  input.onchange = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!BANK_QR_ALLOWED_TYPES.includes(file.type)) {
+      showToast('Chỉ nhận ảnh QR định dạng PNG hoặc JPG.', 'error');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > BANK_QR_MAX_SIZE) {
+      showToast('Ảnh QR quá lớn. Vui lòng chọn ảnh dưới 2MB.', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    if (!dataUrl) {
+      showToast('Không đọc được file ảnh. Vui lòng thử lại.', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const data = await api('/profile/bank-qr', { method: 'POST', body: { dataUrl } });
+      currentUser = data.user || currentUser;
+      renderWithdrawQr(currentUser && currentUser.bank ? currentUser.bank.qrUrl : null);
+      renderProfileBank(currentUser && currentUser.bank);
+      showToast('Đã lưu ảnh QR nhận tiền.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      e.target.value = '';
+    }
+  };
+}
+
+// Xoá ảnh QR nhận tiền đã lưu
+window.removeBankQr = async function() {
+  try {
+    const data = await api('/profile/bank-qr', { method: 'DELETE' });
+    currentUser = data.user || currentUser;
+    renderWithdrawQr(null);
+    renderProfileBank(currentUser && currentUser.bank);
+    showToast('Đã xoá ảnh QR nhận tiền.', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+};
+
 window.openWithdrawModal = async function() {
   const modal = document.getElementById('withdraw-modal');
   const content = document.getElementById('withdraw-modal-content');
   if (!modal || !content) return;
 
-  // Điền sẵn thông tin nhận tiền đã lưu (nếu có)
-  if (currentUser && currentUser.bank) {
-    const bankEl = document.getElementById('withdraw-bank');
-    const numEl = document.getElementById('withdraw-acc-number');
-    const nameEl = document.getElementById('withdraw-acc-name');
-    if (bankEl && currentUser.bank.bank) bankEl.value = currentUser.bank.bank;
-    if (numEl && currentUser.bank.accNum) numEl.value = currentUser.bank.accNum;
-    if (nameEl && currentUser.bank.accName) nameEl.value = currentUser.bank.accName;
-  }
+  // Nạp danh sách ngân hàng đầy đủ rồi điền sẵn thông tin nhận tiền đã lưu (nếu có)
+  populateBankOptions();
+  fillWithdrawBankFields();
+
+  // Ảnh QR nhận tiền đã lưu (nếu có)
+  initWithdrawQr();
+  renderWithdrawQr(currentUser && currentUser.bank ? currentUser.bank.qrUrl : null);
 
   modal.classList.remove('hidden');
 
@@ -2125,21 +2333,27 @@ window.closeWithdrawModal = function() {
 };
 
 window.submitWithdraw = async function() {
-  const bankEl = document.getElementById('withdraw-bank');
   const numEl = document.getElementById('withdraw-acc-number');
   const nameEl = document.getElementById('withdraw-acc-name');
   const btn = document.getElementById('withdraw-submit-btn');
-  if (!bankEl || !numEl || !nameEl) return;
+  if (!numEl || !nameEl) return;
 
-  const bank = bankEl.value;
+  const bank = currentBankName();
   const accNum = numEl.value.trim();
   const accName = nameEl.value.trim();
 
-  if (!bank || !accNum || !accName) {
-    showToast('Vui lòng điền đầy đủ thông tin nhận tiền!', 'error');
+  // Có ảnh QR đã lưu thì không cần số tài khoản / tên chủ tài khoản
+  const hasQr = !!(currentUser && currentUser.bank && currentUser.bank.qrUrl);
+
+  if (!bank) {
+    showToast('Vui lòng chọn ngân hàng/ví điện tử nhận tiền (hoặc ghi rõ tên ngân hàng khác).', 'error');
     return;
   }
-  if (!/^[0-9]{6,20}$/.test(accNum)) {
+  if (!hasQr && (!accNum || !accName)) {
+    showToast('Vui lòng nhập số tài khoản và tên chủ tài khoản, hoặc tải lên ảnh QR nhận tiền.', 'error');
+    return;
+  }
+  if (accNum && !/^[0-9]{6,20}$/.test(accNum)) {
     showToast('Số tài khoản/số điện thoại ví phải là 6-20 chữ số.', 'error');
     return;
   }
@@ -2167,10 +2381,10 @@ window.submitWithdraw = async function() {
     }
 
     const amount = (data.withdrawal && data.withdrawal.amount) || 0;
-    showToast(
-      `✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\nNgân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`,
-      'success'
-    );
+    const detail = accNum
+      ? `Ngân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`
+      : `Ngân hàng: ${bank}\nNhận tiền qua ảnh QR`;
+    showToast(`✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\n${detail}`, 'success');
     closeWithdrawModal();
   } catch (err) {
     showToast(err.message, 'error');

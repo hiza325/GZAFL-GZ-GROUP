@@ -126,11 +126,14 @@ app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISO
 // Cấu hình công khai cho giao diện (KHÔNG chứa bí mật nào)
 app.get('/api/config', (req, res) => {
   const otp = require('./lib/otp');
+  const { BANK_GROUPS } = require('./lib/banks');
   res.json({
     support: {
       email: process.env.SUPPORT_EMAIL || '',
       zalo: process.env.SUPPORT_ZALO || ''
     },
+    // Danh sách ngân hàng/ví cho dropdown ở hộp thoại rút tiền (xem lib/banks.js)
+    banks: BANK_GROUPS,
     // Giao diện dựa vào đây để biết có cần hiện bước nhập mã xác thực không
     otp: {
       enabled: otp.otpEnabled(),
