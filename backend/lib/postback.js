@@ -26,6 +26,7 @@ const crypto = require('node:crypto');
 const db = require('../db');
 const { CANCELLED, AWAITING_RECONCILE } = require('./constants');
 const { redactParams } = require('./redact');
+const { releaseAt, holdDays } = require('./money');
 
 const PROVIDER = String(process.env.AFFILIATE_PROVIDER || 'mock').toLowerCase();
 
@@ -193,16 +194,31 @@ function totalsFor(order) {
   const tx = String(order.network_order_id || '');
   // Khớp CHẶT theo mã giao dịch của đơn: khi đơn đã có mã giao dịch thì chỉ cộng các
   // log của đúng giao dịch đó, không gộp thêm log "không có mã giao dịch" (dễ lẫn đơn khác).
+  //
+  // Mỗi sản phẩm có thể được mạng báo nhiều lần (pending -> approved -> rejected).
+  // Chỉ lấy log MỚI NHẤT của từng sản phẩm, nếu không thì một đơn bị huỷ vẫn còn
+  // cộng dồn khoản approved cũ và không thể thu hồi hoa hồng.
   const row = db
     .prepare(
-      `SELECT
+      `WITH relevant AS (
+         SELECT id, network_status, reward,
+                COALESCE(NULLIF(product_id, ''), NULLIF(conversion_id, ''), 'log:' || id) AS item_key
+         FROM postback_logs
+         WHERE order_code = ?
+           AND action != 'Từ chối'
+           AND ( (transaction_id = ? AND ? != '') OR (transaction_id = '' AND ? = '') )
+       ),
+       latest AS (
+         SELECT network_status, reward,
+                ROW_NUMBER() OVER (PARTITION BY item_key ORDER BY id DESC) AS rn
+         FROM relevant
+       )
+       SELECT
          COALESCE(SUM(CASE WHEN network_status = 'approved' THEN reward ELSE 0 END), 0) AS approved,
          COALESCE(SUM(CASE WHEN network_status = 'pending'  THEN reward ELSE 0 END), 0) AS pending,
          COALESCE(SUM(CASE WHEN network_status = 'rejected' THEN reward ELSE 0 END), 0) AS rejected
-       FROM postback_logs
-       WHERE order_code = ?
-         AND action != 'Từ chối'
-         AND ( (transaction_id = ? AND ? != '') OR (transaction_id = '' AND ? = '') )`
+       FROM latest
+       WHERE rn = 1`
     )
     .get(order.code, tx, tx, tx);
   return {
@@ -354,25 +370,100 @@ function applyToOrder(logId, parsed, user) {
 
   let action = found.how === 'fallback' ? 'Khớp tạm' : 'Đã ghi nhận';
   let note = matchNote;
+  const now = new Date().toISOString();
+  const previousCommission = Number(order.commission) || 0;
+  const previousReversed = Number(order.commission_reversed) || 0;
+  let reversedCommission = previousReversed;
+  let reversedAt = order.commission_reversed_at || null;
+  let availableAt = order.commission_available_at || null;
 
   if (order.status === 'Đã thanh toán') {
-    // Tiền đã chi cho người dùng rồi: chỉ ghi nhận số liệu, không tự ý đổi trạng thái
+    // Tiền đã chi cho người dùng rồi. Nếu mạng báo huỷ/giảm hoa hồng, vẫn phải ghi
+    // nhận thu hồi để số dư âm (khoản nợ) và trừ vào các hoa hồng sau.
     status = order.status;
     action = 'Đơn đã thanh toán';
-    note = 'Đơn đã chi trả nên hệ thống không tự đổi trạng thái. Kiểm tra tay nếu mạng báo huỷ.';
+    const clawback = previousCommission - commission;
+    if (clawback > 0) {
+      reversedCommission = clawback;
+      reversedAt = now;
+      availableAt = null;
+      db.prepare(
+        `UPDATE orders
+         SET commission = ?, commission_reversed = ?, commission_reversed_at = ?,
+             commission_available_at = NULL, network_commission = ?, network_status = ?, network_updated_at = ?
+         WHERE id = ?`
+      ).run(
+        commission,
+        reversedCommission,
+        reversedAt,
+        networkCommission,
+        aggregateStatus,
+        now,
+        order.id
+      );
+      note = `Mạng báo huỷ/giảm hoa hồng sau khi đơn đã thanh toán — đã ghi nhận thu hồi ${clawback}đ.`;
+    } else {
+      // Không tự tăng tiền cho đơn đã chi trả; chỉ cập nhật số liệu mạng.
+      db.prepare(
+        `UPDATE orders SET network_commission = ?, network_status = ?, network_updated_at = ? WHERE id = ?`
+      ).run(networkCommission, aggregateStatus, now, order.id);
+      note = 'Đơn đã chi trả nên hệ thống không tự đổi trạng thái. Kiểm tra tay nếu mạng báo huỷ.';
+    }
     if (matchNote) note += ' ' + matchNote;
-    db.prepare(
-      `UPDATE orders SET network_commission = ?, network_status = ?, network_updated_at = ? WHERE id = ?`
-    ).run(networkCommission, aggregateStatus, new Date().toISOString(), order.id);
   } else {
-    db.prepare(
-      `UPDATE orders SET status = ?, commission = ?, network_commission = ?, network_status = ?, network_updated_at = ?
-       WHERE id = ?`
-    ).run(status, commission, networkCommission, aggregateStatus, new Date().toISOString(), order.id);
+    if (commission <= 0) {
+      availableAt = null;
+    } else if (status === CANCELLED) {
+      availableAt = null;
+    } else if (status === 'Hoàn thành') {
+      // Chỉ đặt lại thời gian giữ khi có thêm tiền hoặc đơn vừa được duyệt.
+      // Các postback lặp lại của cùng sản phẩm không được kéo dài thời gian giữ.
+      const increased = commission > previousCommission;
+      const becameCompleted = order.status !== 'Hoàn thành';
+      if (increased || becameCompleted || !availableAt) {
+        availableAt = releaseAt();
+      }
+    } else if (!availableAt) {
+      // Đơn đang chờ mạng duyệt: chưa vào số dư, nhưng vẫn đặt mốc dự phòng.
+      availableAt = releaseAt();
+    }
 
-    if (totals.approved > 0) note = `Mạng đã duyệt ${totals.approved}đ, hoàn cho người dùng ${commission}đ.`;
-    else if (status === CANCELLED) note = 'Mạng báo huỷ, đơn chuyển sang "Đã huỷ".';
-    else note = `Chờ mạng duyệt (tạm tính ${networkCommission}đ).`;
+    if (commission < previousCommission) {
+      reversedCommission = previousCommission - commission;
+      reversedAt = now;
+    } else if (commission > previousCommission) {
+      // Đơn được duyệt lại sau khi từng bị huỷ.
+      reversedCommission = 0;
+      reversedAt = null;
+    }
+
+    db.prepare(
+      `UPDATE orders
+       SET status = ?, commission = ?, commission_reversed = ?, commission_reversed_at = ?,
+           commission_available_at = ?, network_commission = ?, network_status = ?, network_updated_at = ?
+       WHERE id = ?`
+    ).run(
+      status,
+      commission,
+      reversedCommission,
+      reversedAt,
+      availableAt,
+      networkCommission,
+      aggregateStatus,
+      now,
+      order.id
+    );
+
+    if (totals.approved > 0) {
+      note = `Mạng đã duyệt ${totals.approved}đ, hoàn cho người dùng ${commission}đ.`;
+      if (reversedCommission > 0 && commission < previousCommission) {
+        note += ` Đã thu hồi ${reversedCommission}đ do mạng điều chỉnh.`;
+      }
+    } else if (status === CANCELLED) {
+      note = `Mạng báo huỷ, đơn chuyển sang "Đã huỷ"${reversedCommission > 0 ? `; thu hồi ${reversedCommission}đ hoa hồng` : ''}.`;
+    } else {
+      note = `Chờ mạng duyệt (tạm tính ${networkCommission}đ).`;
+    }
     if (matchNote) note += ' ' + matchNote;
   }
 
@@ -383,24 +474,38 @@ function applyToOrder(logId, parsed, user) {
     logId
   );
 
-  notifyOwner(order, parsed, commission, status);
+  notifyOwner(order, parsed, commission, status, commission < previousCommission ? previousCommission - commission : 0);
 
-  return { matched: true, orderCode: order.code, status, commission, note };
+  return { matched: true, orderCode: order.code, status, commission, reversedCommission, note };
 }
 
-/** Báo cho người dùng biết đơn của họ vừa có chuyển đổi (chỉ khi đã có tiền thật). */
-function notifyOwner(order, parsed, commission, status) {
-  if (commission <= 0) return;
+/** Báo cho người dùng biết đơn của họ vừa có chuyển đổi hoặc vừa bị thu hồi. */
+function notifyOwner(order, parsed, commission, status, reversedCommission = 0) {
+  if (commission <= 0 && reversedCommission <= 0) return;
   try {
-    db.prepare(
-      `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
-       VALUES (?, ?, ?, 'wallet', 0, ?)`
-    ).run(
-      order.user_id,
-      'Đơn hàng đã được duyệt',
-      `Đơn ${order.code} đã được ghi nhận hoa hồng ${commission}đ. Trạng thái: ${status}.`,
-      new Date().toISOString()
-    );
+    const now = new Date().toISOString();
+    if (reversedCommission > 0 && commission <= 0) {
+      db.prepare(
+        `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
+         VALUES (?, ?, ?, 'wallet', 0, ?)`
+      ).run(
+        order.user_id,
+        'Hoa hồng bị thu hồi',
+        `Đơn ${order.code} bị huỷ/hoàn trả. Hệ thống đã thu hồi ${reversedCommission}đ hoa hồng. Nếu bạn đã rút trước đó, khoản này sẽ được trừ vào hoa hồng tiếp theo.`,
+        now
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
+         VALUES (?, ?, ?, 'wallet', 0, ?)`
+      ).run(
+        order.user_id,
+        'Đơn hàng đã được duyệt',
+        `Đơn ${order.code} đã được ghi nhận hoa hồng ${commission}đ. Trạng thái: ${status}.` +
+          (reversedCommission > 0 ? ` Đã điều chỉnh thu hồi ${reversedCommission}đ.` : ''),
+        now
+      );
+    }
   } catch (err) {
     // Không để lỗi thông báo làm hỏng việc đối soát
     console.warn(`Không tạo được thông báo cho đơn ${order.code}: ${err.message}`);
@@ -484,6 +589,7 @@ function describe() {
     provider: PROVIDER,
     configured: Boolean(secret),
     cashbackRate: cashbackRate(),
+    holdDays: holdDays(),
     url: '/api/postback/' + PROVIDER
   };
 }

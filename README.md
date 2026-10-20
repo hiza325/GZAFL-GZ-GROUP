@@ -79,6 +79,7 @@ npm run watch:css
 | `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật, ví dụ `TikTok Shop, Tiki`. Các sàn còn lại tạm dùng link thử nghiệm; mỗi đơn lưu `affiliate.isReal` để giao diện hiển thị rõ **link thật** hay **chưa gắn hoa hồng** |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
+| `COMMISSION_HOLD_DAYS` | `7` | Số ngày **tạm giữ hoa hồng** sau khi mạng duyệt trước khi người dùng được rút (`0` = cho rút ngay). Hoa hồng bị mạng báo huỷ/hoàn trả sau đó sẽ được ghi nhận thu hồi; nếu khách đã rút, phần âm trở thành khoản cần hoàn lại và tự trừ vào hoa hồng sau |
 | `ACCESSTRADE_API_KEY` | – | Token API của AccessTrade |
 | `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | – | Campaign ID riêng cho từng sàn (giữ **dạng chuỗi**) |
 | `ACCESSTRADE_CAMPAIGN_ID` | – | Tuỳ chọn: campaign mặc định nếu sàn chưa có biến riêng |
@@ -354,8 +355,10 @@ Trạng thái hợp lệ:
 
 **Rút tiền:** người dùng không tự nhập số tiền — hệ thống ghi nhận **toàn bộ số dư khả dụng** tại thời điểm gửi. Nhờ vậy số tiền đó bị **giữ chỗ** ngay, không thể rút trùng. Các ràng buộc ở server (`backend/routes/wallet.js`):
 
+- Số dư khả dụng = hoa hồng đã ghi **− tiền đang tạm giữ − tiền đã rút**. Khoản tạm giữ gồm đơn đang chờ mạng duyệt và hoa hồng còn trong `COMMISSION_HOLD_DAYS` ngày kể từ lúc mạng duyệt.
 - Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **1.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
 - Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
+- Nếu mạng báo huỷ/hoàn trả sau khi khách đã rút, hệ thống ghi nhận **thu hồi** và số dư có thể âm. Khoản âm là **nợ cần hoàn lại**, sẽ tự trừ vào hoa hồng tiếp theo; ví và trang quản trị hiển thị rõ khoản này.
 - Ngân hàng/ví được chọn từ danh sách trong `backend/lib/banks.js` (khoảng 50 ngân hàng và ví điện tử, hiện ở dropdown và ở `GET /api/config`). Người dùng cũng có thể chọn **"Ngân hàng khác"** rồi tự ghi tên (tối đa 60 ký tự).
 - Người dùng **chọn 1 trong 2** cách nhận tiền, không cần làm cả hai:
   - **Nhập số tài khoản**: bắt buộc có ngân hàng/ví + `accNum` + `accName`.
@@ -394,11 +397,11 @@ Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js
 2. **Ghi tham số nhận được** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại. `POSTBACK_SECRET` và các tham số nhạy cảm (`token`, `signature`…) được **che** trước khi lưu và trước khi hiển thị ở trang quản trị.
 3. **Chống trùng** theo `payload_hash`: mạng gửi lại y hệt thì chỉ tăng số lần nhận, **không cộng tiền lần hai**.
 4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.
-5. **Cộng dồn theo đơn** rồi cập nhật trạng thái:
+5. **Cộng dồn theo đơn** (mỗi sản phẩm lấy trạng thái **mới nhất**) rồi cập nhật:
    - mạng báo **chưa duyệt** → đơn chuyển **"Chờ đối soát"**, tiền nằm ở `network_commission`, **chưa vào số dư**;
-   - mạng báo **đã duyệt** → đơn **"Hoàn thành"**, cộng `commission = tiền đã duyệt × CASHBACK_RATE`;
-   - mạng báo **huỷ** → đơn **"Đã huỷ"**, hoa hồng về 0.
-6. **Luôn trả `200` nhanh** (mạng chỉ gửi lại tối đa 3 lần) và **không bao giờ tự đổi trạng thái của đơn đã ở "Đã thanh toán"** — tránh việc đã chi tiền cho khách rồi mà mạng báo huỷ.
+   - mạng báo **đã duyệt** → đơn **"Hoàn thành"**, ghi `commission = tiền đã duyệt × CASHBACK_RATE` và bắt đầu **tạm giữ** `COMMISSION_HOLD_DAYS` ngày;
+   - mạng báo **huỷ/hoàn trả** → đơn **"Đã huỷ"**, hoa hồng về 0 và ghi số **đã thu hồi** vào `commission_reversed`.
+6. **Luôn trả `200` nhanh** (mạng chỉ gửi lại tối đa 3 lần). Với đơn đã ở **"Đã thanh toán"**, trạng thái đơn được giữ nguyên, nhưng nếu mạng báo huỷ/giảm hoa hồng thì hệ thống vẫn ghi nhận thu hồi và số dư âm (nợ) — không tự tăng tiền khi mạng báo thêm.
 
 > AccessTrade gửi **mỗi sản phẩm một lần gọi** (đơn 3 món = 3 postback cùng mã giao dịch), nên tổng hoa hồng được cộng dồn theo đơn.
 
@@ -413,7 +416,7 @@ Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp
 | Bảng | Nội dung |
 |---|---|
 | `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, thông tin nhận tiền |
-| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng, `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
+| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng, `commission_available_at` (hết thời gian tạm giữ), `commission_reversed` (hoa hồng đã thu hồi), `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
@@ -453,9 +456,9 @@ Trang quản trị gồm 6 tab:
 
 | Tab | Việc làm được |
 |---|---|
-| **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (hoa hồng được cộng ngay vào ví khách); huỷ đơn |
-| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** của khách và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
-| **Người dùng** | Xem điểm, số đơn, hoa hồng, đã rút, số dư; sửa vai trò và điểm thưởng; xoá người dùng |
+| **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (vào ví sau thời gian tạm giữ); thấy rõ **tạm giữ** / **đã thu hồi**; huỷ đơn sẽ ghi nhận thu hồi |
+| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** (đã trừ tiền tạm giữ), **khoản nợ** và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
+| **Người dùng** | Xem điểm, số đơn, hoa hồng, **tạm giữ**, đã rút, số dư/nợ; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
 | **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
 | **Đối soát** | Nhật ký mọi lần mạng affiliate báo chuyển đổi: lọc theo trạng thái mạng (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) và theo kết quả (`đã khớp đơn` / `chưa hoặc chỉ khớp tạm` / `bị từ chối`); xem **tham số thô** mạng gửi (nút **Thô**) và bấm **Xử lý lại** cho log về trước lúc đơn được tạo. Huy hiệu số trên tab là số lần postback **cần người xem lại** (chưa khớp được đơn, hoặc chỉ khớp tạm). Tiền của các lần gọi sai chìa khoá **không** được tính vào thống kê hoa hồng |
@@ -495,8 +498,8 @@ npm test
 ```
 
 Bộ test kiểm tra: health, header bảo mật, chặn tải file nội bộ, quyền xem ảnh QR,
-chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, rate limit dùng SQLite
-và script sao lưu.
+chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, tạm giữ/thu hồi hoa hồng,
+rate limit dùng SQLite và script sao lưu.
 
 **Sao lưu nóng** (không cần dừng server):
 

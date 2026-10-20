@@ -154,6 +154,7 @@ https://shopee.vn/product/111
 | `POSTBACK_SECRET` | — | Chuỗi bí mật để xác thực postback |
 | `POSTBACK_PARAM_*` | — | Ép tên tham số mạng gửi về (xem mục 3.6.2) |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn cho người dùng (0.7 = 70%) |
+| `COMMISSION_HOLD_DAYS` | `7` | Số ngày tạm giữ hoa hồng sau khi mạng duyệt trước khi cho rút (0 = rút ngay) |
 
 Nếu thiếu key thì **chỉ đơn hàng đó rơi về link gốc** (người dùng vẫn mua được, hệ thống ghi log lỗi) —
 cố ý không làm sập luồng tạo đơn vì một API bên ngoài đang lỗi.
@@ -237,16 +238,16 @@ AccessTrade --GET--> /api/postback/accesstrade?secret=...&transaction_id=...&rew
    ├─ 2. Ghi NGUYÊN tham số vào postback_logs (kể cả lần gọi sai)      → có log mới đối soát được
    ├─ 3. Chống trùng theo payload_hash                                 → trùng: chỉ tăng dup_count, trả 200
    ├─ 4. Đọc sub1 = gzafl-u<id> → người dùng;  sub2 = <mã đơn> → đúng đơn
-   ├─ 5. Cộng dồn MỌI lần postback của cùng giao dịch (mạng gửi mỗi sản phẩm 1 lần)
+   ├─ 5. Cộng dồn theo giao dịch, mỗi sản phẩm lấy trạng thái MỚI NHẤT
    └─ 6. Cập nhật đơn: chờ duyệt → "Chờ đối soát"; đã duyệt → "Hoàn thành" + cộng tiền; huỷ → "Đã huỷ"
 ```
 
 Chi tiết đáng nhớ:
 
-- **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Vì vậy tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), không lấy từng lần gọi.
+- **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), nhưng mỗi sản phẩm chỉ lấy log **mới nhất** — nhờ vậy khi mạng đổi `pending` → `approved` → `rejected`, trạng thái cuối cùng mới quyết định tiền.
 - **Chống trùng bằng `payload_hash`** (băm tham số đã sắp xếp) chứ không chỉ theo `transaction_id` — nhờ vậy 3 lần gọi khác sản phẩm vẫn được tính đủ, mà lần gọi lại y hệt thì không cộng tiền hai lần.
-- **Tiền chưa duyệt KHÔNG vào số dư.** Nằm ở cột riêng `orders.network_commission`; chỉ khi mạng báo `approved` mới ghi `orders.commission` (tiền thật của người dùng). Nhờ vậy không phải sửa lại mọi câu SQL tính số dư.
-- **Đơn đã ở trạng thái "Đã thanh toán" thì hệ thống không tự đổi** — tránh trường hợp đã chi tiền cho khách rồi mà mạng báo huỷ lại âm ví. Log ghi rõ để admin xử lý tay.
+- **Tiền chưa duyệt KHÔNG vào số dư.** Nằm ở cột riêng `orders.network_commission`; chỉ khi mạng báo `approved` mới ghi `orders.commission` (tiền thật của người dùng) và bắt đầu **tạm giữ** `COMMISSION_HOLD_DAYS` ngày (`orders.commission_available_at`).
+- **Đơn đã ở trạng thái "Đã thanh toán"** vẫn giữ nguyên trạng thái, nhưng nếu mạng báo huỷ/giảm hoa hồng thì ghi nhận **thu hồi** vào `orders.commission_reversed`; nếu khách đã rút, số dư âm là khoản nợ và tự trừ vào hoa hồng sau. Hệ thống không tự tăng tiền khi mạng báo thêm.
 - **Postback không khớp được đơn nào** (về trước khi đơn tồn tại, hoặc sai tên tham số) vẫn được lưu và hiện ở tab **Đối soát** với nút **Xử lý lại**.
 - **Luôn trả `200` nhanh** để mạng không gửi lại liên tục (AccessTrade chỉ gửi lại tối đa 3 lần).
 

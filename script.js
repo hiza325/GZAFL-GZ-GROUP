@@ -74,6 +74,12 @@ function formatCurrency(amount) {
   return 'đ' + n.toLocaleString('vi-VN');
 }
 
+function formatShortDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('vi-VN');
+}
+
 // Màu badge theo trạng thái đơn hàng / lệnh rút / yêu cầu khôi phục mật khẩu
 function statusBadgeClass(status) {
   if (status === 'Hoàn thành' || status === 'Đã thanh toán' || status === 'Đã xử lý') {
@@ -251,6 +257,7 @@ async function checkAuth() {
     await loadComponent('header-container', 'components/header.html');
     await loadComponent('main-content-container', 'components/dashboard-content.html');
 
+    closeSidebar();
     setHeaderTitle('Tổng quan');
     updateActiveMenu('dashboard');
     renderHeaderUser(user);
@@ -260,6 +267,7 @@ async function checkAuth() {
     // đưa họ thẳng tới trang Tạo đơn với link đã điền sẵn.
     await handlePendingLandingLink();
   } else {
+    closeSidebar();
     appRoot.classList.add('hidden');
     landingRoot.classList.remove('hidden');
     await loadComponent('landing-root', 'components/landing.html');
@@ -1183,6 +1191,35 @@ function ensureAdminScript() {
   return adminScriptPromise;
 }
 
+/* ==========================================
+   SIDEBAR: drawer trên mobile, thu gọn trên desktop
+========================================== */
+
+function isDesktopLayout() {
+  return window.matchMedia('(min-width: 1024px)').matches;
+}
+
+function setSidebarOpen(open) {
+  const sidebar = document.getElementById('app-sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  const toggle = document.getElementById('sidebar-toggle');
+  if (!sidebar) return;
+
+  sidebar.classList.toggle('sidebar-open', !!open);
+  if (overlay) overlay.classList.toggle('sidebar-open', !!open);
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  document.body.classList.toggle('sidebar-open', !!open && !isDesktopLayout());
+}
+
+function openSidebar() {
+  if (isDesktopLayout()) return;
+  setSidebarOpen(true);
+}
+
+function closeSidebar() {
+  setSidebarOpen(false);
+}
+
 async function navigateTo(page) {
   const route = PAGE_ROUTES[page];
   if (!route) return;
@@ -1210,6 +1247,18 @@ async function navigateTo(page) {
 }
 
 document.addEventListener('click', async function(event) {
+  // 0. Mở/đóng sidebar trên mobile
+  if (event.target.closest('#sidebar-toggle')) {
+    event.preventDefault();
+    openSidebar();
+    return;
+  }
+  if (event.target.closest('#sidebar-close') || event.target.closest('#sidebar-overlay')) {
+    event.preventDefault();
+    closeSidebar();
+    return;
+  }
+
   // 1. Nút Rút tiền (đánh dấu bằng data-action)
   const withdrawBtn = event.target.closest('[data-action="withdraw"]');
   if (withdrawBtn) {
@@ -1256,8 +1305,17 @@ document.addEventListener('click', async function(event) {
   const navEl = event.target.closest('[data-page]');
   if (navEl) {
     event.preventDefault();
+    closeSidebar();
     navigateTo(navEl.dataset.page);
   }
+});
+
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') closeSidebar();
+});
+
+window.addEventListener('resize', function() {
+  if (isDesktopLayout()) setSidebarOpen(false);
 });
 
 function updateActiveMenu(page) {
@@ -1509,6 +1567,19 @@ async function updateWalletData() {
   setText('wallet-balance', formatCurrency(data.balance));
   setHeaderBalance(data.balance);
 
+  const held = Number(data.heldCommission) || 0;
+  const debt = Number(data.debt) || 0;
+  const heldEl = document.getElementById('wallet-hold-note');
+  const debtEl = document.getElementById('wallet-debt-note');
+  if (heldEl) {
+    heldEl.textContent = held > 0 ? `Tạm giữ: ${formatCurrency(held)}` : '';
+    heldEl.classList.toggle('hidden', held <= 0);
+  }
+  if (debtEl) {
+    debtEl.textContent = debt > 0 ? `Cần hoàn lại: ${formatCurrency(debt)}` : '';
+    debtEl.classList.toggle('hidden', debt <= 0);
+  }
+
   renderWithdrawHistory(data.withdrawals || []);
 }
 
@@ -1603,6 +1674,8 @@ async function updateOrdersData() {
       const isMockLink = affiliate.isReal === false;
       // Sàn đã ghi nhận chuyển đổi nhưng CHƯA duyệt: tiền chưa vào số dư (xem lib/postback.js)
       const waitingReconcile = (Number(order.networkCommission) || 0) > 0 && (Number(order.commission) || 0) === 0;
+      const heldCommission = order.commissionHeld === true;
+      const reversedCommission = Number(order.reversedCommission) || 0;
       htmlList += `
         <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -1634,6 +1707,16 @@ async function updateOrdersData() {
           <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 ${hasTrackedLink ? 'pt-1' : 'pt-4 border-t border-slate-50'}">
             <i data-lucide="clock" class="w-3.5 h-3.5"></i>
             Sàn đã ghi nhận ${formatCurrency(order.networkCommission)} nhưng chưa duyệt. Tiền sẽ vào số dư khi được duyệt.
+          </div>` : ''}
+          ${heldCommission ? `
+          <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 pt-1">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            Hoa hồng ${formatCurrency(order.commission)} đang tạm giữ${order.commissionAvailableAt ? ` đến ${formatShortDate(order.commissionAvailableAt)}` : ''}. Bạn có thể rút sau thời gian này.
+          </div>` : ''}
+          ${reversedCommission > 0 ? `
+          <div class="flex items-center gap-2 text-[11px] font-semibold text-rose-600 pt-1">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            Hoa hồng ${formatCurrency(reversedCommission)} đã bị thu hồi do đơn bị huỷ/hoàn trả.
           </div>` : ''}
           ${affiliate.error ? `
           <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 pt-1">
@@ -2439,21 +2522,28 @@ async function refreshWithdrawBalance() {
 
   const balance = Number(data.balance) || 0;
   const min = Number(data.minWithdraw) || 0;
+  const held = Number(data.heldCommission) || 0;
+  const debt = Number(data.debt) || 0;
 
   availableEl.innerText = formatCurrency(balance);
+
+  let extra = '';
+  if (held > 0) extra += ' Đang tạm giữ ' + formatCurrency(held) + '.';
+  if (debt > 0) extra += ' Bạn đang cần hoàn lại ' + formatCurrency(debt) + ' do hoa hồng bị thu hồi.';
 
   if (balance < min) {
     noteEl.innerText =
       'Mức rút tối thiểu là ' + formatCurrency(min) + '. ' +
       (balance > 0
         ? 'Bạn còn thiếu ' + formatCurrency(min - balance) + '.'
-        : 'Bạn chưa có hoa hồng khả dụng để rút.');
+        : 'Bạn chưa có hoa hồng khả dụng để rút.') +
+      extra;
     btn.disabled = true;
     btn.title = 'Số dư chưa đủ để rút';
   } else {
     noteEl.innerText =
       'Hệ thống sẽ rút toàn bộ ' + formatCurrency(balance) + ' đang có. ' +
-      'Mức tối thiểu: ' + formatCurrency(min) + '.';
+      'Mức tối thiểu: ' + formatCurrency(min) + '.' + extra;
     btn.disabled = false;
     btn.title = '';
   }

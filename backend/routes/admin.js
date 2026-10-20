@@ -46,6 +46,7 @@ const { logAudit } = require('../lib/audit');
 const { UPLOAD_DIR } = require('../lib/uploads');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
+const { heldExpr, reversedExpr, computeUserMoney, releaseAt, holdDays } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -80,31 +81,23 @@ const USER_AGGREGATES = `
   (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count,
   (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = 'Đang xử lý') AS pending_count,
   (SELECT COALESCE(SUM(o.commission), 0) FROM orders o WHERE o.user_id = u.id AND o.status != '${CANCELLED}') AS commission_total,
+  (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o WHERE o.user_id = u.id) AS held_total,
+  (SELECT COALESCE(SUM(${reversedExpr('o')}), 0) FROM orders o WHERE o.user_id = u.id) AS clawback_total,
   (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w WHERE w.user_id = u.id AND w.status != '${CANCELLED}') AS withdrawn_total,
   (SELECT COUNT(*) FROM referrals r WHERE r.user_id = u.id) AS referral_count
 `;
 
-// Số dư của một người dùng (đơn huỷ không tính, lệnh rút huỷ không tính)
+// Số dư của một người dùng (đơn huỷ không tính, tiền đang giữ không được rút).
 function getUserMoney(userId) {
-  const commission = Number(
-    db
-      .prepare(`SELECT COALESCE(SUM(commission), 0) AS t FROM orders WHERE user_id = ? AND status != ?`)
-      .get(userId, CANCELLED).t
-  ) || 0;
-  const withdrawn = Number(
-    db
-      .prepare(`SELECT COALESCE(SUM(amount), 0) AS t FROM withdrawals WHERE user_id = ? AND status != ?`)
-      .get(userId, CANCELLED).t
-  ) || 0;
-  return { commission, withdrawn, balance: commission - withdrawn };
+  return computeUserMoney(userId);
 }
 
-// Số tiền tối đa có thể chi cho một lệnh rút: tổng hoa hồng trừ các lệnh rút KHÁC
-// (không tính chính lệnh đang xét, và bỏ qua mọi đơn/lệnh đã huỷ).
+// Số tiền tối đa có thể chi cho một lệnh rút: hoa hồng khả dụng trừ các lệnh rút KHÁC
+// (không tính chính lệnh đang xét, trừ tiền đang tạm giữ và bỏ qua mọi đơn/lệnh đã huỷ).
 function payableForWithdrawal(row) {
   const money = getUserMoney(row.user_id);
   const selfCounted = row.status === CANCELLED ? 0 : Number(row.amount) || 0;
-  return Math.max(0, money.commission - (money.withdrawn - selfCounted));
+  return Math.max(0, money.totalCommission - money.heldCommission - (money.withdrawn - selfCounted));
 }
 
 function findUserById(id) {
@@ -127,6 +120,8 @@ function findWithdrawalByCode(code) {
       `SELECT w.*, u.name AS user_name, u.username AS user_username,
          (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
            WHERE o.user_id = w.user_id AND o.status != '${CANCELLED}') AS commission_total,
+         (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o
+           WHERE o.user_id = w.user_id) AS held_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
@@ -157,7 +152,9 @@ router.get('/overview', (req, res) => {
               COALESCE(SUM(CASE WHEN status = 'Hoàn thành'    THEN 1 ELSE 0 END), 0) AS completed,
               COALESCE(SUM(CASE WHEN status = 'Đã thanh toán' THEN 1 ELSE 0 END), 0) AS paid,
               COALESCE(SUM(CASE WHEN status = '${CANCELLED}'  THEN 1 ELSE 0 END), 0) AS cancelled,
-              COALESCE(SUM(CASE WHEN status != '${CANCELLED}' THEN commission ELSE 0 END), 0) AS commission
+              COALESCE(SUM(CASE WHEN status != '${CANCELLED}' THEN commission ELSE 0 END), 0) AS commission,
+              COALESCE(SUM(${heldExpr()}), 0) AS held_commission,
+              COALESCE(SUM(${reversedExpr()}), 0) AS clawback
        FROM orders`
     )
     .get();
@@ -198,6 +195,7 @@ router.get('/overview', (req, res) => {
     .get();
 
   const totalCommission = Number(orders.commission) || 0;
+  const heldCommission = Number(orders.held_commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
 
   return res.json({
@@ -235,9 +233,14 @@ router.get('/overview', (req, res) => {
     },
     money: {
       totalCommission,
+      heldCommission,
+      clawback: Number(orders.clawback) || 0,
       totalPaidOut: Number(withdrawals.paid_amount) || 0,
-      // Tổng tiền hệ thống còn phải trả cho người dùng
-      systemBalance: totalCommission - committed
+      // Tổng tiền hệ thống còn phải trả cho người dùng (gồm cả phần đang tạm giữ)
+      systemBalance: totalCommission - committed,
+      // Phần đã có thể chi trả ngay (không gồm tiền đang tạm giữ)
+      availableSystemBalance: totalCommission - heldCommission - committed,
+      holdDays: holdDays()
     }
   });
 });
@@ -412,42 +415,94 @@ router.patch('/orders/:code', (req, res) => {
   }
 
   const body = req.body || {};
-  const updates = [];
-  const values = [];
 
-  if (body.status !== undefined) {
-    const status = String(body.status);
-    if (!ORDER_STATUSES.includes(status)) {
-      return res.status(400).json({ error: 'Trạng thái đơn hàng không hợp lệ.' });
-    }
-    updates.push('status = ?');
-    values.push(status);
+  if (body.status !== undefined && !ORDER_STATUSES.includes(String(body.status))) {
+    return res.status(400).json({ error: 'Trạng thái đơn hàng không hợp lệ.' });
   }
-
-  if (body.commission !== undefined) {
-    const commission = Number(body.commission);
-    if (!isMoney(commission)) return res.status(400).json({ error: 'Hoa hồng không hợp lệ.' });
-    updates.push('commission = ?');
-    values.push(commission);
+  if (body.commission !== undefined && !isMoney(Number(body.commission))) {
+    return res.status(400).json({ error: 'Hoa hồng không hợp lệ.' });
   }
-
-  if (!updates.length) {
+  if (body.status === undefined && body.commission === undefined) {
     return res.status(400).json({ error: 'Không có thông tin nào để cập nhật.' });
   }
+
+  const prevStatus = before.status;
+  const prevCommission = Number(before.commission) || 0;
+  const prevReversed = Number(before.commission_reversed) || 0;
+  const nextStatus = body.status !== undefined ? String(body.status) : prevStatus;
+  let nextCommission = body.commission !== undefined ? Number(body.commission) : prevCommission;
+  let nextReversed = prevReversed;
+  let nextReversedAt = before.commission_reversed_at || null;
+  let nextAvailableAt = before.commission_available_at || null;
+  const now = new Date().toISOString();
+
+  if (nextStatus === CANCELLED) {
+    // Huỷ/hoàn trả: ghi lại số hoa hồng từng ghi cho đơn để admin đối soát,
+    // đồng thời đưa hoa hồng về 0. Nếu khách đã rút trước đó, số dư sẽ âm
+    // và được trừ dần vào các hoa hồng sau (debt).
+    if (prevCommission > 0) {
+      nextReversed = prevCommission;
+      nextReversedAt = now;
+    }
+    nextCommission = 0;
+    nextAvailableAt = null;
+  } else {
+    if (nextCommission < prevCommission) {
+      nextReversed = prevCommission - nextCommission;
+      nextReversedAt = now;
+    } else if (prevStatus === CANCELLED) {
+      // Đơn được khôi phục: khoản thu hồi trước đó không còn hiệu lực.
+      nextReversed = 0;
+      nextReversedAt = null;
+    }
+
+    if (nextCommission === 0) {
+      nextAvailableAt = null;
+    } else if (nextStatus === 'Đã thanh toán') {
+      // Admin đã chốt/chi trả đơn này: cho phép tính vào số dư ngay.
+      nextAvailableAt = null;
+    } else if (nextStatus === 'Hoàn thành') {
+      const needsRelease =
+        (body.status !== undefined && prevStatus !== 'Hoàn thành') ||
+        (body.commission !== undefined && nextCommission !== prevCommission) ||
+        !nextAvailableAt;
+      if (needsRelease) nextAvailableAt = releaseAt();
+    } else if (!nextAvailableAt) {
+      // Đơn đang xử lý/chờ đối soát mà admin đã nhập hoa hồng: vẫn giữ tiền
+      // cho tới khi đơn được chuyển sang Hoàn thành.
+      nextAvailableAt = releaseAt();
+    }
+  }
+
+  const updates = [];
+  const values = [];
+  const set = (column, value) => {
+    updates.push(`${column} = ?`);
+    values.push(value);
+  };
+
+  if (body.status !== undefined) set('status', nextStatus);
+  set('commission', nextCommission);
+  if (nextReversed !== prevReversed) set('commission_reversed', nextReversed);
+  if (nextReversedAt !== (before.commission_reversed_at || null)) set('commission_reversed_at', nextReversedAt);
+  if (nextAvailableAt !== (before.commission_available_at || null)) set('commission_available_at', nextAvailableAt);
 
   db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
 
   const after = findOrderByCode(code);
 
   // Báo cho người dùng biết đơn của họ vừa thay đổi
-  const statusChanged = body.status !== undefined && String(body.status) !== before.status;
-  const commissionChanged =
-    body.commission !== undefined && Number(body.commission) !== Number(before.commission);
+  const statusChanged = after.status !== before.status;
+  const commissionChanged = Number(after.commission) !== Number(before.commission);
+  const reversedChanged = Number(after.commission_reversed) !== prevReversed;
 
-  if (statusChanged || commissionChanged) {
+  if (statusChanged || commissionChanged || reversedChanged) {
     const parts = [];
     if (statusChanged) parts.push(`trạng thái: ${after.status}`);
     if (commissionChanged) parts.push(`hoa hồng: ${formatMoney(after.commission)}`);
+    if (reversedChanged && after.commission_reversed > 0) {
+      parts.push(`thu hồi: ${formatMoney(after.commission_reversed)}`);
+    }
     notify(before.user_id, {
       title: `Đơn ${code} đã được cập nhật`,
       body: `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
@@ -458,6 +513,7 @@ router.patch('/orders/:code', (req, res) => {
   const changes = [];
   if (statusChanged) changes.push(`trạng thái ${before.status} → ${after.status}`);
   if (commissionChanged) changes.push(`hoa hồng ${formatMoney(before.commission)} → ${formatMoney(after.commission)}`);
+  if (reversedChanged) changes.push(`thu hồi ${formatMoney(after.commission_reversed)}`);
   if (changes.length) logAudit(req, 'Cập nhật đơn hàng', 'order', code, changes.join('; '));
 
   return res.json({ order: toAdminOrder(after) });
@@ -504,6 +560,8 @@ router.get('/withdrawals', (req, res) => {
       `SELECT w.*, u.name AS user_name, u.username AS user_username,
          (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
            WHERE o.user_id = w.user_id AND o.status != '${CANCELLED}') AS commission_total,
+         (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o
+           WHERE o.user_id = w.user_id) AS held_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3

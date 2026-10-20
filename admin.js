@@ -104,6 +104,12 @@
     return Number.isFinite(n) ? n : NaN;
   }
 
+  function formatDay(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
+  }
+
   // Một chỗ duy nhất xử lý lỗi gọi API ở trang quản trị.
   // 401 = phiên đăng nhập đã hết hiệu lực (hết hạn, hoặc mật khẩu vừa bị đổi),
   // phải đưa về màn hình đăng nhập thay vì chỉ hiện toast rồi để bảng "đứng".
@@ -137,7 +143,13 @@
     setText('adm-stat-wd-pending', data.withdrawals.pending);
     setText('adm-stat-wd-note', data.withdrawals.total + ' lệnh rút');
     setText('adm-stat-commission', formatCurrency(data.money.totalCommission));
-    setText('adm-stat-commission-note', 'Còn phải trả ' + formatCurrency(data.money.systemBalance));
+    const availableMoney =
+      data.money.availableSystemBalance == null ? data.money.systemBalance : data.money.availableSystemBalance;
+    const heldMoney = data.money.heldCommission || 0;
+    setText(
+      'adm-stat-commission-note',
+      `Khả dụng ${formatCurrency(availableMoney)}${heldMoney > 0 ? ' • Tạm giữ ' + formatCurrency(heldMoney) : ''}`
+    );
     setText('adm-stat-paid', formatCurrency(data.money.totalPaidOut));
     setText('adm-stat-paid-note', data.referrals.points + ' điểm giới thiệu');
 
@@ -212,7 +224,19 @@
                 : ''
           }
         </td>
-        <td class="px-3 py-3 font-semibold text-emerald-600">${formatCurrency(o.commission)}</td>
+        <td class="px-3 py-3">
+          <div class="font-semibold text-emerald-600">${formatCurrency(o.commission)}</div>
+          ${
+            o.commissionHeld
+              ? `<div class="text-[10px] font-bold text-amber-600">Tạm giữ${o.commissionAvailableAt ? ' đến ' + formatDay(o.commissionAvailableAt) : ''}</div>`
+              : ''
+          }
+          ${
+            o.reversedCommission > 0
+              ? `<div class="text-[10px] font-bold text-rose-600">Đã thu hồi ${formatCurrency(o.reversedCommission)}</div>`
+              : ''
+          }
+        </td>
         <td class="px-3 py-3">${badge(o.status)}</td>
         <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(o.date)}</td>
         <td class="px-3 py-3 text-right">${actionButton('data-adm-edit-order', o.id, 'Xử lý')}</td>
@@ -253,6 +277,29 @@
     const commissionEl = document.getElementById('adm-order-commission');
     if (statusEl) statusEl.value = order.status;
     if (commissionEl) commissionEl.value = String(order.commission || 0);
+
+    const holdEl = document.getElementById('adm-order-hold');
+    if (holdEl) {
+      if (order.reversedCommission > 0) {
+        holdEl.textContent =
+          `Đã thu hồi ${formatCurrency(order.reversedCommission)}` +
+          (order.reversedAt ? ` lúc ${formatDay(order.reversedAt)}` : '') +
+          '. Nếu khách đã rút trước đó, số dư sẽ âm và được trừ vào hoa hồng sau.';
+        holdEl.className = 'text-[11px] font-semibold text-rose-600 mt-2';
+      } else if (order.commissionHeld) {
+        holdEl.textContent =
+          'Hoa hồng đang tạm giữ' +
+          (order.commissionAvailableAt ? ` đến ${formatDay(order.commissionAvailableAt)}` : '') +
+          ' và chưa thể rút.';
+        holdEl.className = 'text-[11px] font-semibold text-amber-600 mt-2';
+      } else if (order.commission > 0) {
+        holdEl.textContent = 'Hoa hồng đã khả dụng để rút.';
+        holdEl.className = 'text-[11px] font-semibold text-emerald-600 mt-2';
+      } else {
+        holdEl.textContent = 'Đơn chưa có hoa hồng.';
+        holdEl.className = 'text-[11px] font-semibold text-slate-400 mt-2';
+      }
+    }
 
     openModal('adm-order-modal');
   }
@@ -354,7 +401,11 @@
           </div>
         </td>
         <td class="px-3 py-3 font-semibold text-slate-700">${formatCurrency(w.amount)}</td>
-        <td class="px-3 py-3 text-slate-600">${formatCurrency(w.payable)}</td>
+        <td class="px-3 py-3 text-slate-600">
+          <div>${formatCurrency(w.payable)}</div>
+          ${w.held > 0 ? `<div class="text-[10px] font-bold text-amber-600">Tạm giữ ${formatCurrency(w.held)}</div>` : ''}
+          ${w.debt > 0 ? `<div class="text-[10px] font-bold text-rose-600">Khách nợ ${formatCurrency(w.debt)}</div>` : ''}
+        </td>
         <td class="px-3 py-3">${badge(w.status)}</td>
         <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(w.date)}</td>
         <td class="px-3 py-3 text-right">${actionButton('data-adm-edit-wd', w.id, 'Xử lý', 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100')}</td>
@@ -396,7 +447,13 @@
     const amountEl = document.getElementById('adm-wd-amount');
     if (statusEl) statusEl.value = wd.status;
     if (amountEl) amountEl.value = String(wd.amount > 0 ? wd.amount : wd.payable);
-    setText('adm-wd-payable', 'Số dư khả dụng: ' + formatCurrency(wd.payable));
+    setText(
+      'adm-wd-payable',
+      'Có thể chi: ' +
+        formatCurrency(wd.payable) +
+        (wd.held > 0 ? ' • Tạm giữ: ' + formatCurrency(wd.held) : '') +
+        (wd.debt > 0 ? ' • Khách đang nợ: ' + formatCurrency(wd.debt) : '')
+    );
 
     openModal('adm-wd-modal');
   }
@@ -489,8 +546,12 @@
         <td class="px-3 py-3 font-semibold text-slate-700">${u.points}</td>
         <td class="px-3 py-3 text-slate-600">${u.orderCount} <span class="text-xs text-slate-400">(${u.pendingCount} chờ)</span></td>
         <td class="px-3 py-3 font-semibold text-emerald-600">${formatCurrency(u.commission)}</td>
+        <td class="px-3 py-3 font-semibold text-amber-600">${formatCurrency(u.held)}</td>
         <td class="px-3 py-3 text-slate-600">${formatCurrency(u.withdrawn)}</td>
-        <td class="px-3 py-3 font-bold text-slate-800">${formatCurrency(u.balance)}</td>
+        <td class="px-3 py-3">
+          <div class="font-bold ${u.balance < 0 ? 'text-rose-600' : 'text-slate-800'}">${formatCurrency(u.balance)}</div>
+          ${u.debt > 0 ? `<div class="text-[10px] font-bold text-rose-600">Nợ ${formatCurrency(u.debt)}</div>` : ''}
+        </td>
         <td class="px-3 py-3 text-right">${actionButton('data-adm-edit-user', String(u.id), 'Sửa', 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100')}</td>
       </tr>`;
       })

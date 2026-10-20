@@ -202,7 +202,7 @@
       </div>
 
       <div class="overflow-x-auto -mx-1">
-        <table class="w-full text-sm min-w-[900px]">
+        <table class="w-full text-sm min-w-[1000px]">
           <thead>
             <tr class="text-[11px] font-bold text-slate-400 uppercase tracking-wider text-left">
               <th class="px-3 py-3">Người dùng</th>
@@ -210,6 +210,7 @@
               <th class="px-3 py-3">Điểm</th>
               <th class="px-3 py-3">Đơn hàng</th>
               <th class="px-3 py-3">Hoa hồng</th>
+              <th class="px-3 py-3">Tạm giữ</th>
               <th class="px-3 py-3">Đã rút</th>
               <th class="px-3 py-3">Số dư</th>
               <th class="px-3 py-3 text-right">Thao tác</th>
@@ -425,7 +426,8 @@
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Hoa hồng (đồng)</label>
           <input id="adm-order-commission" type="number" min="0" step="1000" placeholder="0"
                  class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
-          <p class="text-[11px] text-slate-400 mt-2">Hoa hồng được cộng vào số dư ví của khách. Đơn "Đã huỷ" không được tính.</p>
+          <p class="text-[11px] text-slate-400 mt-2">Hoa hồng được cộng vào ví sau thời gian tạm giữ. Đơn "Đã huỷ" sẽ bị thu hồi.</p>
+          <p id="adm-order-hold" class="text-[11px] font-semibold text-slate-400 mt-2"></p>
         </div>
       </div>
 

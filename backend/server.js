@@ -360,6 +360,9 @@ server.listen(PORT, () => {
     console.log(
       `                          Tỷ lệ hoàn cho người dùng: ${Math.round(postback.cashbackRate * 100)}% (CASHBACK_RATE)`
     );
+    console.log(
+      `                          Giữ hoa hồng trước khi rút: ${postback.holdDays} ngày (COMMISSION_HOLD_DAYS)`
+    );
     if (postback.cashbackRate >= 1) {
       console.warn('  CẢNH BÁO: CASHBACK_RATE đang là 100% — nền tảng không giữ lại doanh thu.');
       console.warn('           Nếu không cố ý, đặt CASHBACK_RATE=0.8 (hoàn 80%) trong backend/.env rồi khởi động lại.');

@@ -7,28 +7,15 @@ const { generateWithdrawalCode } = require('../lib/validate');
 const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
 const { formatMoney } = require('../lib/format');
-const { CANCELLED, WITHDRAWAL_MIN } = require('../lib/constants');
+const { WITHDRAWAL_MIN } = require('../lib/constants');
 const { isValidBankName } = require('../lib/banks');
+const { computeUserMoney, holdDays } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// Số dư = tổng hoa hồng của các đơn KHÔNG bị huỷ − tổng tiền các lệnh rút KHÔNG bị huỷ
-//
-// Lưu ý: lệnh rút đang chờ xử lý đã được ghi `amount` ngay lúc tạo, nên số tiền đó
-// bị "giữ chỗ" và không thể dùng để tạo lệnh rút khác. Huỷ lệnh sẽ trả lại tiền.
 function computeBalance(userId) {
-  const orderRow = db
-    .prepare('SELECT COALESCE(SUM(commission), 0) AS total FROM orders WHERE user_id = ? AND status != ?')
-    .get(userId, CANCELLED);
-  const totalCommission = Number(orderRow.total) || 0;
-
-  const wdRow = db
-    .prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM withdrawals WHERE user_id = ? AND status != ?')
-    .get(userId, CANCELLED);
-  const withdrawn = Number(wdRow.total) || 0;
-
-  return { totalCommission, withdrawn, balance: totalCommission - withdrawn };
+  return computeUserMoney(userId);
 }
 
 router.get('/', (req, res) => {
@@ -57,7 +44,11 @@ router.get('/', (req, res) => {
     },
     balance: money.balance,
     totalCommission: money.totalCommission,
+    heldCommission: money.heldCommission,
     withdrawn: money.withdrawn,
+    debt: money.debt,
+    clawback: money.clawback,
+    holdDays: holdDays(),
     minWithdraw: WITHDRAWAL_MIN,
     canWithdraw: money.balance >= WITHDRAWAL_MIN,
     withdrawals: withdrawals.map(toWithdrawal)
@@ -118,10 +109,13 @@ router.post('/withdrawals', (req, res) => {
   // Không có đủ tiền thì không cho gửi yêu cầu (trước đây số dư 0đ vẫn gửi được)
   const money = computeBalance(req.user.id);
   if (money.balance < WITHDRAWAL_MIN) {
+    const heldText =
+      money.heldCommission > 0 ? ` Đang tạm giữ: ${formatMoney(money.heldCommission)}.` : '';
     return res.status(400).json({
       error:
         `Số dư khả dụng tối thiểu để rút là ${formatMoney(WITHDRAWAL_MIN)}. ` +
-        `Số dư hiện tại của bạn: ${formatMoney(money.balance)}.`
+        `Số dư hiện tại của bạn: ${formatMoney(money.balance)}.` +
+        heldText
     });
   }
 

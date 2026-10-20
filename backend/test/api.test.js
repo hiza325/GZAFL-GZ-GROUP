@@ -406,6 +406,105 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(good.data.matched, true);
   });
 
+  await t.test('giữ hoa hồng, cho rút sau thời gian giữ và thu hồi khi postback huỷ', async () => {
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: other.cookie,
+      body: { link: 'https://tiki.vn/p/hold-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+    const tx = 'TX-HOLD-' + Date.now();
+    const baseQuery =
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+      `&transaction_id=${encodeURIComponent(tx)}&product_id=P1` +
+      `&sub1=gzafl-u${other.uid}&sub2=${encodeURIComponent(code)}`;
+
+    const pending = await json(baseQuery + '&status=pending&reward=100000');
+    assert.equal(pending.res.status, 200);
+    assert.equal(pending.data.matched, true);
+
+    let wallet = await json('/api/wallet', { cookie: other.cookie });
+    assert.equal(wallet.res.status, 200);
+    assert.equal(wallet.data.heldCommission, 0);
+    assert.equal(wallet.data.balance, 0);
+
+    const approved = await json(baseQuery + '&status=approved&reward=100000');
+    assert.equal(approved.res.status, 200);
+    assert.equal(approved.data.status, 'Hoàn thành');
+
+    wallet = await json('/api/wallet', { cookie: other.cookie });
+    assert.equal(wallet.data.totalCommission, 100000);
+    assert.equal(wallet.data.heldCommission, 100000);
+    assert.equal(wallet.data.balance, 0, 'Hoa hồng đang giữ chưa được rút');
+
+    const orders = await json('/api/orders', { cookie: other.cookie });
+    const heldOrder = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(heldOrder.commissionHeld, true);
+    assert.ok(heldOrder.commissionAvailableAt, 'Phải có mốc hết thời gian giữ');
+
+    const tooEarly = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: other.cookie,
+      body: { mode: 'account', bank: 'Vietcombank', accNum: '123456789', accName: 'NGUYEN VAN A' }
+    });
+    assert.equal(tooEarly.res.status, 400, 'Chưa hết thời gian giữ thì không được rút');
+
+    // Giả lập thời gian giữ đã qua bằng cách chỉnh mốc trong database test.
+    const directDb = new DatabaseSync(DB_PATH);
+    directDb
+      .prepare('UPDATE orders SET commission_available_at = ? WHERE code = ?')
+      .run(new Date(Date.now() - 60_000).toISOString(), code);
+    directDb.close();
+
+    wallet = await json('/api/wallet', { cookie: other.cookie });
+    assert.equal(wallet.data.heldCommission, 0);
+    assert.equal(wallet.data.balance, 100000);
+
+    const withdrawal = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: other.cookie,
+      body: { mode: 'account', bank: 'Vietcombank', accNum: '123456789', accName: 'NGUYEN VAN A' }
+    });
+    assert.equal(withdrawal.res.status, 201);
+    assert.equal(withdrawal.data.balance, 0);
+
+    const adminUsers = await json('/api/admin/users?q=' + encodeURIComponent('other@test.local'), {
+      cookie: admin.cookie
+    });
+    assert.equal(adminUsers.res.status, 200);
+    const adminUser = (adminUsers.data.users || []).find((u) => u.id === other.uid);
+    assert.ok(adminUser);
+    assert.equal(adminUser.withdrawn, 100000);
+
+    const rejected = await json(baseQuery + '&status=rejected&reward=100000');
+    assert.equal(rejected.res.status, 200);
+    assert.equal(rejected.data.status, 'Đã huỷ');
+
+    wallet = await json('/api/wallet', { cookie: other.cookie });
+    assert.equal(wallet.data.totalCommission, 0);
+    assert.equal(wallet.data.clawback, 100000);
+    assert.equal(wallet.data.balance, -100000);
+    assert.equal(wallet.data.debt, 100000);
+
+    const after = await json('/api/orders', { cookie: other.cookie });
+    const clawedOrder = (after.data.orders || []).find((o) => o.id === code);
+    assert.equal(clawedOrder.status, 'Đã huỷ');
+    assert.equal(clawedOrder.commission, 0);
+    assert.equal(clawedOrder.reversedCommission, 100000);
+
+    const adminOrders = await json('/api/admin/orders', { cookie: admin.cookie });
+    assert.equal(adminOrders.res.status, 200);
+    const adminOrder = (adminOrders.data.orders || []).find((o) => o.id === code);
+    assert.equal(adminOrder.reversedCommission, 100000);
+
+    const adminWithdrawals = await json('/api/admin/withdrawals', { cookie: admin.cookie });
+    const adminWd = (adminWithdrawals.data.withdrawals || []).find((w) => w.id === withdrawal.data.withdrawal.id);
+    assert.ok(adminWd);
+    assert.equal(adminWd.debt, 100000);
+    assert.equal(adminWd.payable, 0);
+  });
+
   await t.test('chặn dò mật khẩu (rate limit dùng SQLite)', async () => {
     let got429 = false;
     for (let i = 0; i < 40; i++) {

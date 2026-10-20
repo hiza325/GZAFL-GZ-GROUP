@@ -226,6 +226,21 @@ ensureColumn('orders', 'affiliate_provider', 'TEXT');
 ensureColumn('orders', 'affiliate_is_real', 'INTEGER');
 ensureColumn('orders', 'affiliate_error', 'TEXT');
 
+// Thời điểm hoa hồng được phép rút (sau thời gian giữ COMMISSION_HOLD_DAYS).
+// Đơn cũ đã có hoa hồng được coi là đã qua thời gian giữ để không khoá tiền oan.
+ensureColumn('orders', 'commission_available_at', 'TEXT');
+// Số hoa hồng đã bị thu hồi khi mạng báo huỷ/hoàn trả sau lúc từng duyệt.
+ensureColumn('orders', 'commission_reversed', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('orders', 'commission_reversed_at', 'TEXT');
+
+// Backfill cho database cũ: đơn đã có hoa hồng trước khi có cơ chế giữ tiền thì
+// không nên bị giữ thêm 7 ngày. Đơn mới sẽ được đặt mốc khi mạng duyệt.
+db.prepare(
+  `UPDATE orders
+   SET commission_available_at = COALESCE(commission_available_at, created_at)
+   WHERE commission > 0 AND status != ? AND commission_available_at IS NULL`
+).run('Đã huỷ');
+
 // Chống trùng email/username không phân biệt hoa-thường. Dùng chỉ mục biểu thức vì
 // SQLite không có kiểu dữ liệu CITEXT. Bọc try/catch để database cũ có dữ liệu trùng
 // vẫn khởi động được; khi đó route sẽ kiểm tra bằng truy vấn trước khi ghi.
