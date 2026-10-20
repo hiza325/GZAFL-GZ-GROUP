@@ -132,6 +132,7 @@ app.use(cookieParser());
    ========================================== */
 const PUBLIC_ROOT_FILES = new Set([
   '/index.html',
+  '/theme.js',
   '/i18n.js',
   '/script.js',
   '/admin.js',

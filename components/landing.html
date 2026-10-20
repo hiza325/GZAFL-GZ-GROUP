@@ -31,8 +31,14 @@
       </a>
     </div>
 
-    <!-- Right (Language + Login Button) -->
+    <!-- Right (Theme + Language + Login Button) -->
     <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Chuyển đổi giao diện sáng / tối -->
+      <button type="button" data-action="toggle-theme" data-theme-toggle aria-label="Chuyển chế độ sáng/tối" title="Chuyển chế độ sáng/tối" aria-pressed="false" class="theme-toggle">
+        <i data-lucide="moon" class="theme-icon-moon w-4 h-4"></i>
+        <i data-lucide="sun" class="theme-icon-sun w-4 h-4"></i>
+      </button>
+
       <!-- Chuyển đổi ngôn ngữ VI / EN -->
       <div id="lang-switcher" class="relative">
         <button type="button" id="lang-toggle" data-action="toggle-lang-menu" aria-label="Chọn ngôn ngữ" aria-haspopup="listbox" aria-expanded="false" class="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 pl-2 pr-2.5 sm:pr-3 py-2 rounded-full hover:shadow-md transition">
@@ -54,11 +60,11 @@
         </div>
       </div>
 
-      <button data-action="open-auth" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-4 sm:pr-5 py-1.5 rounded-full hover:shadow-md transition group whitespace-nowrap">
+      <button data-action="open-auth" aria-label="Đăng nhập" data-i18n-aria-label="nav.login" title="Đăng nhập" data-i18n-title="nav.login" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-1.5 sm:pr-5 py-1.5 rounded-full hover:shadow-md transition group whitespace-nowrap">
         <div class="w-9 h-9 bg-[#18253f] group-hover:bg-[#233559] text-white rounded-full flex items-center justify-center font-bold text-sm transition">
           <i data-lucide="user" class="w-4 h-4"></i>
         </div>
-        <div class="text-left">
+        <div class="text-left hidden sm:block">
           <div class="text-[10px] text-slate-500 font-medium leading-none" data-i18n="nav.hello">Xin chào!</div>
           <div class="text-sm font-bold text-slate-800 leading-none mt-1" data-i18n="nav.login">Đăng nhập</div>
         </div>

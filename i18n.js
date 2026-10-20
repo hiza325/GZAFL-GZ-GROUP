@@ -20,6 +20,9 @@
 
       'lang.switch': 'Chọn ngôn ngữ',
       'common.close': 'Đóng',
+      'theme.toggle': 'Chuyển chế độ sáng/tối',
+      'theme.toLight': 'Chuyển sang chế độ sáng',
+      'theme.toDark': 'Chuyển sang chế độ tối',
 
       'nav.home': 'Trang chủ',
       'nav.lookup': 'Tra cứu đơn hàng',
@@ -179,6 +182,9 @@
 
       'lang.switch': 'Choose language',
       'common.close': 'Close',
+      'theme.toggle': 'Toggle light/dark mode',
+      'theme.toLight': 'Switch to light mode',
+      'theme.toDark': 'Switch to dark mode',
 
       'nav.home': 'Home',
       'nav.lookup': 'Order lookup',

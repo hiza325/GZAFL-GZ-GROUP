@@ -402,3 +402,280 @@ body.sidebar-open {
   background: rgba(244, 63, 94, 0.16);
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
+
+/* ==========================================================
+   NÚT CHUYỂN ĐỔI SÁNG / TỐI
+   ========================================================== */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease,
+    transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.theme-toggle:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px -10px rgba(24, 37, 63, 0.35);
+}
+
+.theme-toggle:active {
+  transform: translateY(0);
+}
+
+.theme-toggle .theme-icon-sun { display: none; }
+.theme-toggle .theme-icon-moon { display: block; }
+
+:where(html.dark) .theme-toggle {
+  color: #cbd5e1;
+  background: #111827;
+  border-color: #334155;
+}
+
+:where(html.dark) .theme-toggle:hover {
+  color: #f8fafc;
+  background: #1e293b;
+}
+
+:where(html.dark) .theme-toggle .theme-icon-sun { display: block; }
+:where(html.dark) .theme-toggle .theme-icon-moon { display: none; }
+
+/* ==========================================================
+   GIAO DIỆN TỐI (DARK MODE)
+   Bật bằng class `dark` trên <html> (xem theme.js).
+   Dùng :where(html.dark) để giữ độ ưu tiên thấp, nhờ vậy các
+   trạng thái hover/focus của Tailwind vẫn hoạt động bình thường.
+   ========================================================== */
+:where(html.dark) {
+  color-scheme: dark;
+  background-color: #0b1220;
+  --gz-dark-bg: #0b1220;
+  --gz-dark-surface: #111827;
+  --gz-dark-surface-soft: #0f172a;
+  --gz-dark-border: #1e293b;
+  --gz-dark-border-strong: #334155;
+  --gz-dark-text: #e2e8f0;
+  --gz-dark-muted: #94a3b8;
+}
+
+/* Tailwind đặt màu viền mặc định #e5e7eb cho mọi phần tử có border. Trên nền
+   tối, viền này quá sáng, nên hạ về màu viền tối. Các class border-* vẫn thắng
+   vì có độ ưu tiên cao hơn :where(). */
+:where(html.dark) * {
+  border-color: var(--gz-dark-border);
+}
+
+/* Nền trang và vùng nội dung */
+:where(html.dark) body,
+:where(html.dark) .bg-\[\#f4f6f9\],
+:where(html.dark) .bg-\[\#fafbfc\] {
+  background-color: var(--gz-dark-bg);
+}
+
+:where(html.dark) #main-content-container {
+  background-color: var(--gz-dark-bg);
+  background-image:
+    radial-gradient(1000px 420px at 108% -8%, rgba(96, 165, 250, 0.08), transparent 62%),
+    radial-gradient(760px 340px at -12% 108%, rgba(240, 77, 77, 0.06), transparent 62%);
+}
+
+/* Mặt phẳng: thẻ, header, sidebar, modal */
+:where(html.dark) .bg-white { background-color: var(--gz-dark-surface); }
+:where(html.dark) .bg-white\/70 { background-color: rgba(17, 24, 39, 0.82); }
+:where(html.dark) .bg-slate-50,
+:where(html.dark) .bg-slate-50\/40,
+:where(html.dark) .bg-slate-50\/50,
+:where(html.dark) .bg-slate-50\/60,
+:where(html.dark) .bg-slate-50\/70 { background-color: var(--gz-dark-surface-soft); }
+:where(html.dark) .bg-slate-100 { background-color: #1e293b; }
+:where(html.dark) .bg-slate-200 { background-color: #334155; }
+:where(html.dark) .bg-slate-300 { background-color: #475569; }
+:where(html.dark) .bg-slate-900 { background-color: #020617; }
+:where(html.dark) .bg-slate-900\/40 { background-color: rgba(2, 6, 23, 0.62); }
+:where(html.dark) .bg-slate-900\/50 { background-color: rgba(2, 6, 23, 0.72); }
+:where(html.dark) .bg-\[\#18253f\] { background-color: #1e2d4a; }
+
+/* Nền màu nhạt: giữ sắc thái nhưng tối đi để không chói */
+:where(html.dark) .bg-red-50,
+:where(html.dark) .bg-red-50\/50,
+:where(html.dark) .bg-red-50\/80 { background-color: rgba(239, 68, 68, 0.14); }
+:where(html.dark) .bg-red-100 { background-color: rgba(239, 68, 68, 0.22); }
+:where(html.dark) .bg-emerald-50,
+:where(html.dark) .bg-emerald-50\/50,
+:where(html.dark) .bg-emerald-50\/60 { background-color: rgba(16, 185, 129, 0.14); }
+:where(html.dark) .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.22); }
+:where(html.dark) .bg-blue-50,
+:where(html.dark) .bg-blue-50\/50 { background-color: rgba(59, 130, 246, 0.14); }
+:where(html.dark) .bg-blue-100 { background-color: rgba(59, 130, 246, 0.22); }
+:where(html.dark) .bg-amber-50,
+:where(html.dark) .bg-amber-50\/60 { background-color: rgba(245, 158, 11, 0.14); }
+:where(html.dark) .bg-amber-100 { background-color: rgba(245, 158, 11, 0.22); }
+:where(html.dark) .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.14); }
+:where(html.dark) .bg-orange-50 { background-color: rgba(249, 115, 22, 0.14); }
+
+/* Chữ */
+:where(html.dark) .text-slate-900,
+:where(html.dark) .text-slate-800,
+:where(html.dark) .text-\[\#1a202c\] { color: #f1f5f9; }
+:where(html.dark) .text-slate-700,
+:where(html.dark) .text-\[\#18253f\] { color: var(--gz-dark-text); }
+:where(html.dark) .text-slate-600 { color: #cbd5e1; }
+:where(html.dark) .text-slate-500 { color: var(--gz-dark-muted); }
+:where(html.dark) .text-slate-400 { color: #7c8aa0; }
+:where(html.dark) .text-slate-300 { color: #94a3b8; }
+:where(html.dark) .text-black { color: #f8fafc; }
+:where(html.dark) .text-\[\#0f146d\] { color: #93c5fd; }
+
+:where(html.dark) .text-red-500,
+:where(html.dark) .text-red-600 { color: #f87171; }
+:where(html.dark) .text-red-400 { color: #fca5a5; }
+:where(html.dark) .text-emerald-500,
+:where(html.dark) .text-emerald-600,
+:where(html.dark) .text-emerald-700 { color: #34d399; }
+:where(html.dark) .text-emerald-200 { color: #a7f3d0; }
+:where(html.dark) .text-amber-500,
+:where(html.dark) .text-amber-600,
+:where(html.dark) .text-amber-700 { color: #fbbf24; }
+:where(html.dark) .text-amber-900\/80 { color: #fde68a; }
+:where(html.dark) .text-blue-500,
+:where(html.dark) .text-blue-600 { color: #60a5fa; }
+:where(html.dark) .text-blue-400 { color: #93c5fd; }
+:where(html.dark) .text-indigo-500,
+:where(html.dark) .text-indigo-600 { color: #a5b4fc; }
+:where(html.dark) .text-rose-600 { color: #fb7185; }
+:where(html.dark) .text-orange-600 { color: #fb923c; }
+
+/* Viền */
+:where(html.dark) .border-slate-50,
+:where(html.dark) .border-slate-100,
+:where(html.dark) .border-slate-100\/50 { border-color: var(--gz-dark-border); }
+:where(html.dark) .border-slate-200,
+:where(html.dark) .border-slate-200\/70 { border-color: var(--gz-dark-border-strong); }
+:where(html.dark) .border-slate-300,
+:where(html.dark) .border-slate-600 { border-color: #475569; }
+:where(html.dark) .border-red-100,
+:where(html.dark) .border-red-100\/50,
+:where(html.dark) .border-red-200 { border-color: rgba(248, 113, 113, 0.35); }
+:where(html.dark) .border-amber-100,
+:where(html.dark) .border-amber-200,
+:where(html.dark) .border-amber-200\/60 { border-color: rgba(251, 191, 36, 0.35); }
+:where(html.dark) .border-emerald-100,
+:where(html.dark) .border-emerald-200 { border-color: rgba(52, 211, 153, 0.35); }
+:where(html.dark) .border-blue-100 { border-color: rgba(96, 165, 250, 0.35); }
+:where(html.dark) .border-indigo-100 { border-color: rgba(129, 140, 248, 0.35); }
+:where(html.dark) .border-orange-100 { border-color: rgba(251, 146, 60, 0.35); }
+
+/* Vòng ring quanh các bước / ô nhập */
+:where(html.dark) .ring-white { --tw-ring-color: var(--gz-dark-surface); }
+:where(html.dark) .focus-within\:ring-red-50:focus-within { --tw-ring-color: rgba(248, 113, 113, 0.16); }
+:where(html.dark) .focus-within\:border-red-200:focus-within { border-color: rgba(248, 113, 113, 0.35); }
+
+/* Placeholder */
+:where(html.dark) .placeholder-slate-400::placeholder,
+:where(html.dark) .placeholder-slate-300::placeholder { color: #64748b; }
+
+/* Hover */
+:where(html.dark) .hover\:bg-slate-50:hover,
+:where(html.dark) .hover\:bg-slate-50\/50:hover,
+:where(html.dark) .hover\:bg-slate-50\/60:hover { background-color: #1e293b; }
+:where(html.dark) .hover\:bg-slate-100:hover { background-color: #1e293b; }
+:where(html.dark) .hover\:bg-slate-200:hover { background-color: #334155; }
+:where(html.dark) .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.2); }
+:where(html.dark) .hover\:bg-red-100:hover { background-color: rgba(239, 68, 68, 0.28); }
+:where(html.dark) .hover\:bg-red-200:hover { background-color: rgba(239, 68, 68, 0.35); }
+:where(html.dark) .hover\:bg-emerald-50:hover,
+:where(html.dark) .hover\:bg-emerald-100:hover { background-color: rgba(16, 185, 129, 0.22); }
+:where(html.dark) .hover\:bg-blue-100:hover { background-color: rgba(59, 130, 246, 0.24); }
+:where(html.dark) .hover\:bg-indigo-100:hover { background-color: rgba(99, 102, 241, 0.24); }
+:where(html.dark) .hover\:bg-white:hover { background-color: #1e293b; }
+:where(html.dark) .hover\:bg-\[\#233559\]:hover { background-color: #2b3d63; }
+:where(html.dark) .hover\:text-slate-600:hover,
+:where(html.dark) .hover\:text-slate-800:hover,
+:where(html.dark) .hover\:text-slate-900:hover { color: #f8fafc; }
+:where(html.dark) .hover\:text-red-500:hover,
+:where(html.dark) .hover\:text-red-600:hover { color: #fca5a5; }
+:where(html.dark) .hover\:text-amber-700:hover { color: #fcd34d; }
+:where(html.dark) .hover\:border-slate-300:hover { border-color: #475569; }
+:where(html.dark) .hover\:border-red-200:hover { border-color: rgba(248, 113, 113, 0.45); }
+
+/* Focus */
+:where(html.dark) .focus\:bg-white:focus { background-color: var(--gz-dark-surface-soft); }
+:where(html.dark) .focus\:border-red-300:focus { border-color: #fca5a5; }
+:where(html.dark) .disabled\:text-slate-300:disabled { color: #64748b; }
+
+/* Thành phần có nền gradient / hiệu ứng riêng */
+:where(html.dark) #header-container header {
+  background-image: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+  box-shadow: 0 10px 26px -24px rgba(0, 0, 0, 0.9);
+}
+
+:where(html.dark) .balance-chip {
+  background-image: linear-gradient(135deg, rgba(240, 77, 77, 0.2) 0%, rgba(240, 77, 77, 0.09) 100%);
+}
+
+:where(html.dark) .icon-tile-brand {
+  background-image: linear-gradient(135deg, rgba(240, 77, 77, 0.22) 0%, rgba(240, 77, 77, 0.1) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 20px -18px rgba(0, 0, 0, 0.9);
+}
+
+:where(html.dark) .empty-orb {
+  background-image: radial-gradient(circle at 32% 26%, #1e293b 0%, #111827 62%, #0b1220 100%);
+  box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.04), 0 14px 26px -22px rgba(0, 0, 0, 0.9);
+}
+
+:where(html.dark) .nav-item-active {
+  background-image: linear-gradient(135deg, #2b3d63 0%, #1e2d4a 70%);
+  box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.9);
+}
+
+:where(html.dark) .sidebar-close,
+:where(html.dark) .sidebar-toggle {
+  color: #cbd5e1;
+  background: #111827;
+  border-color: #334155;
+}
+
+:where(html.dark) .sidebar-close:hover,
+:where(html.dark) .sidebar-toggle:hover {
+  color: #f8fafc;
+  background: #1e293b;
+}
+
+:where(html.dark) .stat-card {
+  box-shadow: 0 2px 10px -4px rgba(0, 0, 0, 0.4);
+}
+
+:where(html.dark) .stat-card:hover {
+  box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.55);
+}
+
+/* Viền navy đậm dùng cho nút đang chọn: sáng hơn một chút để thấy rõ trên nền tối */
+:where(html.dark) .border-\[\#18253f\] { border-color: #475569; }
+
+/* Logo Shopee màu cam: làm sáng hơn cho đủ tương phản trên nền tối */
+:where(html.dark) .text-\[\#ee4d2d\] { color: #ff8a6b; }
+
+/* Mục ngôn ngữ đang chọn trong menu VI / EN */
+:where(html.dark) #lang-menu [aria-selected='true'] { background-color: #1e293b; }
+
+:where(html.dark) ::selection {
+  background: rgba(240, 77, 77, 0.32);
+  color: #f8fafc;
+}
+
+:where(html.dark) {
+  scrollbar-color: #334155 #0b1220;
+}
+
+:where(html.dark) ::-webkit-scrollbar-track { background: #0b1220; }
+:where(html.dark) ::-webkit-scrollbar-thumb { background: #334155; }
+:where(html.dark) ::-webkit-scrollbar-thumb:hover { background: #475569; }

@@ -71,6 +71,15 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 - Chưa dịch: các trang bên trong app và trợ lý hỗ trợ (chatbot) — vẫn dùng tiếng Việt.
 - Thêm chuỗi mới: khai báo khóa ở **cả** `vi` và `en` trong `i18n.js`; HTML dùng `data-i18n`, JS dùng `tr('key')`.
 
+### Giao diện sáng / tối
+
+- Nút đổi giao diện nằm cạnh nút ngôn ngữ ở thanh trên cùng (trang chủ) và trong header của khu vực đã đăng nhập.
+- Lần đầu mở web, giao diện theo cài đặt hệ thống (`prefers-color-scheme`). Sau khi người dùng bấm nút, lựa chọn được lưu vào `localStorage` với khoá `gzafl_theme` và giữ nguyên khi tải lại trang.
+- `theme.js` được nạp ngay trong `<head>` để gắn `class="dark"` lên `<html>` **trước khi** CSS vẽ, nhờ vậy không bị nháy trắng khi mở lại ở chế độ tối.
+- Thêm nút ở chỗ khác: dùng cùng cấu trúc `<button type="button" data-action="toggle-theme" data-theme-toggle>…</button>`; nhãn và trạng thái `aria-pressed` sẽ được `theme.js` tự cập nhật.
+- Toàn bộ CSS giao diện tối nằm ở cuối `style.css`, chọn theo `html.dark`. Khi thêm class màu mới của Tailwind cho giao diện, nhớ bổ sung quy tắc tương ứng (dùng `:where(html.dark)` để không phá các trạng thái hover/focus).
+- Lựa chọn giao diện được đồng bộ giữa các tab đang mở của cùng trình duyệt.
+
 ### Biến môi trường (tuỳ chọn)
 
 | Biến | Mặc định | Ý nghĩa |
@@ -133,6 +142,7 @@ styles/inter-variable.woff2 # Font Inter tự host (không phụ thuộc Google 
 styles/Inter-LICENSE.txt   # Giấy phép SIL Open Font License của Inter
 script.js                  # Toàn bộ logic frontend (gọi API)
 i18n.js                    # Bộ dịch VI/EN cho trang chủ + đăng nhập (lưu lựa chọn vào localStorage)
+theme.js                   # Chuyển đổi giao diện sáng/tối (nạp trong <head>, lưu vào localStorage)
 admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
 support.js                 # Logic khung trợ lý hỗ trợ (chatbot) ở góc phải-dưới
 assets/flags/              # Cờ SVG (Việt Nam, Vương quốc Anh) cho nút chuyển ngôn ngữ

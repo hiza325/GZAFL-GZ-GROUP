@@ -240,6 +240,9 @@ async function loadComponent(elementId, filePath) {
       window.GZ_I18N.updateLangSwitcher();
     }
 
+    // Đồng bộ nhãn/trạng thái nút sáng-tối sau khi component được chèn.
+    if (window.GZ_THEME) window.GZ_THEME.updateButtons();
+
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
     // Nạp dữ liệu động tuỳ theo trang
@@ -2897,6 +2900,9 @@ const UI_ACTIONS = {
   // Chuyển đổi ngôn ngữ VI / EN
   'toggle-lang-menu': () => window.GZ_I18N && window.GZ_I18N.toggleLangMenu(),
   'set-lang': (el) => window.GZ_I18N && window.GZ_I18N.setLanguage(el.dataset.lang),
+
+  // Chuyển đổi giao diện sáng / tối
+  'toggle-theme': () => window.GZ_THEME && window.GZ_THEME.toggle(),
 
   // Tạo đơn
   'paste-order-link': () => pasteClipboardInto('link-input'),

@@ -11,8 +11,11 @@
  * chuoi JS (vi giao dien render HTML bang template string).
  */
 module.exports = {
+  // Bật biến thể dark: theo class `dark` trên <html> (theme.js).
+  darkMode: 'class',
   content: [
     './index.html',
+    './theme.js',
     './script.js',
     './i18n.js',
     './support.js',
