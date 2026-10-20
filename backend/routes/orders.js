@@ -94,7 +94,10 @@ router.post('/', orderRateLimit, async (req, res, next) => {
     });
 
     const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(info.lastInsertRowid));
-    return res.status(201).json({ order: toOrder(row), affiliate: affiliate.describe() });
+    return res.status(201).json({
+      order: toOrder(row),
+      affiliate: { provider: conversion.provider, isReal: conversion.isReal }
+    });
   } catch (err) {
     return next(err);
   }

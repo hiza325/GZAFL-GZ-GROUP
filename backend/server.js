@@ -346,6 +346,9 @@ server.listen(PORT, () => {
   }
   const affiliate = require('./lib/affiliate').describe();
   console.log(`  Nhà cung cấp hoàn tiền: ${affiliate.provider}${affiliate.isReal ? '' : ' (thử nghiệm, chưa tạo hoa hồng thật)'}`);
+  if (affiliate.livePlatforms && affiliate.livePlatforms.length) {
+    console.log(`                          Sàn dùng API thật: ${affiliate.livePlatforms.join(', ')}`);
+  }
 
   const postback = require('./lib/postback').describe();
   const postbackHost = `${scheme}://localhost:${PORT}`;

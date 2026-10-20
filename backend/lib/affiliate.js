@@ -16,9 +16,25 @@
  *                             (ACCESSTRADE_CAMPAIGN_SHOPEE / _TIKTOK / _LAZADA,
  *                              hoặc ACCESSTRADE_CAMPAIGN_ID làm mặc định chung)
  *   shopee                  — cần SHOPEE_AFFILIATE_APP_ID + SHOPEE_AFFILIATE_SECRET
+ *
+ * Khi mới mở một sàn, có thể bật API thật riêng cho sàn đó bằng
+ * AFFILIATE_LIVE_PLATFORMS (ví dụ: "TikTok Shop"). Các sàn còn lại vẫn dùng
+ * link nội bộ /r/<mã> để app không bị lỗi trong lúc chờ duyệt campaign.
  */
 
 const PROVIDER = String(process.env.AFFILIATE_PROVIDER || 'mock').toLowerCase();
+
+// Danh sách sàn được dùng API thật. Để trống = tất cả các sàn.
+const LIVE_PLATFORMS = String(process.env.AFFILIATE_LIVE_PLATFORMS || '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean);
+
+function isLivePlatform(platform) {
+  if (PROVIDER === 'mock') return false;
+  if (!LIVE_PLATFORMS.length) return true;
+  return LIVE_PLATFORMS.some((name) => name.toLowerCase() === String(platform || '').toLowerCase());
+}
 
 class AffiliateError extends Error {}
 
@@ -33,6 +49,9 @@ function subIdFor(userId) {
  * @returns {Promise<{ affiliateLink: string, provider: string, subId: string|null, isReal: boolean }>}
  */
 async function convert(input) {
+  // Sàn chưa được duyệt campaign: trả link nội bộ, không gọi API thật.
+  if (!isLivePlatform(input.platform)) return convertMock(input);
+
   switch (PROVIDER) {
     case 'mock':
       return convertMock(input);
@@ -184,14 +203,28 @@ async function convertShopee() {
 }
 
 function describe() {
+  const hasLive = PROVIDER !== 'mock';
+  let note = 'Đang gọi API thật của nhà cung cấp affiliate.';
+  if (!hasLive) {
+    note = 'Chế độ thử nghiệm: link trả về là link nội bộ /r/<mã đơn>, KHÔNG tạo hoa hồng thật.';
+  } else if (LIVE_PLATFORMS.length) {
+    note = `Chỉ các sàn sau dùng API thật: ${LIVE_PLATFORMS.join(', ')}. Các sàn còn lại tạm dùng link thử nghiệm.`;
+  }
+
   return {
     provider: PROVIDER,
-    isReal: PROVIDER !== 'mock',
-    note:
-      PROVIDER === 'mock'
-        ? 'Chế độ thử nghiệm: link trả về là link nội bộ /r/<mã đơn>, KHÔNG tạo hoa hồng thật.'
-        : 'Đang gọi API thật của nhà cung cấp affiliate.'
+    isReal: hasLive,
+    livePlatforms: LIVE_PLATFORMS,
+    note
   };
 }
 
-module.exports = { convert, describe, subIdFor, AffiliateError, PROVIDER };
+module.exports = {
+  convert,
+  describe,
+  subIdFor,
+  isLivePlatform,
+  AffiliateError,
+  PROVIDER,
+  LIVE_PLATFORMS
+};
