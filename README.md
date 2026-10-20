@@ -71,11 +71,12 @@ npm run watch:css
 | `JWT_SECRET` | `gzafl-dev-secret-change-me` | Khóa ký token phiên — **bắt buộc đổi khi triển khai thật**. Ở `NODE_ENV=production` server **từ chối khởi động** nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự |
 | `SSL_KEY_PATH`, `SSL_CERT_PATH` | – | Điền vào để server tự chạy HTTPS (không cần nếu đã có Nginx/Caddy) |
 | `TRUST_PROXY` | – | Bật khi chạy sau reverse proxy (`1` / `true` / danh sách IP) — cần để cookie `secure` và link hoàn tiền dùng đúng `https` |
+| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://gzafl.example.com`. Dùng cho link mock và dòng hướng dẫn postback lúc khởi động; nên đặt khi chạy sau proxy |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 | `WITHDRAWAL_MIN` | `1000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
-| `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật, ví dụ `TikTok Shop`. Các sàn còn lại tạm dùng link thử nghiệm |
+| `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật, ví dụ `TikTok Shop, Tiki`. Các sàn còn lại tạm dùng link thử nghiệm; mỗi đơn lưu `affiliate.isReal` để giao diện hiển thị rõ **link thật** hay **chưa gắn hoa hồng** |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
 | `ACCESSTRADE_API_KEY` | – | Token API của AccessTrade |
@@ -179,6 +180,7 @@ backend/
 Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email người dùng nhập; nhập đúng mã mới tạo được tài khoản. Cùng cơ chế đó cho phép khách **tự đặt lại mật khẩu** khi quên, và dùng làm **xác thực 2 lớp khi đăng nhập**.
 
 - **Email là bắt buộc khi đăng ký**, kể cả khi đăng nhập bằng số điện thoại.
+- **Email dùng làm tên đăng nhập phải trùng đúng email nhận mã xác thực.** Nếu không, người khác có thể “giữ chỗ” email của bạn bằng một email khác. Email cũng được chuẩn hoá lowercase và **không thể dùng cho hai tài khoản**.
 - **Đổi email trong trang Cá nhân cũng phải xác thực**: mã được gửi tới *địa chỉ mới* rồi mới lưu, nên email khôi phục luôn là địa chỉ thật. Chỉ đổi tên/số điện thoại thì không cần mã.
 - **Đăng nhập 2 bước** (khi `LOGIN_OTP` bật): mật khẩu đúng thì server mới gửi mã, sau đó mới cấp phiên. Mã còn hiệu lực thì **dùng lại mã cũ** — đăng xuất rồi đăng nhập lại ngay không tốn thêm thư.
 - Mã có hiệu lực **10 phút**, chỉ dùng được **một lần**, lưu dưới dạng **bcrypt hash** (không lưu mã gốc). Mã của luồng này **không dùng được** cho luồng khác.
@@ -514,7 +516,7 @@ Cách đặt lịch và phục hồi: xem [docs/deployment.md](docs/deployment.m
 
 - Mật khẩu lưu dạng **bcrypt hash**, không lưu văn bản thường.
 - Phiên đăng nhập là **JWT trong cookie `httpOnly`** (`sameSite=lax`), hết hạn sau 7 ngày.
-- Mỗi tài khoản có `token_version`; **đổi mật khẩu sẽ tăng số này** nên mọi phiên đăng nhập ở thiết bị khác lập tức hết hiệu lực (phiên đang thao tác được cấp lại cookie mới nên không bị văng ra).
+- Mỗi tài khoản có `token_version`; **đổi mật khẩu hoặc đăng xuất sẽ tăng số này** nên token cũ (kể cả token bị đánh cắp) mất hiệu lực ngay, không phải chờ hết hạn 7 ngày. Đổi mật khẩu sẽ cấp lại cookie mới cho phiên đang thao tác; đăng xuất là đăng xuất **toàn bộ thiết bị**.
 - Frontend **không thể sửa** dữ liệu đơn hàng/ví/điểm — tất cả kiểm tra ở server.
 - Mọi truy vấn theo `user_id` lấy từ token, người dùng chỉ thấy dữ liệu của mình.
 - API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
@@ -545,6 +547,6 @@ Cách đặt lịch và phục hồi: xem [docs/deployment.md](docs/deployment.m
 
 ## Tài khoản
 
-Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam**, mật khẩu tối thiểu 6 ký tự, kèm **một địa chỉ email để nhận mã xác thực** — email này là bắt buộc kể cả khi bạn đăng nhập bằng số điện thoại, vì đó là nơi nhận mã khi quên mật khẩu.
+Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam**, mật khẩu tối thiểu 8 ký tự, kèm **một địa chỉ email để nhận mã xác thực** — email này là bắt buộc kể cả khi bạn đăng nhập bằng số điện thoại, vì đó là nơi nhận mã khi quên mật khẩu. Mỗi email chỉ dùng được cho một tài khoản.
 
 Khi đăng nhập, nếu hệ thống bật xác thực 2 lớp, sau khi nhập đúng mật khẩu bạn sẽ nhận thêm **mã 6 số** qua email và nhập vào ô xác thực để hoàn tất. Nếu đã có mã còn hiệu lực thì hệ thống dùng lại mã đó (không gửi thêm thư).

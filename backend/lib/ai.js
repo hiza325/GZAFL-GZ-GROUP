@@ -73,7 +73,8 @@ function config() {
     provider: hint ? hint.name : 'OpenAI',
     enabled: aiMode() !== 'off',
     timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 25000,
-    maxTokens: Number(process.env.AI_MAX_TOKENS) || 2048,
+    // 4096 đủ cho câu trả lời dài; nếu vẫn hết token, chat() sẽ tự gọi tiếp một lần.
+    maxTokens: Number(process.env.AI_MAX_TOKENS) || 4096,
     temperature: Number(process.env.AI_TEMPERATURE) || 0.4
   };
 }
@@ -97,11 +98,8 @@ function describe() {
   };
 }
 
-/** Gọi API, trả về nội dung trả lời (chuỗi). Ném lỗi nếu thất bại. */
-async function chat(messages) {
-  const cfg = config();
-  if (!cfg.apiKey) throw new Error('Chưa cấu hình AI_API_KEY.');
-
+/** Một lượt gọi API. Trả về { text, finishReason }. Ném lỗi nếu thất bại. */
+async function requestCompletion(messages, cfg) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
 
@@ -137,14 +135,6 @@ async function chat(messages) {
 
     const data = await res.json();
     const choice = data && data.choices && data.choices[0];
-
-    if (choice && choice.finish_reason === 'length') {
-      console.warn(
-        `AI bị cắt vì hết max_tokens=${cfg.maxTokens} (model ${cfg.model}). ` +
-          'Tăng AI_MAX_TOKENS trong .env nếu câu trả lời thường xuyên bị cụt.'
-      );
-    }
-
     const content = choice && choice.message ? choice.message.content : null;
 
     if (!content) throw new Error('API không trả về nội dung trả lời.');
@@ -155,7 +145,7 @@ async function chat(messages) {
       : String(content).trim();
 
     if (!text) throw new Error('API trả về nội dung rỗng.');
-    return text;
+    return { text, finishReason: (choice && choice.finish_reason) || null };
   } catch (err) {
     if (err && err.name === 'AbortError') {
       throw new Error(`Quá thời gian chờ AI (${cfg.timeoutMs}ms).`);
@@ -164,6 +154,49 @@ async function chat(messages) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Gọi API và tự nối tiếp nếu model bị cắt vì hết token.
+ * Tối đa 2 lần nối để tránh chi phí/vòng lặp vô hạn.
+ */
+async function chat(messages) {
+  const cfg = config();
+  if (!cfg.apiKey) throw new Error('Chưa cấu hình AI_API_KEY.');
+
+  const first = await requestCompletion(messages, cfg);
+  let text = first.text;
+  let finishReason = first.finishReason;
+
+  for (let attempt = 0; finishReason === 'length' && attempt < 2; attempt += 1) {
+    console.warn(
+      `AI bị cắt vì hết max_tokens=${cfg.maxTokens} (model ${cfg.model}). ` +
+        `Đang gọi tiếp phần còn lại (lần ${attempt + 1}/2).`
+    );
+    try {
+      const next = await requestCompletion(
+        [
+          ...messages,
+          { role: 'assistant', content: text },
+          {
+            role: 'user',
+            content:
+              'Câu trả lời vừa rồi bị cắt giữa chừng. Hãy viết tiếp ngay từ chỗ đang dở, ' +
+              'không lặp lại phần đã viết, không chào lại và không thêm kết luận mới.'
+          }
+        ],
+        cfg
+      );
+      const needsSpace = text && !/[\s\n]$/.test(text) && next.text && !/^[\s\n]/.test(next.text);
+      text = (text + (needsSpace ? ' ' : '') + next.text).trim();
+      finishReason = next.finishReason;
+    } catch (err) {
+      console.warn(`Không nối tiếp được câu trả lời AI: ${err.message}`);
+      break;
+    }
+  }
+
+  return text;
 }
 
 /**

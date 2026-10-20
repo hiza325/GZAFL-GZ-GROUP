@@ -7,9 +7,10 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { toUser } = require('../lib/serialize');
-const { isValidEmail, isValidPhone } = require('../lib/validate');
+const { isValidEmail, isValidPhone, normalizeEmail } = require('../lib/validate');
 const { requireAuth, setAuthCookie } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
+const { UPLOAD_DIR } = require('../lib/uploads');
 const otp = require('../lib/otp');
 
 const router = express.Router();
@@ -19,7 +20,6 @@ router.use(requireAuth);
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
 const emailOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'profile-email-otp' });
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const ALLOWED_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB
 const BCRYPT_ROUNDS = 10;
@@ -70,7 +70,7 @@ function isWebp(buffer) {
 // Cập nhật hồ sơ
 router.put('/', (req, res) => {
   const name = String((req.body && req.body.name) || '').trim();
-  const email = String((req.body && req.body.email) || '').trim();
+  const email = normalizeEmail((req.body && req.body.email) || '');
   const phone = String((req.body && req.body.phone) || '').trim();
 
   if (!name) return res.status(400).json({ error: 'Vui lòng nhập họ và tên.' });
@@ -81,7 +81,21 @@ router.put('/', (req, res) => {
 
   // Đổi email = đổi kênh nhận mã khôi phục mật khẩu, nên phải xác thực địa chỉ mới
   // (gửi mã ở POST /profile/email/otp). Email lúc đăng ký cũng đã được xác thực như vậy.
-  const emailChanged = email.toLowerCase() !== String(req.user.email || '').trim().toLowerCase();
+  const currentEmail = normalizeEmail(req.user.email);
+  const emailChanged = email !== currentEmail;
+  // Không cho xoá email khỏi tài khoản đã có email: mất luôn kênh khôi phục mật khẩu
+  // và xác thực 2 lớp. Tài khoản cũ chưa có email vẫn cập nhật tên/SĐT bình thường.
+  if (currentEmail && !email) {
+    return res.status(400).json({ error: 'Vui lòng giữ lại email cho tài khoản. Bạn có thể đổi sang email khác.' });
+  }
+  if (emailChanged && email) {
+    const owner = db
+      .prepare('SELECT id FROM users WHERE lower(trim(email)) = ? AND id != ?')
+      .get(email, req.user.id);
+    if (owner) {
+      return res.status(409).json({ error: 'Email này đã được dùng cho một tài khoản khác.' });
+    }
+  }
   if (emailChanged && otp.otpEnabled()) {
     const code = String((req.body && req.body.emailOtp) || '').trim();
     if (!code) {
@@ -96,20 +110,33 @@ router.put('/', (req, res) => {
     }
   }
 
-  db.prepare('UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?').run(name, email, phone, req.user.id);
+  try {
+    db.prepare('UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?').run(name, email, phone, req.user.id);
+  } catch (err) {
+    if (/UNIQUE|constraint/i.test(String(err.message))) {
+      return res.status(409).json({ error: 'Email này đã được dùng cho một tài khoản khác.' });
+    }
+    throw err;
+  }
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   return res.json({ user: toUser(row) });
 });
 
 // Bước 1 khi đổi email: gửi mã xác thực tới ĐỊA CHỈ MỚI (chưa lưu gì vào hồ sơ)
 router.post('/email/otp', emailOtpRateLimit, async (req, res) => {
-  const email = String((req.body && req.body.email) || '').trim();
+  const email = normalizeEmail((req.body && req.body.email) || '');
 
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Email không hợp lệ. Vui lòng kiểm tra lại.' });
   }
-  if (email.toLowerCase() === String(req.user.email || '').trim().toLowerCase()) {
+  if (email === normalizeEmail(req.user.email)) {
     return res.status(400).json({ error: 'Email này đang là email của tài khoản.' });
+  }
+  const owner = db
+    .prepare('SELECT id FROM users WHERE lower(trim(email)) = ? AND id != ?')
+    .get(email, req.user.id);
+  if (owner) {
+    return res.status(409).json({ error: 'Email này đã được dùng cho một tài khoản khác.' });
   }
   if (!otp.otpEnabled()) {
     return res.status(400).json({ error: 'Bước xác thực email đang tắt.' });
@@ -229,8 +256,8 @@ router.put(
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: 'Vui lòng nhập đầy đủ mật khẩu hiện tại và mật khẩu mới.' });
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
     }
     if (newPassword === currentPassword) {
       return res.status(400).json({ error: 'Mật khẩu mới phải khác mật khẩu hiện tại.' });

@@ -67,7 +67,7 @@ const TOPICS = [
       'Cách tạo đơn hoàn tiền:',
       '1. Vào mục "Tạo đơn hàng" (hoặc dán link ngay ở trang chủ rồi bấm "Chuyển đổi link").',
       '2. Dán link sản phẩm Shopee / TikTok Shop / Tiki / Lazada vào ô nhập link — mỗi lần chỉ 1 link.',
-      '3. Bấm "Tạo link & kiểm tra hoa hồng" để nhận link hoàn tiền của bạn (dạng .../r/MÃ_ĐƠN).',
+      '3. Bấm "Tạo link & kiểm tra hoa hồng" để nhận link hoàn tiền của bạn.',
       '4. Bấm "Mua ngay" (hoặc copy link dán vào trình duyệt) rồi mua hàng trong đúng phiên đó.',
       'Quan trọng: mua đúng sản phẩm trong link, không đổi thiết bị/trình duyệt và không xoá cookie giữa chừng, nếu không đơn sẽ không được ghi nhận.'
     ].join('\n')
@@ -251,6 +251,18 @@ function faqAnswer(text) {
   return best ? best.topic.answer : null;
 }
 
+/** Trạng thái link thật/mock hiện tại, để chatbot không trả lời sai sàn nào đã gắn hoa hồng. */
+function affiliateStatusText() {
+  const affiliate = require('./affiliate').describe();
+  if (!affiliate.isReal) {
+    return 'Tất cả sàn đang dùng link thử nghiệm nội bộ; hoa hồng do quản trị viên chốt thủ công.';
+  }
+  if (Array.isArray(affiliate.livePlatforms) && affiliate.livePlatforms.length) {
+    return `Các sàn đang dùng link hoàn tiền thật: ${affiliate.livePlatforms.join(', ')}. Các sàn còn lại dùng link thử nghiệm và chưa gắn hoa hồng tự động.`;
+  }
+  return 'Tất cả các sàn đang dùng link hoàn tiền thật.';
+}
+
 /** Toàn bộ kiến thức để đưa vào "system prompt" cho AI. */
 function buildSystemPrompt() {
   const contact = supportContact();
@@ -271,6 +283,10 @@ function buildSystemPrompt() {
       ? `LIÊN HỆ HỖ TRỢ: ${contact.line}.`
       : 'LIÊN HỆ HỖ TRỢ: người dùng bấm nút "Liên hệ hỗ trợ" trong khung chat.',
     '',
+    'HIỆN TRẠNG LINK HOÀN TIỀN:',
+    `- ${affiliateStatusText()}`,
+    '- Khi người dùng hỏi sàn nào đang dùng link thật, trả lời đúng theo mục này.',
+    '',
     'KIẾN THỨC:'
   ];
 
@@ -286,6 +302,7 @@ module.exports = {
   SUGGESTIONS,
   WELCOME,
   supportContact,
+  affiliateStatusText,
   faqAnswer,
   fallbackAnswer,
   buildSystemPrompt

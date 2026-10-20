@@ -9,6 +9,7 @@
 // NẠP .env TRƯỚC TIÊN: db.js và các module trong lib/ đọc process.env ngay khi require
 const { cookieSecure, isProduction } = require('./lib/env');
 const { loadUser } = require('./lib/auth');
+const { UPLOAD_DIR } = require('./lib/uploads');
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -62,11 +63,6 @@ if (IS_PRODUCTION && cookieSecure() && !USE_HTTPS && !TRUST_PROXY) {
 }
 
 const ROOT = path.join(__dirname, '..');
-// Cho phép đổi thư mục ảnh (hữu ích khi chạy test hoặc gắn ổ đĩa riêng)
-const UPLOAD_DIR = process.env.UPLOAD_DIR
-  ? path.resolve(__dirname, process.env.UPLOAD_DIR)
-  : path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const app = express();
 app.disable('x-powered-by');
@@ -246,7 +242,13 @@ app.get('/api/config', (req, res) => {
   const { BANK_GROUPS } = require('./lib/banks');
   const ai = require('./lib/ai');
   const knowledge = require('./lib/supportKnowledge');
+  const affiliate = require('./lib/affiliate').describe();
   res.json({
+    // Trạng thái link thật/mock để giao diện không quảng cáo sai sàn nào đã gắn hoa hồng
+    affiliate: {
+      isReal: affiliate.isReal,
+      livePlatforms: affiliate.livePlatforms
+    },
     support: {
       email: process.env.SUPPORT_EMAIL || '',
       zalo: process.env.SUPPORT_ZALO || '',
@@ -351,12 +353,17 @@ server.listen(PORT, () => {
   }
 
   const postback = require('./lib/postback').describe();
-  const postbackHost = `${scheme}://localhost:${PORT}`;
+  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  const postbackHost = publicBaseUrl || `${scheme}://localhost:${PORT}`;
   if (postback.configured) {
     console.log(`  Nhận báo cáo chuyển đổi: BẬT - khai với mạng URL ${postbackHost}${postback.url}`);
     console.log(
       `                          Tỷ lệ hoàn cho người dùng: ${Math.round(postback.cashbackRate * 100)}% (CASHBACK_RATE)`
     );
+    if (postback.cashbackRate >= 1) {
+      console.warn('  CẢNH BÁO: CASHBACK_RATE đang là 100% — nền tảng không giữ lại doanh thu.');
+      console.warn('           Nếu không cố ý, đặt CASHBACK_RATE=0.8 (hoàn 80%) trong backend/.env rồi khởi động lại.');
+    }
   } else {
     console.log('  Nhận báo cáo chuyển đổi: CHƯA cấu hình POSTBACK_SECRET - mạng gọi vào sẽ bị từ chối');
     console.log(`                          Khai URL: ${postbackHost}${postback.url}`);

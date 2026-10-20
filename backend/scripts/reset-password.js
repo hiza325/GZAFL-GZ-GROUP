@@ -95,8 +95,8 @@ if (!row) {
 
 const newPassword = provided || makeRandomPassword();
 
-if (newPassword.length < 6) {
-  console.error('LỖI: Mật khẩu phải có ít nhất 6 ký tự.');
+if (newPassword.length < 8) {
+  console.error('LỖI: Mật khẩu phải có ít nhất 8 ký tự.');
   process.exit(1);
 }
 

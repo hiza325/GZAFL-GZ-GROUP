@@ -21,6 +21,17 @@ function isValidUsername(input) {
   return isValidEmail(input) || isValidPhone(input);
 }
 
+// Chuẩn hoá để so sánh/ghi DB: email luôn lowercase, username dạng email cũng lowercase.
+// Số điện thoại giữ nguyên (chỉ trim) vì có thể có dấu +.
+function normalizeEmail(input) {
+  return String(input || '').trim().toLowerCase();
+}
+
+function normalizeUsername(input) {
+  const value = String(input || '').trim();
+  return isValidEmail(value) ? value.toLowerCase() : value;
+}
+
 function randomChars(length) {
   let out = '';
   for (let i = 0; i < length; i++) out += REFERRAL_ALPHABET[randomInt(REFERRAL_ALPHABET.length)];
@@ -124,6 +135,8 @@ module.exports = {
   isValidEmail,
   isValidPhone,
   isValidUsername,
+  normalizeEmail,
+  normalizeUsername,
   generateReferralCode,
   generateOrderCode,
   generateWithdrawalCode,

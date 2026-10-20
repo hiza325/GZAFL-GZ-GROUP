@@ -144,7 +144,7 @@ https://shopee.vn/product/111
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `AFFILIATE_PROVIDER` | `mock` | `mock` \| `accesstrade` \| `shopee` |
-| `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật (ví dụ `TikTok Shop`); sàn khác tạm dùng link thử nghiệm |
+| `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật (ví dụ `TikTok Shop, Tiki`); sàn khác tạm dùng link thử nghiệm. Mỗi đơn lưu `affiliate.isReal` để UI/API nói rõ link thật hay chưa gắn hoa hồng |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id`, tránh trùng với hệ thống khác |
 | `ACCESSTRADE_API_KEY` | — | Token do AccessTrade cấp |
 | `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | — | Campaign ID riêng từng sàn (giữ dạng chuỗi) |

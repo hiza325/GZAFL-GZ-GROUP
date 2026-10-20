@@ -43,13 +43,13 @@ const {
 const { requireAdmin } = require('../lib/auth');
 const { notify } = require('../lib/notify');
 const { logAudit } = require('../lib/audit');
+const { UPLOAD_DIR } = require('../lib/uploads');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
 
 const router = express.Router();
 router.use(requireAdmin);
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 

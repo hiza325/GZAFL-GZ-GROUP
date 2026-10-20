@@ -179,6 +179,13 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(res.headers.get('cache-control'), 'no-store');
   });
 
+  await t.test('cấu hình công khai báo đúng trạng thái link', async () => {
+    const { res, data } = await json('/api/config');
+    assert.equal(res.status, 200);
+    assert.equal(data.affiliate.isReal, false);
+    assert.ok(Array.isArray(data.affiliate.livePlatforms));
+  });
+
   await t.test('chỉ phục vụ file giao diện trong danh sách cho phép', async () => {
     const blocked = [
       '/backend/.env',
@@ -247,6 +254,15 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(good.res.status, 201);
     assert.ok(good.data.order && good.data.order.id, 'Đơn phải có mã (id)');
     assert.equal(good.data.order.platform, 'Shopee');
+    assert.equal(good.data.affiliate.provider, 'mock');
+    assert.equal(good.data.affiliate.isReal, false);
+
+    const listed = await json('/api/orders', { cookie: user.cookie });
+    assert.equal(listed.res.status, 200);
+    const listedOrder = (listed.data.orders || []).find((o) => o.id === good.data.order.id);
+    assert.ok(listedOrder, 'Đơn vừa tạo phải có trong danh sách');
+    assert.equal(listedOrder.affiliate.provider, 'mock');
+    assert.equal(listedOrder.affiliate.isReal, false);
 
     const tiki = await json('/api/orders', {
       method: 'POST',
@@ -263,6 +279,95 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     });
     assert.equal(lazada.res.status, 201);
     assert.equal(lazada.data.order.platform, 'Lazada');
+
+    const adminOrders = await json('/api/admin/orders', { cookie: admin.cookie });
+    assert.equal(adminOrders.res.status, 200);
+    const adminOrder = (adminOrders.data.orders || []).find((o) => o.id === good.data.order.id);
+    assert.ok(adminOrder, 'Quản trị viên phải thấy đơn vừa tạo');
+    assert.equal(adminOrder.affiliate.isReal, false);
+  });
+
+  await t.test('không cho chiếm email làm username và chặn email trùng', async () => {
+    const squat = await json('/api/auth/register', {
+      method: 'POST',
+      body: {
+        username: 'victim@test.local',
+        email: 'attacker@test.local',
+        password: PASSWORD,
+        name: 'Kẻ giả mạo'
+      }
+    });
+    assert.equal(squat.res.status, 400);
+    assert.match(squat.data.error, /trùng/);
+
+    const first = await json('/api/auth/register', {
+      method: 'POST',
+      body: {
+        username: '0901234567',
+        email: 'shared@test.local',
+        password: PASSWORD,
+        name: 'Người thứ nhất'
+      }
+    });
+    assert.equal(first.res.status, 201);
+
+    const second = await json('/api/auth/register', {
+      method: 'POST',
+      body: {
+        username: '0901234568',
+        email: 'SHARED@test.local',
+        password: PASSWORD,
+        name: 'Người thứ hai'
+      }
+    });
+    assert.equal(second.res.status, 409);
+    assert.match(second.data.error, /Email/);
+  });
+
+  await t.test('không cho đổi email trùng tài khoản khác', async () => {
+    const res = await json('/api/profile', {
+      method: 'PUT',
+      cookie: user.cookie,
+      body: { name: 'Người dùng', email: 'other@test.local', phone: '' }
+    });
+    assert.equal(res.res.status, 409);
+    assert.match(res.data.error, /Email/);
+
+    const clear = await json('/api/profile', {
+      method: 'PUT',
+      cookie: user.cookie,
+      body: { name: 'Người dùng', email: '', phone: '' }
+    });
+    assert.equal(clear.res.status, 400);
+    assert.match(clear.data.error, /email/i);
+  });
+
+  await t.test('đăng nhập email không phân biệt hoa-thường', async () => {
+    const login = await json('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'USER@TEST.LOCAL', password: PASSWORD }
+    });
+    assert.equal(login.res.status, 200);
+    assert.ok(login.data.user && login.data.user.username === 'user@test.local');
+  });
+
+  await t.test('logout thu hồi token cũ', async () => {
+    const session = createUser({
+      username: 'logout@test.local',
+      email: 'logout@test.local',
+      name: 'Người đăng xuất'
+    });
+
+    const meBefore = await json('/api/auth/me', { cookie: session.cookie });
+    assert.equal(meBefore.res.status, 200);
+    assert.ok(meBefore.data.user);
+
+    const out = await json('/api/auth/logout', { method: 'POST', cookie: session.cookie });
+    assert.equal(out.res.status, 200);
+
+    const meAfter = await json('/api/auth/me', { cookie: session.cookie });
+    assert.equal(meAfter.res.status, 200);
+    assert.equal(meAfter.data.user, null);
   });
 
   await t.test('phân quyền quản trị', async () => {

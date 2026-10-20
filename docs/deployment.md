@@ -138,6 +138,7 @@ Rồi trong `backend/.env` **bắt buộc** thêm:
 
 ```ini
 TRUST_PROXY=1
+PUBLIC_BASE_URL=https://ten-mien-cua-ban.com
 ```
 
 `TRUST_PROXY` để Express tin `X-Forwarded-Proto: https`. Nếu thiếu:
@@ -331,7 +332,7 @@ Sai đường dẫn trong `SSL_KEY_PATH` / `SSL_CERT_PATH`, hoặc tài khoản 
 không có quyền đọc file chứng chỉ.
 
 **Link hoàn tiền bị sai tên miền (`http://localhost:3000/...`).**
-Thiếu `TRUST_PROXY` khi chạy sau proxy. Link được tạo từ `req.protocol` + `req.get('host')`.
+Thiếu `TRUST_PROXY` khi chạy sau proxy. Link mock được tạo từ `req.protocol` + `req.get('host')`; có thể đặt `PUBLIC_BASE_URL=https://ten-mien-cua-ban.com` để cố định tên miền công khai.
 
 **Ảnh đại diện không lưu được.**
 Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy service (`chown -R www-data backend/uploads`).
@@ -374,6 +375,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SSL_KEY_PATH` | – | Khoá riêng TLS (chỉ dùng cho Cách B) |
 | `SSL_CERT_PATH` | – | Chứng chỉ TLS (chỉ dùng cho Cách B) |
 | `TRUST_PROXY` | – | `1` / `true` / danh sách IP — bật khi chạy sau reverse proxy |
+| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://ten-mien-cua-ban.com`; dùng cho link mock và hướng dẫn postback |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `RATE_LIMIT_STORE` | `memory` | `memory` / `sqlite` — dùng `sqlite` khi chạy nhiều tiến trình/instance |
 | `UPLOAD_DIR` | `backend/uploads` | Thư mục ảnh đại diện + ảnh QR (đường dẫn tương đối tính từ `backend/`) |

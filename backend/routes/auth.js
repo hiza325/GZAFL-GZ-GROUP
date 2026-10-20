@@ -4,7 +4,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { toUser } = require('../lib/serialize');
-const { isValidUsername, isValidEmail, generateReferralCode } = require('../lib/validate');
+const {
+  isValidUsername,
+  isValidEmail,
+  normalizeEmail,
+  normalizeUsername,
+  generateReferralCode
+} = require('../lib/validate');
 const { setAuthCookie, clearAuthCookie, loadUser, signLoginTicket, verifyLoginTicket } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
 const { RESET_PENDING, RESET_RESOLVED } = require('../lib/constants');
@@ -28,6 +34,21 @@ const otpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'otp-s
 const loginOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, name: 'login-otp' });
 
 const BCRYPT_ROUNDS = 10;
+const MIN_PASSWORD_LENGTH = 8;
+
+// Tìm tài khoản không phân biệt hoa-thường. Email được lưu lowercase; username dạng
+// email cũng vậy, còn số điện thoại giữ nguyên.
+function findUserByUsername(input) {
+  const value = normalizeUsername(input);
+  if (!value) return null;
+  return db.prepare('SELECT * FROM users WHERE lower(trim(username)) = ?').get(value.toLowerCase());
+}
+
+function findUserByEmail(input) {
+  const email = normalizeEmail(input);
+  if (!email) return null;
+  return db.prepare('SELECT * FROM users WHERE lower(trim(email)) = ?').get(email);
+}
 
 // Hash giả dùng khi tài khoản không tồn tại: vẫn tốn thời gian bcrypt như thật,
 // để kẻ dò không phân biệt được "sai tài khoản" và "sai mật khẩu".
@@ -70,9 +91,9 @@ function maskEmail(email) {
 
 // Bước 1: gửi mã xác thực về email
 router.post('/register/otp', otpRateLimit, async (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
   const name = String((req.body && req.body.name) || '').trim();
-  const email = String((req.body && req.body.email) || '').trim();
+  const email = normalizeEmail((req.body && req.body.email) || '');
 
   if (!otp.otpEnabled()) {
     return res.status(400).json({ error: 'Bước xác thực email đang tắt.' });
@@ -89,20 +110,28 @@ router.post('/register/otp', otpRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.' });
   }
 
-  const existing = db
-    .prepare('SELECT id, email, name FROM users WHERE username = ?')
-    .get(username);
-  if (existing) {
+  // Nếu dùng email làm tên đăng nhập thì email nhận mã PHẢI là chính email đó.
+  // Nếu không, người khác có thể "giữ chỗ" email của người khác bằng email của mình.
+  if (isValidEmail(username) && username !== email) {
+    return res.status(400).json({
+      error: 'Vì bạn dùng email làm tên đăng nhập, email nhận mã phải trùng với email đó.'
+    });
+  }
+
+  const existing = findUserByUsername(username);
+  const emailOwner = findUserByEmail(email);
+  const conflict = existing || emailOwner;
+  if (conflict) {
     // Không phát mã đăng ký (không thể tạo trùng tài khoản). Thay vào đó gửi thư báo
     // tới ĐÚNG email đã đăng ký của chủ tài khoản — KHÔNG gửi tới email mà người gửi
     // vừa nhập, nên kẻ dò tài khoản (dùng username người khác + email của mình)
     // không nhận được gì và không biết tài khoản có tồn tại hay không.
     // Phản hồi vẫn GIỐNG HỆT trường hợp đăng ký bình thường.
-    if (existing.email) {
+    if (conflict.email) {
       try {
         await otp.sendAccountExistsNotice({
-          email: existing.email,
-          name: existing.name,
+          email: conflict.email,
+          name: conflict.name,
           username
         });
       } catch (err) {
@@ -138,10 +167,10 @@ router.post('/register/otp', otpRateLimit, async (req, res) => {
 
 // Bước 2: kiểm tra mã rồi tạo tài khoản
 router.post('/register', async (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
   const name = String((req.body && req.body.name) || '').trim();
-  const email = String((req.body && req.body.email) || '').trim();
+  const email = normalizeEmail((req.body && req.body.email) || '');
   const code = String((req.body && req.body.otp) || '').trim();
 
   if (!username || !password) return res.status(400).json({ error: 'Vui lòng điền đầy đủ thông tin.' });
@@ -149,9 +178,16 @@ router.post('/register', async (req, res) => {
   if (!isValidUsername(username)) {
     return res.status(400).json({ error: 'Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.' });
   }
-  if (password.length < 6) return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Mật khẩu phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.` });
+  }
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.' });
+  }
+  if (isValidEmail(username) && username !== email) {
+    return res.status(400).json({
+      error: 'Vì bạn dùng email làm tên đăng nhập, email nhận mã phải trùng với email đó.'
+    });
   }
 
   // Kiểm tra mã TRƯỚC khi kiểm tra trùng tài khoản, để không lộ tài khoản đã tồn tại
@@ -164,27 +200,41 @@ router.post('/register', async (req, res) => {
     }
   }
 
-  const exists = db.prepare('SELECT 1 AS x FROM users WHERE username = ?').get(username);
-  if (exists) return res.status(409).json({ error: 'Email hoặc Số điện thoại này đã được đăng ký.' });
+  if (findUserByUsername(username)) {
+    return res.status(409).json({ error: 'Email hoặc Số điện thoại này đã được đăng ký.' });
+  }
+  if (findUserByEmail(email)) {
+    return res.status(409).json({ error: 'Email này đã được dùng cho một tài khoản khác.' });
+  }
 
   const passwordHash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
   const referralCode = generateReferralCode(db);
   const isEmailLogin = isValidEmail(username);
 
-  const info = db
-    .prepare(
-      `INSERT INTO users (username, password_hash, name, email, phone, referral_code, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      username,
-      passwordHash,
-      name,
-      email,
-      isEmailLogin ? '' : username,
-      referralCode,
-      new Date().toISOString()
-    );
+  let info;
+  try {
+    info = db
+      .prepare(
+        `INSERT INTO users (username, password_hash, name, email, phone, referral_code, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        username,
+        passwordHash,
+        name,
+        email,
+        isEmailLogin ? '' : username,
+        referralCode,
+        new Date().toISOString()
+      );
+  } catch (err) {
+    // Hai request đăng ký cùng lúc có thể vượt qua kiểm tra phía trên; chỉ mục UNIQUE
+    // trong database mới là chốt chặn cuối.
+    if (/UNIQUE|constraint/i.test(String(err.message))) {
+      return res.status(409).json({ error: 'Email, tên đăng nhập hoặc số điện thoại này đã được đăng ký.' });
+    }
+    throw err;
+  }
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(info.lastInsertRowid));
 
@@ -209,12 +259,12 @@ router.post('/register', async (req, res) => {
    ========================================== */
 
 router.post('/login', async (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
 
   if (!username || !password) return res.status(400).json({ error: 'Vui lòng điền đầy đủ thông tin.' });
 
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const row = findUserByUsername(username);
   // Trả CÙNG một thông báo dù sai tài khoản hay sai mật khẩu (tránh dò tài khoản).
   // Vẫn chạy bcrypt khi không có tài khoản để thời gian phản hồi không khác biệt.
   const passwordOk = bcrypt.compareSync(password, row ? row.password_hash : DUMMY_HASH);
@@ -321,6 +371,12 @@ router.post('/login/otp/resend', loginOtpRateLimit, async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
+  // Tăng token_version để token đã phát (kể cả token bị đánh cắp) mất hiệu lực ngay,
+  // không đợi hết hạn 7 ngày. Đây là logout toàn bộ thiết bị.
+  const row = loadUser(req);
+  if (row) {
+    db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(row.id);
+  }
   clearAuthCookie(res);
   return res.json({ ok: true });
 });
@@ -356,7 +412,7 @@ const RESET_OTP_MESSAGE =
 
 // Bước 1 của đường tự đặt lại: gửi mã về email
 router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
 
   if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại.' });
 
@@ -366,7 +422,7 @@ router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
     });
   }
 
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const row = findUserByUsername(username);
 
   let devCode = null;
   let expiresInSeconds = otp.TTL_SECONDS;
@@ -407,15 +463,17 @@ router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
 
 // Bước 2: mã đúng thì đổi mật khẩu luôn
 router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
   const code = String((req.body && req.body.otp) || '').trim();
   const newPassword = String((req.body && req.body.newPassword) || '').trim();
 
   if (!username) return res.status(400).json({ error: 'Thiếu Email hoặc Số điện thoại.' });
   if (!code) return res.status(400).json({ error: 'Vui lòng nhập mã xác thực.' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.` });
+  }
 
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const row = findUserByUsername(username);
 
   // Không có tài khoản / tài khoản chưa có email thì trả về y hệt lỗi mã sai
   if (!row || !row.email) {
@@ -449,12 +507,12 @@ router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {
 });
 
 router.post('/forgot-password', (req, res) => {
-  const username = String((req.body && req.body.username) || '').trim();
+  const username = normalizeUsername((req.body && req.body.username) || '');
   const note = String((req.body && req.body.note) || '').trim().slice(0, 300);
 
   if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại.' });
 
-  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const row = findUserByUsername(username);
 
   if (row) {
     const now = new Date().toISOString();

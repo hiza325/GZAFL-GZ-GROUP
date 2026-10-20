@@ -220,6 +220,32 @@ ensureColumn('users', 'bank_qr_url', 'TEXT');
 // cũng không làm thay đổi ảnh mà quản trị viên đang dùng để chuyển tiền.
 ensureColumn('withdrawals', 'qr_url', 'TEXT');
 
+// Phân biệt link hoàn tiền THẬT với link mock/chưa gắn hoa hồng.
+// Lưu theo từng đơn để sau này đổi AFFILIATE_LIVE_PLATFORMS vẫn xem lại được lịch sử.
+ensureColumn('orders', 'affiliate_provider', 'TEXT');
+ensureColumn('orders', 'affiliate_is_real', 'INTEGER');
+ensureColumn('orders', 'affiliate_error', 'TEXT');
+
+// Chống trùng email/username không phân biệt hoa-thường. Dùng chỉ mục biểu thức vì
+// SQLite không có kiểu dữ liệu CITEXT. Bọc try/catch để database cũ có dữ liệu trùng
+// vẫn khởi động được; khi đó route sẽ kiểm tra bằng truy vấn trước khi ghi.
+try {
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_norm
+       ON users (lower(trim(email))) WHERE trim(email) <> ''`
+  );
+} catch (err) {
+  console.warn(`CẢNH BÁO: chưa tạo được chỉ mục email duy nhất (${err.message}).`);
+}
+try {
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_norm
+       ON users (lower(trim(username)))`
+  );
+} catch (err) {
+  console.warn(`CẢNH BÁO: chưa tạo được chỉ mục username duy nhất (${err.message}).`);
+}
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_user        ON orders (user_id);
   CREATE INDEX IF NOT EXISTS idx_orders_sub_id      ON orders (sub_id);

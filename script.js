@@ -150,10 +150,41 @@ let otpConfig = { enabled: false, delivery: false, length: 6, ttlSeconds: 600, r
 
 // Cấu hình công khai đã tải về (hỗ trợ, OTP, danh sách ngân hàng...)
 let appConfig = null;
+let affiliateConfig = null;
+
+function applyAffiliateStatus() {
+  const el = document.getElementById('landing-affiliate-status');
+  if (!el || !affiliateConfig) return;
+
+  const all = ['Shopee', 'TikTok Shop', 'Tiki', 'Lazada'];
+  const liveRaw = Array.isArray(affiliateConfig.livePlatforms) ? affiliateConfig.livePlatforms : [];
+  const live = all.filter((name) => liveRaw.some((item) => String(item).trim().toLowerCase() === name.toLowerCase()));
+  // Danh sách rỗng = bật API thật cho mọi sàn; có danh sách = các sàn còn lại đang thử nghiệm.
+  const restricted = liveRaw.length > 0;
+  const missing = restricted ? all.filter((name) => !live.includes(name)) : [];
+
+  let text;
+  if (!affiliateConfig.isReal) {
+    text = 'Các sàn đang ở chế độ thử nghiệm: link chỉ mở sản phẩm, chưa gắn hoa hồng tự động.';
+  } else if (restricted) {
+    text = live.length ? `Đang gắn hoa hồng tự động: ${live.join(', ')}.` : 'Đang bật link hoàn tiền thật cho một số sàn.';
+    if (missing.length) text += ` Đang thử nghiệm: ${missing.join(', ')}.`;
+  } else {
+    text = 'Tất cả các sàn đang dùng link hoàn tiền thật.';
+  }
+
+  el.textContent = text;
+  el.classList.remove('hidden', 'text-slate-400', 'text-amber-700', 'text-emerald-600');
+  el.classList.add(!affiliateConfig.isReal || missing.length ? 'text-amber-700' : 'text-emerald-600');
+}
 
 fetchAppConfig().then((cfg) => {
   appConfig = cfg;
   if (cfg && cfg.otp) otpConfig = Object.assign({}, otpConfig, cfg.otp);
+  if (cfg && cfg.affiliate) {
+    affiliateConfig = cfg.affiliate;
+    applyAffiliateStatus();
+  }
   if (typeof populateBankOptions === 'function') populateBankOptions();
   if (typeof updateAuthUI === 'function') updateAuthUI();
 });
@@ -193,6 +224,7 @@ async function loadComponent(elementId, filePath) {
     else if (filePath.includes('referral.html')) initReferralPage();
     else if (filePath.includes('notifications.html')) updateNotificationsData();
     else if (filePath.includes('guide.html')) applySupportContact(document.getElementById(elementId));
+    else if (filePath.includes('landing.html')) applyAffiliateStatus();
   } catch (error) {
     console.error('Lỗi khi tải component:', error);
   }
@@ -880,7 +912,7 @@ window.submitPasswordReset = async function() {
   if (!isValidOtpCode(code)) {
     return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
   }
-  if (password.length < 6) return showAuthMessage('Mật khẩu mới phải có ít nhất 6 ký tự.');
+  if (password.length < 8) return showAuthMessage('Mật khẩu mới phải có ít nhất 8 ký tự.');
   if (confirm !== password) return showAuthMessage('Mật khẩu xác nhận không khớp.');
 
   const restore = busyButton(btn, 'Đang xử lý...');
@@ -1019,7 +1051,7 @@ window.handleAuthSubmit = async function(event) {
   }
   if (!isLoginMode) {
     if (!nameInput) return showAuthMessage('Vui lòng nhập tên hiển thị.');
-    if (passwordInput.length < 6) return showAuthMessage('Mật khẩu phải có ít nhất 6 ký tự.');
+    if (passwordInput.length < 8) return showAuthMessage('Mật khẩu phải có ít nhất 8 ký tự.');
     const confirmEl = document.getElementById('auth-confirm-password');
     const confirmInput = confirmEl ? confirmEl.value.trim() : '';
     if (confirmInput !== passwordInput) return showAuthMessage('Mật khẩu xác nhận không khớp.');
@@ -1296,9 +1328,15 @@ document.addEventListener('click', async function(event) {
 
   try {
     const data = await api('/orders', { method: 'POST', body: { link: singleLink } });
-    showToast('Tạo link hoàn tiền thành công! Đơn hàng đã được ghi nhận.', 'success');
+    const affiliate = data.affiliate || (data.order && data.order.affiliate) || {};
+    showToast(
+      affiliate.isReal
+        ? 'Đã tạo link hoàn tiền. Hãy mua hàng qua link này để được ghi nhận hoa hồng.'
+        : 'Đã tạo đơn. Link này chưa gắn hoa hồng tự động, quản trị viên sẽ kiểm tra và chốt.',
+      affiliate.isReal ? 'success' : 'info'
+    );
     inputElement.value = '';
-    renderLinkResult(data.order, data.affiliate);
+    renderLinkResult(data.order, affiliate);
     if (document.getElementById('dash-recent-orders')) updateDashboardData();
   } catch (err) {
     showError(err.message);
@@ -1315,9 +1353,12 @@ function renderLinkResult(order, affiliate) {
   if (!box || !order) return;
 
   const link = order.affiliateLink || order.link;
-  const isReal = !!(affiliate && affiliate.isReal);
+  const meta = affiliate || order.affiliate || {};
+  const isReal = meta.isReal === true;
 
+  setText('link-result-title', isReal ? 'Đã tạo link hoàn tiền' : 'Đã tạo đơn hàng');
   setText('link-result-code', order.id);
+  setText('link-result-open-label', isReal ? 'Mua ngay' : 'Mở sản phẩm');
 
   const urlInput = document.getElementById('link-result-url');
   if (urlInput) urlInput.value = link;
@@ -1327,9 +1368,22 @@ function renderLinkResult(order, affiliate) {
 
   const note = document.getElementById('link-result-note');
   if (note) {
-    note.innerText = isReal
-      ? 'Link hoàn tiền đã sẵn sàng. Hãy mua hàng qua đúng link này để đơn được ghi nhận.'
-      : 'Hệ thống chưa kết nối API của sàn nên chưa ghi nhận hoa hồng tự động. Bạn vẫn mua hàng bình thường, quản trị viên sẽ chốt hoa hồng cho đơn này.';
+    if (isReal) {
+      note.innerText = 'Link hoàn tiền đã sẵn sàng. Hãy mua hàng qua đúng link này để đơn được ghi nhận.';
+    } else if (meta.error) {
+      note.innerText =
+        'Chưa tạo được link hoàn tiền tự động cho đơn này. Bạn vẫn mua hàng bình thường; quản trị viên sẽ kiểm tra và chốt hoa hồng thủ công.';
+    } else {
+      note.innerText =
+        'Sàn này chưa được bật API hoa hồng thật. Bạn vẫn mua hàng bình thường; quản trị viên sẽ kiểm tra và chốt hoa hồng cho đơn này.';
+    }
+  }
+
+  const footnote = document.getElementById('link-result-footnote');
+  if (footnote) {
+    footnote.innerText = isReal
+      ? 'Hãy mua hàng qua đúng link này để đơn được ghi nhận hoa hồng.'
+      : 'Link này chỉ mở đúng sản phẩm; đơn chưa được gắn hoa hồng tự động.';
   }
 
   const copyBtn = document.getElementById('btn-copy-affiliate');
@@ -1543,7 +1597,10 @@ async function updateOrdersData() {
     }
     let htmlList = `<div class="space-y-4">`;
     orders.forEach(order => {
+      const affiliate = order.affiliate || {};
       const hasTrackedLink = !!(order.affiliateLink && order.affiliateLink !== order.link);
+      const isRealLink = affiliate.isReal === true;
+      const isMockLink = affiliate.isReal === false;
       // Sàn đã ghi nhận chuyển đổi nhưng CHƯA duyệt: tiền chưa vào số dư (xem lib/postback.js)
       const waitingReconcile = (Number(order.networkCommission) || 0) > 0 && (Number(order.commission) || 0) === 0;
       htmlList += `
@@ -1557,6 +1614,11 @@ async function updateOrdersData() {
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-bold text-slate-800">${escapeHtml(order.platform)}</span>
                   <span class="text-xs text-slate-400 font-medium">(${escapeHtml(order.id)})</span>
+                  ${isRealLink
+                    ? '<span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Link thật</span>'
+                    : isMockLink
+                      ? '<span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Chưa gắn hoa hồng</span>'
+                      : ''}
                   ${order.clicks > 0 ? `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">${Number(order.clicks) || 0} lượt bấm</span>` : ''}
                 </div>
                 <a href="${escapeHtml(safeHttpUrl(order.link))}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(order.link)}" class="text-xs text-slate-400 hover:text-red-500 mt-1 block truncate max-w-md transition">${escapeHtml(order.link)}</a>
@@ -1569,21 +1631,26 @@ async function updateOrdersData() {
             </div>
           </div>
           ${waitingReconcile ? `
-          <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-600 ${hasTrackedLink ? 'pt-1' : 'pt-4 border-t border-slate-50'}">
+          <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 ${hasTrackedLink ? 'pt-1' : 'pt-4 border-t border-slate-50'}">
             <i data-lucide="clock" class="w-3.5 h-3.5"></i>
             Sàn đã ghi nhận ${formatCurrency(order.networkCommission)} nhưng chưa duyệt. Tiền sẽ vào số dư khi được duyệt.
           </div>` : ''}
+          ${affiliate.error ? `
+          <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 pt-1">
+            <i data-lucide="triangle-alert" class="w-3.5 h-3.5"></i>
+            Chưa tạo được link hoàn tiền tự động. Quản trị viên sẽ kiểm tra và chốt hoa hồng cho đơn này.
+          </div>` : ''}
           ${hasTrackedLink ? `
           <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-4 border-t border-slate-50">
-            <span class="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 uppercase tracking-wider flex-shrink-0">
-              <i data-lucide="link-2" class="w-3.5 h-3.5"></i> Link hoàn tiền
+            <span class="flex items-center gap-1.5 text-[11px] font-bold ${isRealLink ? 'text-emerald-600' : 'text-amber-700'} uppercase tracking-wider flex-shrink-0">
+              <i data-lucide="link-2" class="w-3.5 h-3.5"></i> ${isRealLink ? 'Link hoàn tiền' : isMockLink ? 'Link chưa gắn hoa hồng' : 'Link đơn hàng'}
             </span>
             <input readonly value="${escapeHtml(order.affiliateLink)}" class="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs text-slate-600 focus:outline-none">
             <button data-action="copy-link" data-link="${escapeHtml(order.affiliateLink)}" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap">
               <i data-lucide="copy" class="w-3.5 h-3.5"></i> Sao chép
             </button>
             <a href="${escapeHtml(safeHttpUrl(order.affiliateLink))}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold text-xs transition whitespace-nowrap">
-              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Mua ngay
+              <i data-lucide="external-link" class="w-3.5 h-3.5"></i> ${isRealLink ? 'Mua ngay' : 'Mở sản phẩm'}
             </a>
           </div>` : ''}
         </div>
@@ -2051,8 +2118,8 @@ window.changePassword = async function() {
     showToast('Vui lòng điền đầy đủ cả 3 ô mật khẩu.', 'error');
     return;
   }
-  if (newPassword.length < 6) {
-    showToast('Mật khẩu mới phải có ít nhất 6 ký tự.', 'error');
+  if (newPassword.length < 8) {
+    showToast('Mật khẩu mới phải có ít nhất 8 ký tự.', 'error');
     return;
   }
   if (newPassword !== confirmPassword) {

@@ -202,7 +202,16 @@
           <div class="font-semibold text-slate-700">${escapeHtml(o.user.name)}</div>
           <div class="text-xs text-slate-400">${escapeHtml(o.user.username)}</div>
         </td>
-        <td class="px-3 py-3 text-slate-600">${escapeHtml(o.platform)}</td>
+        <td class="px-3 py-3 text-slate-600">
+          <div>${escapeHtml(o.platform)}</div>
+          ${
+            o.affiliate && o.affiliate.isReal === true
+              ? '<div class="text-[10px] font-bold text-emerald-600">Link thật</div>'
+              : o.affiliate && o.affiliate.isReal === false
+                ? '<div class="text-[10px] font-bold text-amber-700">Chưa gắn hoa hồng</div>'
+                : ''
+          }
+        </td>
         <td class="px-3 py-3 font-semibold text-emerald-600">${formatCurrency(o.commission)}</td>
         <td class="px-3 py-3">${badge(o.status)}</td>
         <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(o.date)}</td>
@@ -222,7 +231,17 @@
     if (!order) return;
     state.editing.order = order;
 
-    setText('adm-order-info', `${order.user.name} (${order.user.username}) — ${order.platform}`);
+    const affiliate = order.affiliate || {};
+    const affiliateLabel =
+      affiliate.isReal === true
+        ? 'link hoàn tiền thật'
+        : affiliate.isReal === false
+          ? 'link chưa gắn hoa hồng'
+          : 'chưa rõ trạng thái link';
+    setText(
+      'adm-order-info',
+      `${order.user.name} (${order.user.username}) — ${order.platform} — ${affiliateLabel}`
+    );
     const link = document.getElementById('adm-order-link');
     if (link) {
       link.href = safeHttpUrl(order.link) || '#';

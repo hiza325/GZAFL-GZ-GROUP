@@ -57,7 +57,10 @@ router.post('/', orderRateLimit, async (req, res, next) => {
 
     // sub_id là mấu chốt để biết hoa hồng phát sinh thuộc về ai (xem docs/affiliate-integration.md)
     const subId = affiliate.subIdFor(req.user.id);
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    // Ưu tiên URL công khai cấu hình sẵn: sau reverse proxy, req.protocol có thể là
+    // http nên link mock sẽ sai scheme nếu không bật TRUST_PROXY.
+    const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+    const baseUrl = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
 
     let conversion;
     try {
@@ -66,22 +69,33 @@ router.post('/', orderRateLimit, async (req, res, next) => {
       // Không chặn người dùng: vẫn tạo đơn với link gốc để họ mua được bình thường,
       // chỉ là hệ thống chưa ghi nhận được hoa hồng. Ghi log để quản trị viên biết.
       console.error('Chuyển đổi link thất bại:', err.message);
-      conversion = { affiliateLink: null, provider: 'raw', subId: null, isReal: false };
+      conversion = {
+        affiliateLink: null,
+        provider: 'raw',
+        subId: null,
+        isReal: false,
+        error: String(err.message || 'Không tạo được link hoàn tiền.').slice(0, 300)
+      };
     }
 
     const info = db
       .prepare(
-        `INSERT INTO orders (user_id, code, link, original_link, affiliate_link, sub_id, platform, status, commission, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', 0, ?)`
+        `INSERT INTO orders
+           (user_id, code, link, original_link, affiliate_link, sub_id, platform, status, commission,
+            affiliate_provider, affiliate_is_real, affiliate_error, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', 0, ?, ?, ?, ?)`
       )
       .run(
         req.user.id,
         code,
         link,
         link,
-        conversion.affiliateLink,
-        conversion.subId,
+        conversion.affiliateLink || null,
+        conversion.subId || null,
         platform,
+        conversion.provider || null,
+        conversion.isReal ? 1 : 0,
+        conversion.error ? String(conversion.error).slice(0, 300) : null,
         new Date().toISOString()
       );
 
@@ -89,14 +103,20 @@ router.post('/', orderRateLimit, async (req, res, next) => {
       title: `Đã tạo đơn ${code}`,
       body: conversion.isReal
         ? `Link hoàn tiền cho sản phẩm ${platform} đã sẵn sàng. Hãy mua hàng qua link đó để được ghi nhận hoa hồng.`
-        : `Đơn ${platform} đã được ghi nhận. Hệ thống chưa kết nối API của sàn nên hoa hồng sẽ do quản trị viên chốt.`,
+        : conversion.error
+          ? `Đơn ${platform} đã được ghi nhận nhưng chưa tạo được link hoàn tiền tự động. Quản trị viên sẽ kiểm tra và chốt hoa hồng cho bạn.`
+          : `Đơn ${platform} đã được ghi nhận. Sàn này đang ở chế độ thử nghiệm nên hoa hồng sẽ do quản trị viên chốt.`,
       icon: 'shopping-cart'
     });
 
     const row = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(info.lastInsertRowid));
     return res.status(201).json({
       order: toOrder(row),
-      affiliate: { provider: conversion.provider, isReal: conversion.isReal }
+      affiliate: {
+        provider: conversion.provider || null,
+        isReal: !!conversion.isReal,
+        error: conversion.error || null
+      }
     });
   } catch (err) {
     return next(err);

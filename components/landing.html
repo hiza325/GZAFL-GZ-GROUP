@@ -38,13 +38,14 @@
           <i data-lucide="user" class="w-4 h-4"></i>
         </div>
         <div class="text-left">
-          <div class="text-[10px] text-slate-400 font-medium leading-none">Xin chào!</div>
+          <div class="text-[10px] text-slate-500 font-medium leading-none">Xin chào!</div>
           <div class="text-sm font-bold text-slate-800 leading-none mt-1">Đăng nhập</div>
         </div>
       </button>
     </div>
   </nav>
 
+  <main>
   <!-- Hero Section -->
   <div class="flex flex-col items-center justify-center pt-20 pb-16 px-4 text-center">
     
@@ -60,7 +61,7 @@
     </h1>
 
     <p class="text-slate-500 font-medium italic mb-12 max-w-md mx-auto text-sm md:text-base leading-relaxed">
-      Hoa hồng các đơn hàng từ Shopee, Tiki, Lazada, TikTok Shop — công khai, <br class="hidden md:block">minh bạch
+      Link hoàn tiền cho Shopee, Tiki, Lazada, TikTok Shop — công khai, <br class="hidden md:block">minh bạch
     </p>
 
     <!-- Hộp chuyển đổi Link -->
@@ -73,6 +74,9 @@
         <div class="flex items-center gap-2 text-sm font-bold text-[#0f146d]"><i data-lucide="heart" class="w-4 h-4"></i> Tiki</div>
         <div class="flex items-center gap-2 text-sm font-bold text-[#0f146d]"><i data-lucide="shopping-cart" class="w-4 h-4"></i> Lazada</div>
       </div>
+
+      <!-- Trạng thái link thật/mock do server trả về trong /api/config -->
+      <p id="landing-affiliate-status" class="hidden -mt-4 mb-6 text-center text-[11px] font-medium leading-relaxed"></p>
 
       <!-- Input Group: Thiết kế liền mạch thành 1 hàng -->
       <div class="flex flex-col md:flex-row items-center gap-0 bg-white border-2 border-slate-100 rounded-2xl p-1.5 focus-within:border-red-200 focus-within:ring-4 focus-within:ring-red-50 transition-all shadow-sm">
@@ -94,12 +98,13 @@
          </button>
       </div>
 
-      <div class="mt-5 text-left flex items-center justify-center md:justify-start gap-2 text-xs font-medium text-slate-400">
+      <div class="mt-5 text-left flex items-center justify-center md:justify-start gap-2 text-xs font-medium text-slate-500">
         <i data-lucide="info" class="w-3.5 h-3.5"></i>
-        Mỗi lần chuyển đổi 1 link. Đăng nhập để hệ thống ghi nhận hoa hồng cho bạn.
+        Mỗi lần chuyển đổi 1 link. Đăng nhập để hệ thống lưu đơn và đối soát hoa hồng cho bạn.
       </div>
     </div>
   </div>
+  </main>
 
   <!-- ==============================================
        MODAL ĐĂNG NHẬP / ĐĂNG KÝ
@@ -246,7 +251,7 @@
 
           <div class="mb-4">
             <label for="reset-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu mới</label>
-            <input type="password" id="reset-password" autocomplete="new-password" placeholder="Ít nhất 6 ký tự" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <input type="password" id="reset-password" autocomplete="new-password" placeholder="Ít nhất 8 ký tự" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <div class="mb-5">

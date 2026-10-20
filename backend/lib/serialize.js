@@ -31,6 +31,29 @@ function toUser(row) {
   };
 }
 
+// Trạng thái link hoàn tiền của một đơn: link thật (API sàn) hay link mock nội bộ.
+// Đơn cũ chưa có cột affiliate_is_real thì suy ra từ URL để giao diện vẫn hiển thị đúng.
+function toAffiliateInfo(row) {
+  const link = String(row.affiliate_link || '');
+  let provider = String(row.affiliate_provider || '');
+  if (!provider && link) provider = /accesstrade/i.test(link) ? 'accesstrade' : 'mock';
+
+  let isReal = null;
+  if (row.affiliate_is_real === 0 || row.affiliate_is_real === 1) {
+    isReal = row.affiliate_is_real === 1;
+  } else if (provider === 'accesstrade') {
+    isReal = true;
+  } else if (provider) {
+    isReal = false;
+  }
+
+  return {
+    provider: provider || null,
+    isReal,
+    error: row.affiliate_error || null
+  };
+}
+
 function toOrder(row) {
   if (!row) return null;
   return {
@@ -45,6 +68,7 @@ function toOrder(row) {
     // Hoa hồng mạng affiliate báo về nhưng có thể CHƯA duyệt (xem lib/postback.js)
     networkCommission: Number(row.network_commission) || 0,
     networkStatus: row.network_status || null,
+    affiliate: toAffiliateInfo(row),
     date: formatDate(row.created_at),
     createdAt: row.created_at
   };
@@ -120,6 +144,7 @@ function toAdminOrder(row) {
     },
     link: row.original_link || row.link,
     affiliateLink: row.affiliate_link || null,
+    affiliate: toAffiliateInfo(row),
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
