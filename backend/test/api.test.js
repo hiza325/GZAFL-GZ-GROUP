@@ -225,12 +225,12 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     });
     assert.equal(fakeDomain.res.status, 400);
 
-    const oldPlatform = await json('/api/orders', {
+    const unsupported = await json('/api/orders', {
       method: 'POST',
       cookie: user.cookie,
-      body: { link: 'https://lazada.vn/product/1' }
+      body: { link: 'https://example.com/product/1' }
     });
-    assert.equal(oldPlatform.res.status, 400);
+    assert.equal(unsupported.res.status, 400);
 
     const scriptLink = await json('/api/orders', {
       method: 'POST',
