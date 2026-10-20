@@ -37,6 +37,7 @@ db.exec(`
     points        INTEGER NOT NULL DEFAULT 0,
     role          TEXT NOT NULL DEFAULT 'user',
     token_version INTEGER NOT NULL DEFAULT 1,
+    temp_password_expires_at TEXT,
     created_at    TEXT NOT NULL
   );
 
@@ -213,6 +214,11 @@ ensureColumn('orders', 'network_updated_at', 'TEXT');
 // Đổi / thu hồi mật khẩu sẽ tăng số này để vô hiệu hoá mọi phiên đăng nhập cũ
 ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 1');
 
+// Mật khẩu TẠM do quản trị viên cấp (khi khách quên mật khẩu) chỉ có hiệu lực
+// trong một khoảng thời gian ngắn. Hết hạn thì phải xin cấp lại — tránh việc
+// một mật khẩu tạm bị lộ trong tin nhắn/Zalo vẫn dùng được mãi về sau.
+ensureColumn('users', 'temp_password_expires_at', 'TEXT');
+
 // Ảnh QR nhận tiền (VietQR...) do người dùng tải lên ở hộp thoại rút tiền
 ensureColumn('users', 'bank_qr_url', 'TEXT');
 
@@ -226,20 +232,12 @@ ensureColumn('orders', 'affiliate_provider', 'TEXT');
 ensureColumn('orders', 'affiliate_is_real', 'INTEGER');
 ensureColumn('orders', 'affiliate_error', 'TEXT');
 
-// Thời điểm hoa hồng được phép rút (sau thời gian giữ COMMISSION_HOLD_DAYS).
-// Đơn cũ đã có hoa hồng được coi là đã qua thời gian giữ để không khoá tiền oan.
+// Cột cũ của cơ chế tạm giữ theo số ngày. Giữ lại để database cũ không lỗi,
+// nhưng từ nay không còn dùng: hoa hồng chỉ vào ví sau khi admin duyệt đơn.
 ensureColumn('orders', 'commission_available_at', 'TEXT');
 // Số hoa hồng đã bị thu hồi khi mạng báo huỷ/hoàn trả sau lúc từng duyệt.
 ensureColumn('orders', 'commission_reversed', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('orders', 'commission_reversed_at', 'TEXT');
-
-// Backfill cho database cũ: đơn đã có hoa hồng trước khi có cơ chế giữ tiền thì
-// không nên bị giữ thêm 7 ngày. Đơn mới sẽ được đặt mốc khi mạng duyệt.
-db.prepare(
-  `UPDATE orders
-   SET commission_available_at = COALESCE(commission_available_at, created_at)
-   WHERE commission > 0 AND status != ? AND commission_available_at IS NULL`
-).run('Đã huỷ');
 
 // Chống trùng email/username không phân biệt hoa-thường. Dùng chỉ mục biểu thức vì
 // SQLite không có kiểu dữ liệu CITEXT. Bọc try/catch để database cũ có dữ liệu trùng

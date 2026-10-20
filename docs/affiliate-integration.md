@@ -154,7 +154,6 @@ https://shopee.vn/product/111
 | `POSTBACK_SECRET` | — | Chuỗi bí mật để xác thực postback |
 | `POSTBACK_PARAM_*` | — | Ép tên tham số mạng gửi về (xem mục 3.6.2) |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn cho người dùng (0.7 = 70%) |
-| `COMMISSION_HOLD_DAYS` | `7` | Số ngày tạm giữ hoa hồng sau khi mạng duyệt trước khi cho rút (0 = rút ngay) |
 
 Nếu thiếu key thì **chỉ đơn hàng đó rơi về link gốc** (người dùng vẫn mua được, hệ thống ghi log lỗi) —
 cố ý không làm sập luồng tạo đơn vì một API bên ngoài đang lỗi.
@@ -239,14 +238,14 @@ AccessTrade --GET--> /api/postback/accesstrade?secret=...&transaction_id=...&rew
    ├─ 3. Chống trùng theo payload_hash                                 → trùng: chỉ tăng dup_count, trả 200
    ├─ 4. Đọc sub1 = gzafl-u<id> → người dùng;  sub2 = <mã đơn> → đúng đơn
    ├─ 5. Cộng dồn theo giao dịch, mỗi sản phẩm lấy trạng thái MỚI NHẤT
-   └─ 6. Cập nhật đơn: chờ duyệt → "Chờ đối soát"; đã duyệt → "Hoàn thành" + cộng tiền; huỷ → "Đã huỷ"
+   └─ 6. Cập nhật đơn: chờ duyệt → "Chờ đối soát"; mạng đã duyệt → "Chờ admin duyệt"; admin duyệt → "Hoàn thành" + cộng tiền; huỷ → "Đã huỷ"
 ```
 
 Chi tiết đáng nhớ:
 
 - **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), nhưng mỗi sản phẩm chỉ lấy log **mới nhất** — nhờ vậy khi mạng đổi `pending` → `approved` → `rejected`, trạng thái cuối cùng mới quyết định tiền.
 - **Chống trùng bằng `payload_hash`** (băm tham số đã sắp xếp) chứ không chỉ theo `transaction_id` — nhờ vậy 3 lần gọi khác sản phẩm vẫn được tính đủ, mà lần gọi lại y hệt thì không cộng tiền hai lần.
-- **Tiền chưa duyệt KHÔNG vào số dư.** Nằm ở cột riêng `orders.network_commission`; chỉ khi mạng báo `approved` mới ghi `orders.commission` (tiền thật của người dùng) và bắt đầu **tạm giữ** `COMMISSION_HOLD_DAYS` ngày (`orders.commission_available_at`).
+- **Tiền chưa được admin duyệt KHÔNG vào số dư.** Khi mạng còn `pending`, số tiền nằm ở `orders.network_commission`. Khi mạng báo `approved`, đơn chuyển sang **"Chờ admin duyệt"** và `orders.commission` chỉ là số **dự kiến**; quản trị viên duyệt đơn (chuyển `Hoàn thành`/`Đã thanh toán`) thì khoản đó mới được cộng vào ví. Không còn cơ chế tạm giữ theo số ngày.
 - **Đơn đã ở trạng thái "Đã thanh toán"** vẫn giữ nguyên trạng thái, nhưng nếu mạng báo huỷ/giảm hoa hồng thì ghi nhận **thu hồi** vào `orders.commission_reversed`; nếu khách đã rút, số dư âm là khoản nợ và tự trừ vào hoa hồng sau. Hệ thống không tự tăng tiền khi mạng báo thêm.
 - **Postback không khớp được đơn nào** (về trước khi đơn tồn tại, hoặc sai tên tham số) vẫn được lưu và hiện ở tab **Đối soát** với nút **Xử lý lại**.
 - **Luôn trả `200` nhanh** để mạng không gửi lại liên tục (AccessTrade chỉ gửi lại tối đa 3 lần).
@@ -288,13 +287,13 @@ Endpoint chính thức: `POST https://api.accesstrade.vn/v1/product_link/create`
 **Thời gian chốt hoa hồng:** Shopee thường giữ tiền **7–30 ngày** để chờ đối soát và xử lý hoàn hàng. Vì vậy không nhảy thẳng từ "Đang xử lý" sang "Hoàn thành". Trạng thái đã thêm:
 
 ```
-Đang xử lý  →  Chờ đối soát  →  Hoàn thành  →  Đã thanh toán
-                     └──────→  Đã huỷ (hoàn hàng / không hợp lệ)
+Đang xử lý  →  Chờ đối soát  →  Chờ admin duyệt  →  Hoàn thành  →  Đã thanh toán
+                     └──────────────┴──────────────→  Đã huỷ (hoàn hàng / không hợp lệ)
 ```
 
-Đã cập nhật đồng bộ: `backend/lib/constants.js` (`ORDER_STATUSES` + `AWAITING_RECONCILE`),
-`script.js` (`statusBadgeClass` rơi vào màu vàng mặc định, thẻ "đơn đang chờ" gộp cả 2 trạng thái),
-`components/admin.html` + `admin.js` (ô lọc trạng thái, modal xử lý đơn, tab Đối soát).
+Đã cập nhật đồng bộ: `backend/lib/constants.js` (`ORDER_STATUSES` + `AWAITING_RECONCILE` + `PENDING_APPROVAL`),
+`script.js` (thẻ "đơn đang chờ" gộp cả 3 trạng thái), `components/admin.html` + `admin.js`
+(ô lọc trạng thái, modal xử lý đơn, tab Đối soát). Hoa hồng chỉ vào ví khi admin duyệt đơn.
 
 **Tỷ lệ hoàn tiền (revenue share):** đã tự động hoá bằng `CASHBACK_RATE` (biến môi trường toàn hệ thống):
 
@@ -323,7 +322,7 @@ commission_ghi_cho_user = tổng hoa hồng mạng ĐÃ DUYỆT × CASHBACK_RATE
 | `lib/affiliate.js` + cột/bảng trong DB | Dev | ✅ xong (3.1, 3.2) |
 | `routes/orders.js` + giao diện trả link | Dev | ✅ xong (3.3 – 3.5) |
 | `routes/postback.js` + `postback_logs` + chống trùng + tab Đối soát | Dev | ✅ xong (3.6) |
-| Trạng thái "Chờ đối soát" + tỷ lệ hoàn tiền | Dev | ✅ xong (3.7) |
+| Trạng thái "Chờ đối soát" / "Chờ admin duyệt" + tỷ lệ hoàn tiền | Dev | ✅ xong (3.7) |
 | Chốt `CASHBACK_RATE` (mặc định đang là 1 = hoàn 100%) | Bạn | ⬜ **nhớ đặt trước khi chạy thật** |
 | Test bằng **một đơn thật nhỏ** rồi đối chiếu hoa hồng | Cả hai | ⬜ chốt chặn cuối cùng trước khi trả tiền cho khách |
 
@@ -346,7 +345,7 @@ commission_ghi_cho_user = tổng hoa hồng mạng ĐÃ DUYỆT × CASHBACK_RATE
 | A | Provider `mock` + migration DB + đổi giao diện để trả link | ~1 ngày | ✅ xong |
 | B | Nhận postback + bảng log + chống trùng + tab Đối soát | ~1 ngày | ✅ xong |
 | C | Cắm provider thật (`accesstrade` viết xong theo tài liệu, **chờ key để test đơn thật**) | ~1 ngày | 🟡 chờ key |
-| D | Tỷ lệ hoàn tiền + trạng thái "Chờ đối soát" | ~0,5 ngày | ✅ xong |
+| D | Tỷ lệ hoàn tiền + trạng thái "Chờ đối soát" / "Chờ admin duyệt" | ~0,5 ngày | ✅ xong |
 
 Còn lại đúng **một việc phụ thuộc bạn**: có tài khoản AccessTrade → điền `.env` → **test bằng 1 đơn thật nhỏ** rồi đối chiếu `sub1`/`sub2` xem hoa hồng có về đúng người và đúng đơn không.
 

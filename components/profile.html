@@ -13,7 +13,7 @@
         <h3 class="font-bold text-slate-800 text-lg mb-1">Tài khoản nhận tiền</h3>
         <p class="text-xs text-slate-500 mb-5">Quản lý các tài khoản ngân hàng hoặc ví điện tử để nhận tiền</p>
         
-        <button onclick="navigateTo('guide')" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-semibold py-3 rounded-xl mb-4 transition text-sm">
+        <button data-action="navigate-guide" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-semibold py-3 rounded-xl mb-4 transition text-sm">
           <i data-lucide="headphones" class="w-4 h-4 inline-block mr-1"></i> Trợ giúp &amp; liên hệ
         </button>
 
@@ -67,7 +67,7 @@
           </div>
         </div>
 
-        <button onclick="changePassword()" id="pwd-submit-btn" class="mt-5 w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 flex items-center justify-center gap-2">
+        <button data-action="change-password" id="pwd-submit-btn" class="mt-5 w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 flex items-center justify-center gap-2">
           <i data-lucide="key-round" class="w-4 h-4"></i> Đổi mật khẩu
         </button>
 
@@ -93,7 +93,7 @@
           <div>
             <!-- Input file ẩn -->
             <input type="file" id="profile-avatar-upload" accept="image/png, image/jpeg, image/webp" class="hidden">
-            <button onclick="document.getElementById('profile-avatar-upload').click()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition flex items-center gap-2 mb-2 shadow-sm">
+            <button data-action="pick-avatar" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition flex items-center gap-2 mb-2 shadow-sm">
               <i data-lucide="image" class="w-4 h-4"></i> Thay đổi ảnh
             </button>
             <p class="text-[10px] text-slate-400">Hỗ trợ JPG, PNG hoặc WEBP (Tối đa 2MB)</p>
@@ -132,7 +132,7 @@
             <div class="flex items-stretch gap-2">
               <input type="text" id="profile-email-otp-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"
                 class="flex-1 min-w-0 bg-white border-2 border-slate-100 rounded-xl py-2.5 px-3 text-slate-700 text-center text-lg font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 transition-all">
-              <button type="button" id="profile-email-otp-btn" onclick="sendProfileEmailOtp()"
+              <button type="button" id="profile-email-otp-btn" data-action="send-profile-email-otp"
                 class="bg-[#18253f] hover:bg-[#233559] text-white font-semibold text-xs px-4 rounded-xl whitespace-nowrap transition">Gửi mã</button>
             </div>
 
@@ -151,7 +151,7 @@
         </div>
 
         <div class="mt-8 pt-6 border-t border-slate-100 flex items-center gap-4">
-          <button onclick="saveProfileData()" class="bg-[#18253f] hover:bg-[#233559] text-white font-bold px-8 py-3 rounded-xl shadow-md transition transform active:scale-95">
+          <button data-action="save-profile" class="bg-[#18253f] hover:bg-[#233559] text-white font-bold px-8 py-3 rounded-xl shadow-md transition transform active:scale-95">
             Lưu thay đổi
           </button>
           <span id="profile-save-msg" class="text-sm font-semibold text-emerald-500 hidden opacity-0 transition-opacity">Đã lưu thành công!</span>

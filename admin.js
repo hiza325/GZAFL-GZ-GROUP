@@ -139,17 +139,16 @@
     setText('adm-stat-orders', data.orders.total);
     setText('adm-stat-orders-note', data.orders.completed + ' đơn hoàn thành');
     setText('adm-stat-pending', data.orders.pending);
-    setText('adm-stat-pending-note', data.orders.paid + ' đã thanh toán');
+    setText(
+      'adm-stat-pending-note',
+      (data.orders.awaitingApproval || 0) + ' chờ admin duyệt • ' + data.orders.paid + ' đã thanh toán'
+    );
     setText('adm-stat-wd-pending', data.withdrawals.pending);
     setText('adm-stat-wd-note', data.withdrawals.total + ' lệnh rút');
     setText('adm-stat-commission', formatCurrency(data.money.totalCommission));
     const availableMoney =
       data.money.availableSystemBalance == null ? data.money.systemBalance : data.money.availableSystemBalance;
-    const heldMoney = data.money.heldCommission || 0;
-    setText(
-      'adm-stat-commission-note',
-      `Khả dụng ${formatCurrency(availableMoney)}${heldMoney > 0 ? ' • Tạm giữ ' + formatCurrency(heldMoney) : ''}`
-    );
+    setText('adm-stat-commission-note', `Khả dụng ${formatCurrency(availableMoney)}`);
     setText('adm-stat-paid', formatCurrency(data.money.totalPaidOut));
     setText('adm-stat-paid-note', data.referrals.points + ' điểm giới thiệu');
 
@@ -225,11 +224,13 @@
           }
         </td>
         <td class="px-3 py-3">
-          <div class="font-semibold text-emerald-600">${formatCurrency(o.commission)}</div>
+          <div class="font-semibold ${o.commissionCredited ? 'text-emerald-600' : 'text-amber-600'}">${formatCurrency(o.commission)}</div>
           ${
-            o.commissionHeld
-              ? `<div class="text-[10px] font-bold text-amber-600">Tạm giữ${o.commissionAvailableAt ? ' đến ' + formatDay(o.commissionAvailableAt) : ''}</div>`
-              : ''
+            o.status === 'Chờ admin duyệt'
+              ? '<div class="text-[10px] font-bold text-amber-600">Chờ admin duyệt</div>'
+              : o.commissionCredited
+                ? '<div class="text-[10px] font-bold text-emerald-600">Đã cộng ví</div>'
+                : ''
           }
           ${
             o.reversedCommission > 0
@@ -286,14 +287,13 @@
           (order.reversedAt ? ` lúc ${formatDay(order.reversedAt)}` : '') +
           '. Nếu khách đã rút trước đó, số dư sẽ âm và được trừ vào hoa hồng sau.';
         holdEl.className = 'text-[11px] font-semibold text-rose-600 mt-2';
-      } else if (order.commissionHeld) {
+      } else if (order.status === 'Chờ admin duyệt') {
         holdEl.textContent =
-          'Hoa hồng đang tạm giữ' +
-          (order.commissionAvailableAt ? ` đến ${formatDay(order.commissionAvailableAt)}` : '') +
-          ' và chưa thể rút.';
+          `Sàn đã ghi nhận ${formatCurrency(order.networkCommission)}. ` +
+          `Khoản ${formatCurrency(order.commission)} đang chờ admin duyệt; bấm Lưu với trạng thái "Hoàn thành" để cộng vào ví.`;
         holdEl.className = 'text-[11px] font-semibold text-amber-600 mt-2';
-      } else if (order.commission > 0) {
-        holdEl.textContent = 'Hoa hồng đã khả dụng để rút.';
+      } else if (order.commissionCredited && order.commission > 0) {
+        holdEl.textContent = 'Hoa hồng đã được duyệt và cộng vào ví.';
         holdEl.className = 'text-[11px] font-semibold text-emerald-600 mt-2';
       } else {
         holdEl.textContent = 'Đơn chưa có hoa hồng.';
@@ -403,7 +403,6 @@
         <td class="px-3 py-3 font-semibold text-slate-700">${formatCurrency(w.amount)}</td>
         <td class="px-3 py-3 text-slate-600">
           <div>${formatCurrency(w.payable)}</div>
-          ${w.held > 0 ? `<div class="text-[10px] font-bold text-amber-600">Tạm giữ ${formatCurrency(w.held)}</div>` : ''}
           ${w.debt > 0 ? `<div class="text-[10px] font-bold text-rose-600">Khách nợ ${formatCurrency(w.debt)}</div>` : ''}
         </td>
         <td class="px-3 py-3">${badge(w.status)}</td>
@@ -451,7 +450,6 @@
       'adm-wd-payable',
       'Có thể chi: ' +
         formatCurrency(wd.payable) +
-        (wd.held > 0 ? ' • Tạm giữ: ' + formatCurrency(wd.held) : '') +
         (wd.debt > 0 ? ' • Khách đang nợ: ' + formatCurrency(wd.debt) : '')
     );
 
@@ -546,7 +544,7 @@
         <td class="px-3 py-3 font-semibold text-slate-700">${u.points}</td>
         <td class="px-3 py-3 text-slate-600">${u.orderCount} <span class="text-xs text-slate-400">(${u.pendingCount} chờ)</span></td>
         <td class="px-3 py-3 font-semibold text-emerald-600">${formatCurrency(u.commission)}</td>
-        <td class="px-3 py-3 font-semibold text-amber-600">${formatCurrency(u.held)}</td>
+        <td class="px-3 py-3 font-semibold text-amber-600">${formatCurrency(u.pendingApproval)}</td>
         <td class="px-3 py-3 text-slate-600">${formatCurrency(u.withdrawn)}</td>
         <td class="px-3 py-3">
           <div class="font-bold ${u.balance < 0 ? 'text-rose-600' : 'text-slate-800'}">${formatCurrency(u.balance)}</div>
@@ -841,7 +839,11 @@
         method: 'POST'
       });
       const user = data.user || {};
-      setText('adm-reset-info', `${user.name || ''} (${user.username || ''})`);
+      const expires = data.expiresAt ? new Date(data.expiresAt).toLocaleString('vi-VN') : '';
+      setText(
+        'adm-reset-info',
+        `${user.name || ''} (${user.username || ''})${expires ? ' — mật khẩu tạm hết hạn lúc ' + expires : ''}`
+      );
       setText('adm-reset-password', data.tempPassword || '');
       openModal('adm-reset-modal');
       await Promise.all([loadResets({ reset: true }), loadOverview()]);

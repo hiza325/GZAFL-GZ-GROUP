@@ -67,7 +67,6 @@ async function startServer() {
     AI_API_KEY: '',
     AFFILIATE_PROVIDER: 'mock',
     POSTBACK_SECRET,
-    COMMISSION_HOLD_DAYS: '7',
     RATE_LIMIT_STORE: 'sqlite',
     SMTP_HOST: '',
     SMTP_USER: '',
@@ -176,6 +175,8 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     const csp = res.headers.get('content-security-policy') || '';
     assert.match(csp, /default-src 'self'/);
     assert.match(csp, /frame-ancestors 'none'/);
+    // Script nội tuyến phải bị chặn (không còn 'unsafe-inline' trong script-src).
+    assert.doesNotMatch(csp, /script-src[^;]*'unsafe-inline'/);
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(res.headers.get('cache-control'), 'no-store');
   });
@@ -371,6 +372,47 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(meAfter.data.user, null);
   });
 
+  await t.test('mật khẩu tạm hết hạn không đăng nhập được', async () => {
+    createUser({
+      username: 'temp@test.local',
+      email: 'temp@test.local',
+      name: 'Người dùng mật khẩu tạm'
+    });
+
+    const db = new DatabaseSync(DB_PATH);
+    db.prepare('UPDATE users SET temp_password_expires_at = ? WHERE username = ?').run(
+      new Date(Date.now() - 60_000).toISOString(),
+      'temp@test.local'
+    );
+    db.close();
+
+    const login = await json('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'temp@test.local', password: PASSWORD }
+    });
+    assert.equal(login.res.status, 401);
+    assert.match(login.data.error, /hết hạn/i);
+  });
+
+  await t.test('che cả tên tham số secret tuỳ chỉnh trong nhật ký postback', () => {
+    const { redactParams, redactStoredQuery } = require('../lib/redact');
+    const previous = process.env.POSTBACK_PARAM_SECRET;
+    process.env.POSTBACK_PARAM_SECRET = 'action_id';
+
+    try {
+      const masked = redactParams({ action_id: 'chia-khoa-that', reward: '1000' });
+      assert.equal(masked.action_id, '[đã ẩn]');
+      assert.equal(masked.reward, '1000');
+
+      const stored = redactStoredQuery('{"action_id":"chia-khoa-that","reward":"1000"}');
+      assert.match(stored, /\[đã ẩn\]/);
+      assert.doesNotMatch(stored, /chia-khoa-that/);
+    } finally {
+      if (previous === undefined) delete process.env.POSTBACK_PARAM_SECRET;
+      else process.env.POSTBACK_PARAM_SECRET = previous;
+    }
+  });
+
   await t.test('phân quyền quản trị', async () => {
     assert.equal((await json('/api/admin/users')).res.status, 401);
     assert.equal((await json('/api/admin/users', { cookie: user.cookie })).res.status, 403);
@@ -395,6 +437,34 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     );
   });
 
+  await t.test('không xoá người dùng đã có giao dịch tài chính (trừ khi force)', async () => {
+    const victim = createUser({
+      username: 'delete-me@test.local',
+      email: 'delete-me@test.local',
+      name: 'Tài khoản cần xoá'
+    });
+
+    const db = new DatabaseSync(DB_PATH);
+    db.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`
+    ).run(victim.uid, 'DELTEST01', 'https://shopee.vn/test', 'Shopee', 'Đang xử lý', new Date().toISOString());
+    db.close();
+
+    const denied = await json(`/api/admin/users/${victim.uid}`, {
+      method: 'DELETE',
+      cookie: admin.cookie
+    });
+    assert.equal(denied.res.status, 409);
+    assert.match(denied.data.error, /Không thể xoá/);
+
+    const forced = await json(`/api/admin/users/${victim.uid}?force=1`, {
+      method: 'DELETE',
+      cookie: admin.cookie
+    });
+    assert.equal(forced.res.status, 200);
+  });
+
   await t.test('postback: sai khoá bị từ chối, đúng khoá được ghi nhận', async () => {
     const bad = await request('/api/postback/mock?secret=wrong&transaction_id=TX-BAD&reward=1000');
     assert.equal(bad.status, 403);
@@ -407,15 +477,15 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(good.data.matched, true);
   });
 
-  await t.test('giữ hoa hồng, cho rút sau thời gian giữ và thu hồi khi postback huỷ', async () => {
+  await t.test('postback: mạng duyệt đơn vào hàng chờ admin, admin duyệt mới cộng ví và thu hồi khi huỷ', async () => {
     const created = await json('/api/orders', {
       method: 'POST',
       cookie: other.cookie,
-      body: { link: 'https://tiki.vn/p/hold-test' }
+      body: { link: 'https://tiki.vn/p/approval-test' }
     });
     assert.equal(created.res.status, 201);
     const code = created.data.order.id;
-    const tx = 'TX-HOLD-' + Date.now();
+    const tx = 'TX-APPROVAL-' + Date.now();
     const baseQuery =
       `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
       `&transaction_id=${encodeURIComponent(tx)}&product_id=P1` +
@@ -424,42 +494,48 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     const pending = await json(baseQuery + '&status=pending&reward=100000');
     assert.equal(pending.res.status, 200);
     assert.equal(pending.data.matched, true);
+    assert.equal(pending.data.status, 'Chờ đối soát');
 
     let wallet = await json('/api/wallet', { cookie: other.cookie });
     assert.equal(wallet.res.status, 200);
-    assert.equal(wallet.data.heldCommission, 0);
+    assert.equal(wallet.data.totalCommission, 0);
     assert.equal(wallet.data.balance, 0);
 
+    // Mạng duyệt: đơn chỉ vào hàng chờ admin, chưa cộng tiền vào ví.
     const approved = await json(baseQuery + '&status=approved&reward=100000');
     assert.equal(approved.res.status, 200);
-    assert.equal(approved.data.status, 'Hoàn thành');
+    assert.equal(approved.data.status, 'Chờ admin duyệt');
 
     wallet = await json('/api/wallet', { cookie: other.cookie });
-    assert.equal(wallet.data.totalCommission, 100000);
-    assert.equal(wallet.data.heldCommission, 100000);
-    assert.equal(wallet.data.balance, 0, 'Hoa hồng đang giữ chưa được rút');
+    assert.equal(wallet.data.totalCommission, 0, 'Chưa admin duyệt thì chưa cộng ví');
+    assert.equal(wallet.data.balance, 0);
 
     const orders = await json('/api/orders', { cookie: other.cookie });
-    const heldOrder = (orders.data.orders || []).find((o) => o.id === code);
-    assert.equal(heldOrder.commissionHeld, true);
-    assert.ok(heldOrder.commissionAvailableAt, 'Phải có mốc hết thời gian giữ');
+    const pendingOrder = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(pendingOrder.status, 'Chờ admin duyệt');
+    assert.equal(pendingOrder.commissionCredited, false);
+    assert.equal(pendingOrder.commission, 100000, 'Số dự kiến để admin duyệt');
+    assert.equal(pendingOrder.networkCommission, 100000);
 
     const tooEarly = await json('/api/wallet/withdrawals', {
       method: 'POST',
       cookie: other.cookie,
       body: { mode: 'account', bank: 'Vietcombank', accNum: '123456789', accName: 'NGUYEN VAN A' }
     });
-    assert.equal(tooEarly.res.status, 400, 'Chưa hết thời gian giữ thì không được rút');
+    assert.equal(tooEarly.res.status, 400, 'Chưa admin duyệt thì không được rút');
 
-    // Giả lập thời gian giữ đã qua bằng cách chỉnh mốc trong database test.
-    const directDb = new DatabaseSync(DB_PATH);
-    directDb
-      .prepare('UPDATE orders SET commission_available_at = ? WHERE code = ?')
-      .run(new Date(Date.now() - 60_000).toISOString(), code);
-    directDb.close();
+    // Admin duyệt đơn -> lúc này mới cộng hoa hồng vào ví.
+    const adminApproved = await json('/api/admin/orders/' + encodeURIComponent(code), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { status: 'Hoàn thành', commission: 100000 }
+    });
+    assert.equal(adminApproved.res.status, 200);
+    assert.equal(adminApproved.data.order.status, 'Hoàn thành');
+    assert.equal(adminApproved.data.order.commissionCredited, true);
 
     wallet = await json('/api/wallet', { cookie: other.cookie });
-    assert.equal(wallet.data.heldCommission, 0);
+    assert.equal(wallet.data.totalCommission, 100000);
     assert.equal(wallet.data.balance, 100000);
 
     const withdrawal = await json('/api/wallet/withdrawals', {
@@ -476,6 +552,8 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(adminUsers.res.status, 200);
     const adminUser = (adminUsers.data.users || []).find((u) => u.id === other.uid);
     assert.ok(adminUser);
+    assert.equal(adminUser.commission, 100000);
+    assert.equal(adminUser.pendingApproval, 0);
     assert.equal(adminUser.withdrawn, 100000);
 
     const rejected = await json(baseQuery + '&status=rejected&reward=100000');
@@ -492,6 +570,7 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     const clawedOrder = (after.data.orders || []).find((o) => o.id === code);
     assert.equal(clawedOrder.status, 'Đã huỷ');
     assert.equal(clawedOrder.commission, 0);
+    assert.equal(clawedOrder.commissionCredited, false);
     assert.equal(clawedOrder.reversedCommission, 100000);
 
     const adminOrders = await json('/api/admin/orders', { cookie: admin.cookie });
@@ -506,14 +585,15 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(adminWd.payable, 0);
   });
 
-  await t.test('chatbot FAQ biết tạm giữ và thu hồi hoa hồng', async () => {
-    const hold = await json('/api/support/chat', {
+  await t.test('chatbot FAQ biết đơn chờ admin duyệt và thu hồi hoa hồng', async () => {
+    const approval = await json('/api/support/chat', {
       method: 'POST',
-      body: { messages: [{ role: 'user', content: 'Hoa hồng tạm giữ bao lâu thì rút được?' }] }
+      body: { messages: [{ role: 'user', content: 'Khi nào hoa hồng vào ví?' }] }
     });
-    assert.equal(hold.res.status, 200);
-    assert.equal(hold.data.source, 'faq');
-    assert.match(hold.data.reply, /tạm giữ 7 ngày/);
+    assert.equal(approval.res.status, 200);
+    assert.equal(approval.data.source, 'faq');
+    assert.match(approval.data.reply, /Chờ admin duyệt/);
+    assert.match(approval.data.reply, /Quản trị viên/);
 
     const clawback = await json('/api/support/chat', {
       method: 'POST',

@@ -6,7 +6,7 @@
  * nên đổi ở đây phải đổi cả dữ liệu cũ.
  */
 
-const ORDER_STATUSES = ['Đang xử lý', 'Chờ đối soát', 'Hoàn thành', 'Đã thanh toán', 'Đã huỷ'];
+const ORDER_STATUSES = ['Đang xử lý', 'Chờ đối soát', 'Chờ admin duyệt', 'Hoàn thành', 'Đã thanh toán', 'Đã huỷ'];
 const WITHDRAWAL_STATUSES = ['Đang xử lý', 'Đã thanh toán', 'Đã huỷ'];
 const ROLES = ['user', 'admin'];
 
@@ -16,6 +16,10 @@ const CANCELLED = 'Đã huỷ';
 // Mạng affiliate đã ghi nhận chuyển đổi nhưng CHƯA duyệt (còn chờ đối soát).
 // Tiền của đơn ở trạng thái này nằm ở cột `network_commission`, KHÔNG cộng vào số dư.
 const AWAITING_RECONCILE = 'Chờ đối soát';
+
+// Mạng đã duyệt nhưng đơn đang chờ quản trị viên chốt hoa hồng.
+// `commission` lúc này chỉ là số dự kiến, CHƯA cộng vào ví.
+const PENDING_APPROVAL = 'Chờ admin duyệt';
 
 // Yêu cầu khôi phục mật khẩu (xem routes/auth.js + routes/admin.js)
 const RESET_STATUSES = ['Chờ xử lý', 'Đã xử lý', 'Đã huỷ'];
@@ -31,6 +35,7 @@ module.exports = {
   ROLES,
   CANCELLED,
   AWAITING_RECONCILE,
+  PENDING_APPROVAL,
   RESET_STATUSES,
   RESET_PENDING,
   RESET_RESOLVED,

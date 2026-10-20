@@ -9,7 +9,7 @@ const { notify } = require('../lib/notify');
 const { formatMoney } = require('../lib/format');
 const { WITHDRAWAL_MIN } = require('../lib/constants');
 const { isValidBankName } = require('../lib/banks');
-const { computeUserMoney, holdDays } = require('../lib/money');
+const { computeUserMoney } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -25,7 +25,7 @@ router.get('/', (req, res) => {
     .prepare(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN status = 'Đang xử lý'    THEN 1 ELSE 0 END) AS pending,
+         SUM(CASE WHEN status IN ('Đang xử lý', 'Chờ đối soát', 'Chờ admin duyệt') THEN 1 ELSE 0 END) AS pending,
          SUM(CASE WHEN status = 'Hoàn thành'    THEN 1 ELSE 0 END) AS completed,
          SUM(CASE WHEN status = 'Đã thanh toán' THEN 1 ELSE 0 END) AS paid
        FROM orders WHERE user_id = ?`
@@ -44,11 +44,9 @@ router.get('/', (req, res) => {
     },
     balance: money.balance,
     totalCommission: money.totalCommission,
-    heldCommission: money.heldCommission,
     withdrawn: money.withdrawn,
     debt: money.debt,
     clawback: money.clawback,
-    holdDays: holdDays(),
     minWithdraw: WITHDRAWAL_MIN,
     canWithdraw: money.balance >= WITHDRAWAL_MIN,
     withdrawals: withdrawals.map(toWithdrawal)
@@ -109,13 +107,12 @@ router.post('/withdrawals', (req, res) => {
   // Không có đủ tiền thì không cho gửi yêu cầu (trước đây số dư 0đ vẫn gửi được)
   const money = computeBalance(req.user.id);
   if (money.balance < WITHDRAWAL_MIN) {
-    const heldText =
-      money.heldCommission > 0 ? ` Đang tạm giữ: ${formatMoney(money.heldCommission)}.` : '';
+    const debtText = money.debt > 0 ? ` Bạn đang cần hoàn lại: ${formatMoney(money.debt)}.` : '';
     return res.status(400).json({
       error:
         `Số dư khả dụng tối thiểu để rút là ${formatMoney(WITHDRAWAL_MIN)}. ` +
         `Số dư hiện tại của bạn: ${formatMoney(money.balance)}.` +
-        heldText
+        debtText
     });
   }
 

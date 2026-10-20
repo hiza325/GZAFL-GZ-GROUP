@@ -11,7 +11,8 @@
  *     Chìa khoá (POSTBACK_SECRET) và các tham số nhạy cảm được CHE trước khi lưu (lib/redact.js).
  *  3. Chống trùng: mạng gửi lại y hệt thì chỉ tăng `dup_count`, không cộng tiền lần hai.
  *  4. Trạng thái đơn: pending -> "Chờ đối soát" (chưa vào số dư),
- *     approved -> "Hoàn thành" (cộng tiền), rejected -> "Đã huỷ".
+ *     approved -> "Chờ admin duyệt" (chưa vào số dư), rejected -> "Đã huỷ".
+ *     Quản trị viên duyệt đơn thì hoa hồng mới được cộng vào ví.
  *  5. Luôn trả 200 nhanh cho mạng, tránh họ gửi lại liên tục.
  *
  * AccessTrade:
@@ -24,9 +25,9 @@
 
 const crypto = require('node:crypto');
 const db = require('../db');
-const { CANCELLED, AWAITING_RECONCILE } = require('./constants');
+const { CANCELLED, AWAITING_RECONCILE, PENDING_APPROVAL } = require('./constants');
 const { redactParams } = require('./redact');
-const { releaseAt, holdDays } = require('./money');
+const { isCredited } = require('./money');
 
 const PROVIDER = String(process.env.AFFILIATE_PROVIDER || 'mock').toLowerCase();
 
@@ -357,115 +358,82 @@ function applyToOrder(logId, parsed, user) {
 
   const totals = totalsFor(order);
   const rate = cashbackRate();
-  // Chỉ tiền mạng ĐÃ DUYỆT mới được cộng vào số dư người dùng
-  const commission = Math.round(totals.approved * rate);
+  // Số hoa hồng mạng đã duyệt, quy đổi theo CASHBACK_RATE.
+  // Khi đơn chưa được admin duyệt, đây chỉ là số DỰ KIẾN.
+  const approvedCommission = Math.round(totals.approved * rate);
   const networkCommission = totals.approved + totals.pending;
   // Trạng thái gộp của cả giao dịch (một giao dịch có nhiều sản phẩm)
   const aggregateStatus =
     totals.approved > 0 ? 'approved' : totals.pending > 0 ? 'pending' : 'rejected';
 
-  let status = AWAITING_RECONCILE;
-  if (totals.approved > 0) status = 'Hoàn thành';
-  else if (totals.pending === 0 && totals.rejected > 0) status = CANCELLED;
+  // Mạng đã duyệt -> đưa đơn vào hàng chờ quản trị viên chốt hoa hồng.
+  let networkOrderStatus = AWAITING_RECONCILE;
+  if (totals.approved > 0) networkOrderStatus = PENDING_APPROVAL;
+  else if (totals.pending === 0 && totals.rejected > 0) networkOrderStatus = CANCELLED;
 
   let action = found.how === 'fallback' ? 'Khớp tạm' : 'Đã ghi nhận';
   let note = matchNote;
   const now = new Date().toISOString();
   const previousCommission = Number(order.commission) || 0;
   const previousReversed = Number(order.commission_reversed) || 0;
+  const alreadyCredited = isCredited(order);
+  let status = networkOrderStatus;
+  let commission = approvedCommission;
   let reversedCommission = previousReversed;
   let reversedAt = order.commission_reversed_at || null;
-  let availableAt = order.commission_available_at || null;
 
-  if (order.status === 'Đã thanh toán') {
-    // Tiền đã chi cho người dùng rồi. Nếu mạng báo huỷ/giảm hoa hồng, vẫn phải ghi
-    // nhận thu hồi để số dư âm (khoản nợ) và trừ vào các hoa hồng sau.
+  if (alreadyCredited) {
+    // Admin đã duyệt và khoản tiền đã được tính vào ví. Không tự tăng thêm;
+    // nếu mạng báo giảm/huỷ thì ghi nhận thu hồi để trừ vào số dư sau.
     status = order.status;
-    action = 'Đơn đã thanh toán';
-    const clawback = previousCommission - commission;
-    if (clawback > 0) {
-      reversedCommission = clawback;
+    commission = previousCommission;
+    action = 'Đơn đã duyệt';
+
+    if (aggregateStatus === 'pending') {
+      // Mạng đang kiểm tra lại: giữ nguyên khoản admin đã duyệt, chờ kết quả cuối.
+      note = 'Mạng đang kiểm tra lại chuyển đổi — giữ nguyên hoa hồng admin đã duyệt.';
+    } else if (approvedCommission < previousCommission) {
+      commission = approvedCommission;
+      reversedCommission = previousCommission - approvedCommission;
       reversedAt = now;
-      availableAt = null;
-      db.prepare(
-        `UPDATE orders
-         SET commission = ?, commission_reversed = ?, commission_reversed_at = ?,
-             commission_available_at = NULL, network_commission = ?, network_status = ?, network_updated_at = ?
-         WHERE id = ?`
-      ).run(
-        commission,
-        reversedCommission,
-        reversedAt,
-        networkCommission,
-        aggregateStatus,
-        now,
-        order.id
-      );
-      note = `Mạng báo huỷ/giảm hoa hồng sau khi đơn đã thanh toán — đã ghi nhận thu hồi ${clawback}đ.`;
+      if (commission <= 0 && order.status !== 'Đã thanh toán') status = CANCELLED;
+      note =
+        `Mạng báo huỷ/giảm hoa hồng sau khi admin đã duyệt — đã ghi nhận thu hồi ${reversedCommission}đ.`;
+    } else if (approvedCommission > previousCommission) {
+      note = 'Mạng báo tăng hoa hồng sau khi admin đã duyệt — không tự tăng, admin kiểm tra lại nếu cần.';
     } else {
-      // Không tự tăng tiền cho đơn đã chi trả; chỉ cập nhật số liệu mạng.
-      db.prepare(
-        `UPDATE orders SET network_commission = ?, network_status = ?, network_updated_at = ? WHERE id = ?`
-      ).run(networkCommission, aggregateStatus, now, order.id);
-      note = 'Đơn đã chi trả nên hệ thống không tự đổi trạng thái. Kiểm tra tay nếu mạng báo huỷ.';
+      note = 'Đơn đã được admin duyệt; chỉ cập nhật số liệu mạng.';
     }
     if (matchNote) note += ' ' + matchNote;
   } else {
-    if (commission <= 0) {
-      availableAt = null;
+    // Chưa được admin duyệt: chỉ ghi số dự kiến và đưa đơn vào đúng hàng chờ.
+    if (status === PENDING_APPROVAL) {
+      note = `Mạng đã duyệt ${totals.approved}đ, hoàn dự kiến ${commission}đ — chờ admin duyệt.`;
     } else if (status === CANCELLED) {
-      availableAt = null;
-    } else if (status === 'Hoàn thành') {
-      // Chỉ đặt lại thời gian giữ khi có thêm tiền hoặc đơn vừa được duyệt.
-      // Các postback lặp lại của cùng sản phẩm không được kéo dài thời gian giữ.
-      const increased = commission > previousCommission;
-      const becameCompleted = order.status !== 'Hoàn thành';
-      if (increased || becameCompleted || !availableAt) {
-        availableAt = releaseAt();
-      }
-    } else if (!availableAt) {
-      // Đơn đang chờ mạng duyệt: chưa vào số dư, nhưng vẫn đặt mốc dự phòng.
-      availableAt = releaseAt();
-    }
-
-    if (commission < previousCommission) {
-      reversedCommission = previousCommission - commission;
-      reversedAt = now;
-    } else if (commission > previousCommission) {
-      // Đơn được duyệt lại sau khi từng bị huỷ.
-      reversedCommission = 0;
-      reversedAt = null;
-    }
-
-    db.prepare(
-      `UPDATE orders
-       SET status = ?, commission = ?, commission_reversed = ?, commission_reversed_at = ?,
-           commission_available_at = ?, network_commission = ?, network_status = ?, network_updated_at = ?
-       WHERE id = ?`
-    ).run(
-      status,
-      commission,
-      reversedCommission,
-      reversedAt,
-      availableAt,
-      networkCommission,
-      aggregateStatus,
-      now,
-      order.id
-    );
-
-    if (totals.approved > 0) {
-      note = `Mạng đã duyệt ${totals.approved}đ, hoàn cho người dùng ${commission}đ.`;
-      if (reversedCommission > 0 && commission < previousCommission) {
-        note += ` Đã thu hồi ${reversedCommission}đ do mạng điều chỉnh.`;
-      }
-    } else if (status === CANCELLED) {
-      note = `Mạng báo huỷ, đơn chuyển sang "Đã huỷ"${reversedCommission > 0 ? `; thu hồi ${reversedCommission}đ hoa hồng` : ''}.`;
+      commission = 0;
+      note = `Mạng báo huỷ, đơn chuyển sang "Đã huỷ"${reversedCommission > 0 ? `; giữ khoản thu hồi ${reversedCommission}đ` : ''}.`;
     } else {
+      commission = 0;
       note = `Chờ mạng duyệt (tạm tính ${networkCommission}đ).`;
     }
     if (matchNote) note += ' ' + matchNote;
   }
+
+  db.prepare(
+    `UPDATE orders
+     SET status = ?, commission = ?, commission_reversed = ?, commission_reversed_at = ?,
+         network_commission = ?, network_status = ?, network_updated_at = ?
+     WHERE id = ?`
+  ).run(
+    status,
+    commission,
+    reversedCommission,
+    reversedAt,
+    networkCommission,
+    aggregateStatus,
+    now,
+    order.id
+  );
 
   db.prepare('UPDATE postback_logs SET order_code = ?, action = ?, note = ? WHERE id = ?').run(
     order.code,
@@ -474,38 +442,35 @@ function applyToOrder(logId, parsed, user) {
     logId
   );
 
-  notifyOwner(order, parsed, commission, status, commission < previousCommission ? previousCommission - commission : 0);
+  const clawback = Math.max(0, previousCommission - commission);
+  notifyOwner(order, commission, status, clawback);
 
   return { matched: true, orderCode: order.code, status, commission, reversedCommission, note };
 }
 
 /** Báo cho người dùng biết đơn của họ vừa có chuyển đổi hoặc vừa bị thu hồi. */
-function notifyOwner(order, parsed, commission, status, reversedCommission = 0) {
+function notifyOwner(order, commission, status, reversedCommission = 0) {
   if (commission <= 0 && reversedCommission <= 0) return;
   try {
     const now = new Date().toISOString();
+    let title;
+    let body;
     if (reversedCommission > 0 && commission <= 0) {
-      db.prepare(
-        `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
-         VALUES (?, ?, ?, 'wallet', 0, ?)`
-      ).run(
-        order.user_id,
-        'Hoa hồng bị thu hồi',
-        `Đơn ${order.code} bị huỷ/hoàn trả. Hệ thống đã thu hồi ${reversedCommission}đ hoa hồng. Nếu bạn đã rút trước đó, khoản này sẽ được trừ vào hoa hồng tiếp theo.`,
-        now
-      );
+      title = 'Hoa hồng bị thu hồi';
+      body = `Đơn ${order.code} bị huỷ/hoàn trả. Hệ thống đã thu hồi ${reversedCommission}đ hoa hồng. Nếu bạn đã rút trước đó, khoản này sẽ được trừ vào hoa hồng tiếp theo.`;
+    } else if (status === PENDING_APPROVAL) {
+      title = 'Đơn đã được sàn duyệt';
+      body = `Đơn ${order.code} đã được sàn ghi nhận hoa hồng ${commission}đ và đang chờ quản trị viên duyệt. Hoa hồng sẽ vào ví sau khi được duyệt.`;
     } else {
-      db.prepare(
-        `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
-         VALUES (?, ?, ?, 'wallet', 0, ?)`
-      ).run(
-        order.user_id,
-        'Đơn hàng đã được duyệt',
+      title = 'Đơn hàng đã được duyệt';
+      body =
         `Đơn ${order.code} đã được ghi nhận hoa hồng ${commission}đ. Trạng thái: ${status}.` +
-          (reversedCommission > 0 ? ` Đã điều chỉnh thu hồi ${reversedCommission}đ.` : ''),
-        now
-      );
+        (reversedCommission > 0 ? ` Đã điều chỉnh thu hồi ${reversedCommission}đ.` : '');
     }
+    db.prepare(
+      `INSERT INTO notifications (user_id, title, body, icon, is_read, created_at)
+       VALUES (?, ?, ?, 'wallet', 0, ?)`
+    ).run(order.user_id, title, body, now);
   } catch (err) {
     // Không để lỗi thông báo làm hỏng việc đối soát
     console.warn(`Không tạo được thông báo cho đơn ${order.code}: ${err.message}`);
@@ -589,7 +554,7 @@ function describe() {
     provider: PROVIDER,
     configured: Boolean(secret),
     cashbackRate: cashbackRate(),
-    holdDays: holdDays(),
+    approval: 'admin',
     url: '/api/postback/' + PROVIDER
   };
 }

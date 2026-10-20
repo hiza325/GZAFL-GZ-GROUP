@@ -17,6 +17,7 @@ const http = require('node:http');
 const https = require('node:https');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const { rateLimit } = require('./lib/rateLimit');
 
 const db = require('./db'); // khởi tạo database + bảng
 
@@ -70,11 +71,11 @@ app.disable('x-powered-by');
 /* ==========================================
    Header bảo mật (áp cho mọi response)
 
-   CSP hiện vẫn phải có 'unsafe-inline' cho script vì giao diện dùng
-   onclick="..." / onsubmit="..." (khoảng 40 chỗ). Khi nào refactor hết sang
-   addEventListener thì bỏ 'unsafe-inline' để CSP chặn được cả script nội tuyến.
-   Các chỉ thị còn lại (object-src, base-uri, frame-ancestors, form-action)
-   vẫn chặn được nhiều kiểu tấn công phổ biến.
+   Script chỉ được nạp từ chính website hoặc unpkg (thư viện lucide).
+   KHÔNG còn 'unsafe-inline': toàn bộ onclick/onsubmit trong HTML đã được
+   chuyển sang data-action + bộ điều phối ở cuối script.js, nên CSP chặn được
+   cả script nội tuyến do kẻ tấn công chèn vào (XSS).
+   style-src vẫn cần 'unsafe-inline' vì giao diện dùng nhiều thuộc tính style="".
    ========================================== */
 const CSP_DIRECTIVES = [
   "default-src 'self'",
@@ -82,7 +83,7 @@ const CSP_DIRECTIVES = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' https://unpkg.com",
+  "script-src 'self' https://unpkg.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob:",
@@ -195,7 +196,11 @@ app.use('/uploads', uploadGuard, express.static(UPLOAD_DIR, { dotfiles: 'deny', 
    - đếm được số lượt bấm
    - sau này đổi nhà cung cấp affiliate mà link đã phát cho người dùng không hỏng
    ========================================== */
-app.get('/r/:code', (req, res) => {
+// Mỗi IP tối đa 120 lượt bấm link / phút. Người dùng thật hiếm khi vượt;
+// giới hạn này chặn việc dùng script bơm click_count hoặc dội database.
+const redirectRateLimit = rateLimit({ windowMs: 60 * 1000, max: 120, name: 'redirect' });
+
+app.get('/r/:code', redirectRateLimit, (req, res) => {
   const code = String(req.params.code || '').trim().toUpperCase();
   const row = db.prepare('SELECT * FROM orders WHERE code = ?').get(code);
   if (!row) return res.status(404).send('Không tìm thấy link hoàn tiền.');
@@ -360,9 +365,7 @@ server.listen(PORT, () => {
     console.log(
       `                          Tỷ lệ hoàn cho người dùng: ${Math.round(postback.cashbackRate * 100)}% (CASHBACK_RATE)`
     );
-    console.log(
-      `                          Giữ hoa hồng trước khi rút: ${postback.holdDays} ngày (COMMISSION_HOLD_DAYS)`
-    );
+    console.log('                          Duyệt hoa hồng: quản trị viên duyệt thủ công trước khi cộng ví');
     if (postback.cashbackRate >= 1) {
       console.warn('  CẢNH BÁO: CASHBACK_RATE đang là 100% — nền tảng không giữ lại doanh thu.');
       console.warn('           Nếu không cố ý, đặt CASHBACK_RATE=0.8 (hoàn 80%) trong backend/.env rồi khởi động lại.');
@@ -409,6 +412,18 @@ server.listen(PORT, () => {
     console.log('');
     console.log('  CẢNH BÁO: LOGIN_OTP=on nhưng chưa cấu hình SMTP -> KHÔNG AI ĐĂNG NHẬP ĐƯỢC.');
     console.log('            Điền SMTP_* trong backend/.env, hoặc đặt LOGIN_OTP=auto.');
+  }
+
+  if (IS_PRODUCTION) {
+    console.log('  Kiểm tra cấu hình     : npm run check:deploy');
+    if (!String(process.env.CASHBACK_RATE || '').trim()) {
+      console.warn('  CẢNH BÁO: chưa đặt CASHBACK_RATE - đang hoàn 100% hoa hồng cho người dùng.');
+    }
+    if (!String(process.env.PUBLIC_BASE_URL || '').trim()) {
+      console.warn(
+        '  CẢNH BÁO: chưa đặt PUBLIC_BASE_URL - link hoàn tiền/postback có thể bị tạo với http:// sau proxy.'
+      );
+    }
   }
 
   const cleaned = otp.cleanup();

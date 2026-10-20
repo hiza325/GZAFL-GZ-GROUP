@@ -14,14 +14,16 @@ const SUPPORT_MAX_MESSAGE_CHARS = 20000; // đủ cho câu trả lời AI dài, 
 // Dùng khi không gọi được /api/config (bình thường các giá trị này lấy từ server)
 const SUPPORT_DEFAULT_SUGGESTIONS = [
   'Làm sao tạo đơn hoàn tiền?',
-  'Bao lâu thì nhận được hoa hồng?',
+  'Khi nào hoa hồng vào ví?',
   'Rút tiền thế nào?',
   'Không nhận được mã OTP?'
 ];
 const SUPPORT_DEFAULT_WELCOME =
   'Xin chào 👋 Mình là trợ lý ảo của GZ AFL. Bạn cần hỗ trợ gì?\n' +
   'Bạn có thể bấm một gợi ý bên dưới hoặc nhập câu hỏi của mình.';
-const SUPPORT_DEFAULT_CONTACT = { email: 'huyriuuu@gmail.com', zalo: '0328611277' };
+// Dùng khi không gọi được /api/config. KHÔNG hard-code thông tin liên hệ cá nhân
+// ở đây: thông tin thật lấy từ SUPPORT_EMAIL / SUPPORT_ZALO trong backend/.env.
+const SUPPORT_DEFAULT_CONTACT = { email: '', zalo: '' };
 
 let supportReady = false;      // đã nạp xong khung chat
 let supportSending = false;    // đang chờ server trả lời
@@ -145,6 +147,15 @@ function supportContactHtml() {
         <span class="flex-1 min-w-0 text-slate-700 break-all">Email: <b>${escapeHtml(supportConfig.contact.email)}</b></span>
         <button type="button" data-support-copy="${escapeHtml(supportConfig.contact.email)}" class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex-shrink-0">Sao chép</button>
       </div>`);
+  }
+
+  if (!rows.length) {
+    return `
+      <div class="flex justify-start">
+        <div class="max-w-[90%] w-full bg-white border border-slate-100 rounded-2xl rounded-bl-md shadow-sm px-3.5 py-3">
+          <p class="text-sm text-slate-600">Chưa tải được thông tin liên hệ. Bạn thử lại sau ít phút, hoặc gửi câu hỏi ngay trong khung chat này nhé.</p>
+        </div>
+      </div>`;
   }
 
   return `

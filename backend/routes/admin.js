@@ -37,6 +37,7 @@ const {
   WITHDRAWAL_STATUSES,
   ROLES,
   CANCELLED,
+  PENDING_APPROVAL,
   RESET_PENDING,
   RESET_STATUSES
 } = require('../lib/constants');
@@ -46,10 +47,15 @@ const { logAudit } = require('../lib/audit');
 const { UPLOAD_DIR } = require('../lib/uploads');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
-const { heldExpr, reversedExpr, computeUserMoney, releaseAt, holdDays } = require('../lib/money');
+const { creditedCondition, reversedExpr, isCredited, computeUserMoney } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAdmin);
+
+// Mật khẩu tạm do quản trị viên cấp chỉ sống trong khoảng này (giờ).
+// Hết hạn thì khách phải yêu cầu cấp lại — tránh mật khẩu lộ trong Zalo/tin nhắn
+// vẫn dùng được mãi về sau.
+const TEMP_PASSWORD_TTL_HOURS = Number(process.env.TEMP_PASSWORD_TTL_HOURS) || 24;
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
@@ -79,9 +85,12 @@ function isMoney(value) {
 // Các cột tổng hợp dùng chung cho danh sách người dùng
 const USER_AGGREGATES = `
   (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count,
-  (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = 'Đang xử lý') AS pending_count,
-  (SELECT COALESCE(SUM(o.commission), 0) FROM orders o WHERE o.user_id = u.id AND o.status != '${CANCELLED}') AS commission_total,
-  (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o WHERE o.user_id = u.id) AS held_total,
+  (SELECT COUNT(*) FROM orders o
+     WHERE o.user_id = u.id AND o.status IN ('Đang xử lý', 'Chờ đối soát', '${PENDING_APPROVAL}')) AS pending_count,
+  (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
+     WHERE o.user_id = u.id AND ${creditedCondition('o')}) AS commission_total,
+  (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
+     WHERE o.user_id = u.id AND o.status = '${PENDING_APPROVAL}') AS pending_approval_total,
   (SELECT COALESCE(SUM(${reversedExpr('o')}), 0) FROM orders o WHERE o.user_id = u.id) AS clawback_total,
   (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w WHERE w.user_id = u.id AND w.status != '${CANCELLED}') AS withdrawn_total,
   (SELECT COUNT(*) FROM referrals r WHERE r.user_id = u.id) AS referral_count
@@ -92,12 +101,12 @@ function getUserMoney(userId) {
   return computeUserMoney(userId);
 }
 
-// Số tiền tối đa có thể chi cho một lệnh rút: hoa hồng khả dụng trừ các lệnh rút KHÁC
-// (không tính chính lệnh đang xét, trừ tiền đang tạm giữ và bỏ qua mọi đơn/lệnh đã huỷ).
+// Số tiền tối đa có thể chi cho một lệnh rút: hoa hồng đã được admin duyệt trừ
+// các lệnh rút KHÁC (không tính chính lệnh đang xét, bỏ qua đơn/lệnh đã huỷ).
 function payableForWithdrawal(row) {
   const money = getUserMoney(row.user_id);
   const selfCounted = row.status === CANCELLED ? 0 : Number(row.amount) || 0;
-  return Math.max(0, money.totalCommission - money.heldCommission - (money.withdrawn - selfCounted));
+  return Math.max(0, money.totalCommission - (money.withdrawn - selfCounted));
 }
 
 function findUserById(id) {
@@ -119,9 +128,7 @@ function findWithdrawalByCode(code) {
     .prepare(
       `SELECT w.*, u.name AS user_name, u.username AS user_username,
          (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
-           WHERE o.user_id = w.user_id AND o.status != '${CANCELLED}') AS commission_total,
-         (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o
-           WHERE o.user_id = w.user_id) AS held_total,
+           WHERE o.user_id = w.user_id AND ${creditedCondition('o')}) AS commission_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
@@ -148,12 +155,13 @@ router.get('/overview', (req, res) => {
   const orders = db
     .prepare(
       `SELECT COUNT(*) AS total,
-              COALESCE(SUM(CASE WHEN status = 'Đang xử lý'    THEN 1 ELSE 0 END), 0) AS pending,
+              COALESCE(SUM(CASE WHEN status IN ('Đang xử lý', 'Chờ đối soát', '${PENDING_APPROVAL}')
+                                THEN 1 ELSE 0 END), 0) AS pending,
+              COALESCE(SUM(CASE WHEN status = '${PENDING_APPROVAL}' THEN 1 ELSE 0 END), 0) AS awaiting_approval,
               COALESCE(SUM(CASE WHEN status = 'Hoàn thành'    THEN 1 ELSE 0 END), 0) AS completed,
               COALESCE(SUM(CASE WHEN status = 'Đã thanh toán' THEN 1 ELSE 0 END), 0) AS paid,
               COALESCE(SUM(CASE WHEN status = '${CANCELLED}'  THEN 1 ELSE 0 END), 0) AS cancelled,
-              COALESCE(SUM(CASE WHEN status != '${CANCELLED}' THEN commission ELSE 0 END), 0) AS commission,
-              COALESCE(SUM(${heldExpr()}), 0) AS held_commission,
+              COALESCE(SUM(CASE WHEN ${creditedCondition()} THEN commission ELSE 0 END), 0) AS commission,
               COALESCE(SUM(${reversedExpr()}), 0) AS clawback
        FROM orders`
     )
@@ -195,7 +203,6 @@ router.get('/overview', (req, res) => {
     .get();
 
   const totalCommission = Number(orders.commission) || 0;
-  const heldCommission = Number(orders.held_commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
 
   return res.json({
@@ -206,6 +213,7 @@ router.get('/overview', (req, res) => {
     orders: {
       total: Number(orders.total) || 0,
       pending: Number(orders.pending) || 0,
+      awaitingApproval: Number(orders.awaiting_approval) || 0,
       completed: Number(orders.completed) || 0,
       paid: Number(orders.paid) || 0,
       cancelled: Number(orders.cancelled) || 0,
@@ -233,14 +241,11 @@ router.get('/overview', (req, res) => {
     },
     money: {
       totalCommission,
-      heldCommission,
       clawback: Number(orders.clawback) || 0,
       totalPaidOut: Number(withdrawals.paid_amount) || 0,
-      // Tổng tiền hệ thống còn phải trả cho người dùng (gồm cả phần đang tạm giữ)
+      // Tổng hoa hồng đã được admin duyệt còn phải trả cho người dùng
       systemBalance: totalCommission - committed,
-      // Phần đã có thể chi trả ngay (không gồm tiền đang tạm giữ)
-      availableSystemBalance: totalCommission - heldCommission - committed,
-      holdDays: holdDays()
+      availableSystemBalance: totalCommission - committed
     }
   });
 });
@@ -340,7 +345,24 @@ router.delete('/users/:id', (req, res) => {
     }
   }
 
-  // ON DELETE CASCADE sẽ xoá luôn orders / withdrawals / referrals của người này
+  // Xoá người dùng sẽ CASCADE xoá luôn orders / withdrawals. Với tài khoản đã
+  // phát sinh giao dịch, việc này làm mất lịch sử tài chính dùng để đối soát.
+  // Mặc định CHẶN; chỉ xoá khi quản trị viên thật sự muốn (force=1).
+  const force = String(req.query.force || '') === '1';
+  if (!force) {
+    const orderCount = Number(db.prepare('SELECT COUNT(*) AS c FROM orders WHERE user_id = ?').get(id).c) || 0;
+    const withdrawCount =
+      Number(db.prepare('SELECT COUNT(*) AS c FROM withdrawals WHERE user_id = ?').get(id).c) || 0;
+    if (orderCount > 0 || withdrawCount > 0) {
+      return res.status(409).json({
+        error:
+          `Không thể xoá: tài khoản đã có ${orderCount} đơn hàng và ${withdrawCount} lệnh rút tiền. ` +
+          'Xoá sẽ làm mất lịch sử tài chính. Hãy giữ tài khoản để bảo toàn đối soát; ' +
+          'nếu thật sự cần xoá, gọi lại API với ?force=1.'
+      });
+    }
+  }
+
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 
   // Xoá các file ảnh do hệ thống lưu (nếu có): avatar + ảnh QR nhận tiền.
@@ -429,48 +451,43 @@ router.patch('/orders/:code', (req, res) => {
   const prevStatus = before.status;
   const prevCommission = Number(before.commission) || 0;
   const prevReversed = Number(before.commission_reversed) || 0;
+  const prevCredited = isCredited(before);
   const nextStatus = body.status !== undefined ? String(body.status) : prevStatus;
+  const nextCredited = isCredited({ status: nextStatus });
   let nextCommission = body.commission !== undefined ? Number(body.commission) : prevCommission;
   let nextReversed = prevReversed;
   let nextReversedAt = before.commission_reversed_at || null;
-  let nextAvailableAt = before.commission_available_at || null;
   const now = new Date().toISOString();
 
   if (nextStatus === CANCELLED) {
-    // Huỷ/hoàn trả: ghi lại số hoa hồng từng ghi cho đơn để admin đối soát,
-    // đồng thời đưa hoa hồng về 0. Nếu khách đã rút trước đó, số dư sẽ âm
-    // và được trừ dần vào các hoa hồng sau (debt).
-    if (prevCommission > 0) {
+    // Huỷ/hoàn trả: chỉ ghi thu hồi nếu khoản này từng được admin duyệt và
+    // đã cộng vào ví. Đơn còn chờ duyệt thì chỉ cần đưa hoa hồng về 0.
+    if (prevCredited && prevCommission > 0) {
       nextReversed = prevCommission;
       nextReversedAt = now;
     }
     nextCommission = 0;
-    nextAvailableAt = null;
-  } else {
-    if (nextCommission < prevCommission) {
-      nextReversed = prevCommission - nextCommission;
-      nextReversedAt = now;
-    } else if (prevStatus === CANCELLED) {
-      // Đơn được khôi phục: khoản thu hồi trước đó không còn hiệu lực.
+  } else if (nextCredited) {
+    // Admin duyệt/chốt hoa hồng: khoản tiền mới được tính vào ví.
+    // Nếu đơn được khôi phục sau khi từng bị thu hồi, xoá khoản thu hồi cũ.
+    if (nextCommission > 0 && (prevStatus === CANCELLED || !prevCredited)) {
       nextReversed = 0;
       nextReversedAt = null;
     }
-
-    if (nextCommission === 0) {
-      nextAvailableAt = null;
-    } else if (nextStatus === 'Đã thanh toán') {
-      // Admin đã chốt/chi trả đơn này: cho phép tính vào số dư ngay.
-      nextAvailableAt = null;
-    } else if (nextStatus === 'Hoàn thành') {
-      const needsRelease =
-        (body.status !== undefined && prevStatus !== 'Hoàn thành') ||
-        (body.commission !== undefined && nextCommission !== prevCommission) ||
-        !nextAvailableAt;
-      if (needsRelease) nextAvailableAt = releaseAt();
-    } else if (!nextAvailableAt) {
-      // Đơn đang xử lý/chờ đối soát mà admin đã nhập hoa hồng: vẫn giữ tiền
-      // cho tới khi đơn được chuyển sang Hoàn thành.
-      nextAvailableAt = releaseAt();
+    if (prevCredited && nextCommission < prevCommission) {
+      nextReversed = prevCommission - nextCommission;
+      nextReversedAt = now;
+    }
+  } else {
+    // Đang xử lý / chờ đối soát / chờ admin duyệt: chưa cộng vào ví.
+    if (prevCredited && nextCommission < prevCommission) {
+      // Admin hạ hoa hồng của đơn đã cộng ví -> thu hồi phần chênh lệch.
+      nextReversed = prevCommission - nextCommission;
+      nextReversedAt = now;
+    } else if (nextCommission > 0 && prevStatus === CANCELLED) {
+      // Đơn được khôi phục về hàng chờ: khoản thu hồi cũ không còn hiệu lực.
+      nextReversed = 0;
+      nextReversedAt = null;
     }
   }
 
@@ -485,7 +502,6 @@ router.patch('/orders/:code', (req, res) => {
   set('commission', nextCommission);
   if (nextReversed !== prevReversed) set('commission_reversed', nextReversed);
   if (nextReversedAt !== (before.commission_reversed_at || null)) set('commission_reversed_at', nextReversedAt);
-  if (nextAvailableAt !== (before.commission_available_at || null)) set('commission_available_at', nextAvailableAt);
 
   db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
 
@@ -503,9 +519,12 @@ router.patch('/orders/:code', (req, res) => {
     if (reversedChanged && after.commission_reversed > 0) {
       parts.push(`thu hồi: ${formatMoney(after.commission_reversed)}`);
     }
+    const approvedNow = !isCredited(before) && isCredited(after) && Number(after.commission) > 0;
     notify(before.user_id, {
-      title: `Đơn ${code} đã được cập nhật`,
-      body: `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
+      title: approvedNow ? `Hoa hồng đơn ${code} đã được duyệt` : `Đơn ${code} đã được cập nhật`,
+      body: approvedNow
+        ? `Quản trị viên đã duyệt ${formatMoney(after.commission)} hoa hồng cho đơn ${code}. Khoản tiền đã được cộng vào ví.`
+        : `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
       icon: 'file-text'
     });
   }
@@ -559,9 +578,7 @@ router.get('/withdrawals', (req, res) => {
     .prepare(
       `SELECT w.*, u.name AS user_name, u.username AS user_username,
          (SELECT COALESCE(SUM(o.commission), 0) FROM orders o
-           WHERE o.user_id = w.user_id AND o.status != '${CANCELLED}') AS commission_total,
-         (SELECT COALESCE(SUM(${heldExpr('o')}), 0) FROM orders o
-           WHERE o.user_id = w.user_id) AS held_total,
+           WHERE o.user_id = w.user_id AND ${creditedCondition('o')}) AS commission_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
@@ -738,19 +755,26 @@ router.post('/password-resets/:id/reset', (req, res) => {
   const tempPassword = generateTempPassword();
   const hash = bcrypt.hashSync(tempPassword, 10);
   const now = new Date().toISOString();
+  const tempPasswordExpiresAt = new Date(
+    Date.now() + TEMP_PASSWORD_TTL_HOURS * 60 * 60 * 1000
+  ).toISOString();
 
-  // token_version + 1: mọi phiên đăng nhập cũ của tài khoản bị vô hiệu hoá
-  db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
-    hash,
-    user.id
-  );
+  // token_version + 1: mọi phiên đăng nhập cũ của tài khoản bị vô hiệu hoá.
+  // temp_password_expires_at: mật khẩu tạm hết hạn sau TEMP_PASSWORD_TTL_HOURS giờ.
+  db.prepare(
+    `UPDATE users
+        SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = ?
+      WHERE id = ?`
+  ).run(hash, tempPasswordExpiresAt, user.id);
   db.prepare(
     'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
   ).run('Đã xử lý', now, req.user.id, id);
 
   notify(user.id, {
     title: 'Mật khẩu đã được đặt lại',
-    body: 'Quản trị viên vừa đặt lại mật khẩu cho tài khoản của bạn. Hãy đổi mật khẩu mới ngay sau khi đăng nhập.',
+    body: `Quản trị viên vừa cấp mật khẩu tạm cho tài khoản của bạn. Mật khẩu này chỉ dùng được đến ${new Date(
+      tempPasswordExpiresAt
+    ).toLocaleString('vi-VN')}. Hãy đổi mật khẩu mới ngay sau khi đăng nhập.`,
     icon: 'key-round'
   });
 
@@ -760,6 +784,8 @@ router.post('/password-resets/:id/reset', (req, res) => {
   return res.json({
     ok: true,
     tempPassword,
+    expiresAt: tempPasswordExpiresAt,
+    ttlHours: TEMP_PASSWORD_TTL_HOURS,
     user: { id: user.id, name: user.name, username: user.username }
   });
 });

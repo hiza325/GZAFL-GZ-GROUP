@@ -4,7 +4,7 @@
 
 const { formatDate, formatDateTime } = require('./format');
 const { redactStoredQuery } = require('./redact');
-const { isHeld } = require('./money');
+const { isCredited } = require('./money');
 
 function toUser(row) {
   if (!row) return null;
@@ -66,9 +66,8 @@ function toOrder(row) {
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
-    // Hoa hồng đã ghi nhưng còn đang tạm giữ (chưa được rút)
-    commissionHeld: isHeld(row),
-    commissionAvailableAt: row.commission_available_at || null,
+    // true = admin đã duyệt, khoản này đã được tính vào ví
+    commissionCredited: isCredited(row),
     // Số hoa hồng đã bị thu hồi nếu mạng báo huỷ/hoàn trả sau khi từng duyệt
     reversedCommission: Number(row.commission_reversed) || 0,
     // Hoa hồng mạng affiliate báo về nhưng có thể CHƯA duyệt (xem lib/postback.js)
@@ -117,8 +116,8 @@ function toAdminUser(row) {
   if (!row) return null;
   const commission = Number(row.commission_total) || 0;
   const withdrawn = Number(row.withdrawn_total) || 0;
-  const held = Number(row.held_total) || 0;
-  const balance = commission - held - withdrawn;
+  const pendingApproval = Number(row.pending_approval_total) || 0;
+  const balance = commission - withdrawn;
   return {
     id: row.id,
     username: row.username,
@@ -135,7 +134,7 @@ function toAdminUser(row) {
     pendingCount: Number(row.pending_count) || 0,
     referralCount: Number(row.referral_count) || 0,
     commission,
-    held,
+    pendingApproval,
     withdrawn,
     balance,
     debt: Math.max(0, -balance),
@@ -159,8 +158,7 @@ function toAdminOrder(row) {
     platform: row.platform,
     status: row.status,
     commission: Number(row.commission) || 0,
-    commissionHeld: isHeld(row),
-    commissionAvailableAt: row.commission_available_at || null,
+    commissionCredited: isCredited(row),
     reversedCommission: Number(row.commission_reversed) || 0,
     reversedAt: row.commission_reversed_at || null,
     networkOrderId: row.network_order_id || null,
@@ -213,8 +211,7 @@ function toAdminWithdrawal(row) {
   const commission = Number(row.commission_total) || 0;
   const withdrawn = Number(row.withdrawn_total) || 0;
   const otherWithdrawn = Number(row.other_withdrawn_total) || 0;
-  const held = Number(row.held_total) || 0;
-  const userBalance = commission - held - withdrawn;
+  const userBalance = commission - withdrawn;
   return {
     id: row.code,
     userId: row.user_id,
@@ -232,12 +229,11 @@ function toAdminWithdrawal(row) {
     status: row.status,
     createdAt: row.created_at,
     date: formatDateTime(row.created_at),
-    // Số dư hiện tại của người dùng (đã trừ tiền tạm giữ và mọi lệnh rút không bị huỷ)
+    // Số dư hiện tại của người dùng (đã trừ mọi lệnh rút không bị huỷ)
     userBalance,
-    held,
     debt: Math.max(0, -userBalance),
-    // Số tiền tối đa có thể chi cho riêng lệnh này (không tính chính nó, trừ tiền tạm giữ)
-    payable: Math.max(0, commission - held - otherWithdrawn)
+    // Số tiền tối đa có thể chi cho riêng lệnh này (không tính chính nó)
+    payable: Math.max(0, commission - otherWithdrawn)
   };
 }
 

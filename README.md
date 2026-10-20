@@ -11,7 +11,8 @@ Backend phục vụ luôn frontend nên cả hai chạy **cùng một địa ch�
 
 ## Yêu cầu
 
-- **Node.js >= 22.5** (backend dùng module `node:sqlite` có sẵn, không cần cài native module).
+- **Node.js >= 22.13** (backend dùng module `node:sqlite` có sẵn, không cần cài native module).
+  Node 22.5–22.12 vẫn chạy được nhưng phải thêm cờ `--experimental-sqlite`; khuyến nghị **Node 24 LTS**.
 - Không cần cài database riêng — SQLite lưu thành file.
 
 Kiểm tra phiên bản:
@@ -79,7 +80,6 @@ npm run watch:css
 | `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật, ví dụ `TikTok Shop, Tiki`. Các sàn còn lại tạm dùng link thử nghiệm; mỗi đơn lưu `affiliate.isReal` để giao diện hiển thị rõ **link thật** hay **chưa gắn hoa hồng** |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
-| `COMMISSION_HOLD_DAYS` | `7` | Số ngày **tạm giữ hoa hồng** sau khi mạng duyệt trước khi người dùng được rút (`0` = cho rút ngay). Hoa hồng bị mạng báo huỷ/hoàn trả sau đó sẽ được ghi nhận thu hồi; nếu khách đã rút, phần âm trở thành khoản cần hoàn lại và tự trừ vào hoa hồng sau |
 | `ACCESSTRADE_API_KEY` | – | Token API của AccessTrade |
 | `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | – | Campaign ID riêng cho từng sàn (giữ **dạng chuỗi**) |
 | `ACCESSTRADE_CAMPAIGN_ID` | – | Tuỳ chọn: campaign mặc định nếu sàn chưa có biến riêng |
@@ -240,7 +240,7 @@ Cần tỉ lệ vào Inbox tốt hơn Gmail thì dùng Brevo (`smtp-relay.brevo.
 
 Góc phải-dưới của **mọi trang** (kể cả trang chủ với khách chưa đăng nhập) có một nút tròn mở khung chat hỗ trợ:
 
-- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, **tạm giữ hoa hồng `COMMISSION_HOLD_DAYS` ngày**, **thu hồi hoa hồng/số dư âm**, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
+- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, **đơn chờ admin duyệt**, **thu hồi hoa hồng/số dư âm**, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
 - Nút **"Liên hệ hỗ trợ"** ngay trong khung chat: hiện số điện thoại/Zalo và email (lấy từ `SUPPORT_ZALO`, `SUPPORT_EMAIL`) kèm nút copy.
 - **Gợi ý câu hỏi** sẵn ở trên ô nhập — bấm là hỏi luôn.
 - **Nhớ hội thoại**: lịch sử chat lưu trong trình duyệt (`localStorage`), tải lại trang không mất. Server **không lưu** nội dung chat.
@@ -270,8 +270,10 @@ Kiểm tra nhanh sau khi khởi động lại:
 
 ```bash
 curl http://localhost:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-3.5-flash-lite","maxTokens":4096,"dailyLimit":800,"usedToday":0}
+# {"ai":true,"dailyLimit":800,"usedToday":0,"remainingToday":800,"suggestions":8}
 ```
+
+> API chỉ trả về trạng thái bật/tắt và hạn mức, **không** lộ nhà cung cấp AI, tên model hay URL nội bộ.
 
 > Khoá API **chỉ nằm ở server**, không bao giờ gửi xuống trình duyệt. Mỗi IP được hỏi tối đa **30 tin nhắn / 10 phút** (chống spam, tránh cháy hạn mức khoá API). Muốn tạm tắt AI mà vẫn giữ khoá: đặt `AI_ENABLED=off`.
 
@@ -346,16 +348,16 @@ Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. N
 
 Trạng thái hợp lệ:
 
-- Đơn hàng: `Đang xử lý` → `Chờ đối soát` → `Hoàn thành` → `Đã thanh toán`, hoặc `Đã huỷ`.
+- Đơn hàng: `Đang xử lý` → `Chờ đối soát` → `Chờ admin duyệt` → `Hoàn thành` → `Đã thanh toán`, hoặc `Đã huỷ`.
 - Lệnh rút tiền: `Đang xử lý` → `Đã thanh toán`, hoặc `Đã huỷ`.
 
-> `Chờ đối soát` = mạng affiliate **đã ghi nhận** chuyển đổi nhưng chưa duyệt. Tiền của đơn nằm ở cột `network_commission` và **chưa được tính vào số dư** của người dùng — chỉ khi mạng báo đã duyệt mới ghi vào `commission`.
+> `Chờ đối soát` = mạng affiliate **đã ghi nhận** chuyển đổi nhưng chưa duyệt. `Chờ admin duyệt` = mạng đã duyệt, hệ thống ghi số hoa hồng **dự kiến** vào `commission` nhưng **chưa cộng vào số dư**; quản trị viên duyệt đơn (chuyển `Hoàn thành`/`Đã thanh toán`) thì tiền mới vào ví.
 
 **Cách tiền được tính:** số dư ví của người dùng = tổng `commission` của các đơn **không bị huỷ** − tổng `amount` của các lệnh rút **không bị huỷ**. Vì vậy đánh dấu `Đã huỷ` sẽ loại đơn/lệnh đó khỏi phép tính, còn khi chuyển một lệnh rút sang `Đã thanh toán` thì phải nhập số tiền thực trả (không được vượt số dư khả dụng).
 
 **Rút tiền:** người dùng không tự nhập số tiền — hệ thống ghi nhận **toàn bộ số dư khả dụng** tại thời điểm gửi. Nhờ vậy số tiền đó bị **giữ chỗ** ngay, không thể rút trùng. Các ràng buộc ở server (`backend/routes/wallet.js`):
 
-- Số dư khả dụng = hoa hồng đã ghi **− tiền đang tạm giữ − tiền đã rút**. Khoản tạm giữ gồm đơn đang chờ mạng duyệt và hoa hồng còn trong `COMMISSION_HOLD_DAYS` ngày kể từ lúc mạng duyệt.
+- Số dư khả dụng = tổng hoa hồng của các đơn **đã được admin duyệt** − tiền đã rút. Đơn `Chờ đối soát` hoặc `Chờ admin duyệt` **chưa vào số dư**.
 - Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **1.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
 - Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
 - Nếu mạng báo huỷ/hoàn trả sau khi khách đã rút, hệ thống ghi nhận **thu hồi** và số dư có thể âm. Khoản âm là **nợ cần hoàn lại**, sẽ tự trừ vào hoa hồng tiếp theo; ví và trang quản trị hiển thị rõ khoản này.
@@ -399,7 +401,7 @@ Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js
 4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.
 5. **Cộng dồn theo đơn** (mỗi sản phẩm lấy trạng thái **mới nhất**) rồi cập nhật:
    - mạng báo **chưa duyệt** → đơn chuyển **"Chờ đối soát"**, tiền nằm ở `network_commission`, **chưa vào số dư**;
-   - mạng báo **đã duyệt** → đơn **"Hoàn thành"**, ghi `commission = tiền đã duyệt × CASHBACK_RATE` và bắt đầu **tạm giữ** `COMMISSION_HOLD_DAYS` ngày;
+   - mạng báo **đã duyệt** → đơn **"Chờ admin duyệt"**, ghi `commission = tiền đã duyệt × CASHBACK_RATE` như số **dự kiến**; admin duyệt đơn thì khoản này mới được cộng vào ví;
    - mạng báo **huỷ/hoàn trả** → đơn **"Đã huỷ"**, hoa hồng về 0 và ghi số **đã thu hồi** vào `commission_reversed`.
 6. **Luôn trả `200` nhanh** (mạng chỉ gửi lại tối đa 3 lần). Với đơn đã ở **"Đã thanh toán"**, trạng thái đơn được giữ nguyên, nhưng nếu mạng báo huỷ/giảm hoa hồng thì hệ thống vẫn ghi nhận thu hồi và số dư âm (nợ) — không tự tăng tiền khi mạng báo thêm.
 
@@ -416,7 +418,7 @@ Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp
 | Bảng | Nội dung |
 |---|---|
 | `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, thông tin nhận tiền |
-| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng, `commission_available_at` (hết thời gian tạm giữ), `commission_reversed` (hoa hồng đã thu hồi), `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
+| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng (dự kiến khi chờ admin duyệt, chính thức khi đã duyệt), `commission_reversed` (hoa hồng đã thu hồi), `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
 | `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
@@ -456,9 +458,9 @@ Trang quản trị gồm 6 tab:
 
 | Tab | Việc làm được |
 |---|---|
-| **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (vào ví sau thời gian tạm giữ); thấy rõ **tạm giữ** / **đã thu hồi**; huỷ đơn sẽ ghi nhận thu hồi |
-| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng** (đã trừ tiền tạm giữ), **khoản nợ** và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
-| **Người dùng** | Xem điểm, số đơn, hoa hồng, **tạm giữ**, đã rút, số dư/nợ; sửa vai trò và điểm thưởng; xoá người dùng |
+| **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (chỉ cộng ví khi admin duyệt); thấy rõ **chờ admin duyệt** / **đã cộng ví** / **đã thu hồi**; huỷ đơn sẽ ghi nhận thu hồi nếu trước đó đã cộng ví |
+| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng**, **khoản nợ** và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
+| **Người dùng** | Xem điểm, số đơn, hoa hồng, **chờ duyệt**, đã rút, số dư/nợ; sửa vai trò và điểm thưởng; xoá người dùng |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
 | **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
 | **Đối soát** | Nhật ký mọi lần mạng affiliate báo chuyển đổi: lọc theo trạng thái mạng (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) và theo kết quả (`đã khớp đơn` / `chưa hoặc chỉ khớp tạm` / `bị từ chối`); xem **tham số thô** mạng gửi (nút **Thô**) và bấm **Xử lý lại** cho log về trước lúc đơn được tạo. Huy hiệu số trên tab là số lần postback **cần người xem lại** (chưa khớp được đơn, hoặc chỉ khớp tạm). Tiền của các lần gọi sai chìa khoá **không** được tính vào thống kê hoa hồng |
@@ -498,7 +500,7 @@ npm test
 ```
 
 Bộ test kiểm tra: health, header bảo mật, chặn tải file nội bộ, quyền xem ảnh QR,
-chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, tạm giữ/thu hồi hoa hồng,
+chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, chờ admin duyệt/thu hồi hoa hồng,
 rate limit dùng SQLite và script sao lưu.
 
 **Sao lưu nóng** (không cần dừng server):

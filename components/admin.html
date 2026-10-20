@@ -40,7 +40,7 @@
         <i data-lucide="loader-2" class="w-3.5 h-3.5"></i> Chờ duyệt
       </div>
       <div class="text-2xl font-bold text-amber-500 mt-2" id="adm-stat-pending">0</div>
-      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-pending-note">0 đã thanh toán</div>
+      <div class="text-[11px] text-slate-400 mt-1" id="adm-stat-pending-note">0 chờ admin duyệt • 0 đã thanh toán</div>
     </div>
 
     <div class="stat-card bg-white p-4 rounded-2xl border border-slate-100">
@@ -110,6 +110,7 @@
           <option value="">Tất cả trạng thái</option>
           <option value="Đang xử lý">Đang xử lý</option>
           <option value="Chờ đối soát">Chờ đối soát</option>
+          <option value="Chờ admin duyệt">Chờ admin duyệt</option>
           <option value="Hoàn thành">Hoàn thành</option>
           <option value="Đã thanh toán">Đã thanh toán</option>
           <option value="Đã huỷ">Đã huỷ</option>
@@ -210,7 +211,7 @@
               <th class="px-3 py-3">Điểm</th>
               <th class="px-3 py-3">Đơn hàng</th>
               <th class="px-3 py-3">Hoa hồng</th>
-              <th class="px-3 py-3">Tạm giữ</th>
+              <th class="px-3 py-3">Chờ duyệt</th>
               <th class="px-3 py-3">Đã rút</th>
               <th class="px-3 py-3">Số dư</th>
               <th class="px-3 py-3 text-right">Thao tác</th>
@@ -416,6 +417,7 @@
           <select id="adm-order-status" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
             <option value="Đang xử lý">Đang xử lý</option>
             <option value="Chờ đối soát">Chờ đối soát</option>
+            <option value="Chờ admin duyệt">Chờ admin duyệt</option>
             <option value="Hoàn thành">Hoàn thành</option>
             <option value="Đã thanh toán">Đã thanh toán</option>
             <option value="Đã huỷ">Đã huỷ</option>
@@ -426,7 +428,7 @@
           <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Hoa hồng (đồng)</label>
           <input id="adm-order-commission" type="number" min="0" step="1000" placeholder="0"
                  class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
-          <p class="text-[11px] text-slate-400 mt-2">Hoa hồng được cộng vào ví sau thời gian tạm giữ. Đơn "Đã huỷ" sẽ bị thu hồi.</p>
+          <p class="text-[11px] text-slate-400 mt-2">Hoa hồng chỉ vào ví khi đơn được chuyển sang "Hoàn thành" hoặc "Đã thanh toán". Đơn "Đã huỷ" sẽ bị thu hồi nếu trước đó đã cộng ví.</p>
           <p id="adm-order-hold" class="text-[11px] font-semibold text-slate-400 mt-2"></p>
         </div>
       </div>

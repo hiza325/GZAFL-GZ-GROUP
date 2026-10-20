@@ -1492,7 +1492,7 @@ async function updateDashboardData() {
   const wallet = await fetchWallet();
   const user = currentUser;
   const total = orders.length;
-  const pending = orders.filter(o => o.status === 'Đang xử lý' || o.status === 'Chờ đối soát').length;
+  const pending = orders.filter(o => o.status === 'Đang xử lý' || o.status === 'Chờ đối soát' || o.status === 'Chờ admin duyệt').length;
   const completed = orders.filter(o => o.status === 'Hoàn thành').length;
   // Đơn đã huỷ không được tính vào hoa hồng
   const commission = wallet
@@ -1567,14 +1567,8 @@ async function updateWalletData() {
   setText('wallet-balance', formatCurrency(data.balance));
   setHeaderBalance(data.balance);
 
-  const held = Number(data.heldCommission) || 0;
   const debt = Number(data.debt) || 0;
-  const heldEl = document.getElementById('wallet-hold-note');
   const debtEl = document.getElementById('wallet-debt-note');
-  if (heldEl) {
-    heldEl.textContent = held > 0 ? `Tạm giữ: ${formatCurrency(held)}` : '';
-    heldEl.classList.toggle('hidden', held <= 0);
-  }
   if (debtEl) {
     debtEl.textContent = debt > 0 ? `Cần hoàn lại: ${formatCurrency(debt)}` : '';
     debtEl.classList.toggle('hidden', debt <= 0);
@@ -1673,8 +1667,10 @@ async function updateOrdersData() {
       const isRealLink = affiliate.isReal === true;
       const isMockLink = affiliate.isReal === false;
       // Sàn đã ghi nhận chuyển đổi nhưng CHƯA duyệt: tiền chưa vào số dư (xem lib/postback.js)
-      const waitingReconcile = (Number(order.networkCommission) || 0) > 0 && (Number(order.commission) || 0) === 0;
-      const heldCommission = order.commissionHeld === true;
+      const waitingReconcile =
+        order.status === 'Chờ đối soát' && (Number(order.networkCommission) || 0) > 0;
+      // Sàn đã duyệt, đơn đang chờ quản trị viên chốt hoa hồng
+      const pendingApproval = order.status === 'Chờ admin duyệt';
       const reversedCommission = Number(order.reversedCommission) || 0;
       htmlList += `
         <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-4">
@@ -1708,10 +1704,10 @@ async function updateOrdersData() {
             <i data-lucide="clock" class="w-3.5 h-3.5"></i>
             Sàn đã ghi nhận ${formatCurrency(order.networkCommission)} nhưng chưa duyệt. Tiền sẽ vào số dư khi được duyệt.
           </div>` : ''}
-          ${heldCommission ? `
+          ${pendingApproval ? `
           <div class="flex items-center gap-2 text-[11px] font-semibold text-amber-700 pt-1">
-            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-            Hoa hồng ${formatCurrency(order.commission)} đang tạm giữ${order.commissionAvailableAt ? ` đến ${formatShortDate(order.commissionAvailableAt)}` : ''}. Bạn có thể rút sau thời gian này.
+            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+            Sàn đã ghi nhận ${formatCurrency(order.networkCommission)}. Đơn đang chờ quản trị viên duyệt; hoa hồng ${formatCurrency(order.commission)} sẽ vào ví sau khi được duyệt.
           </div>` : ''}
           ${reversedCommission > 0 ? `
           <div class="flex items-center gap-2 text-[11px] font-semibold text-rose-600 pt-1">
@@ -2522,13 +2518,11 @@ async function refreshWithdrawBalance() {
 
   const balance = Number(data.balance) || 0;
   const min = Number(data.minWithdraw) || 0;
-  const held = Number(data.heldCommission) || 0;
   const debt = Number(data.debt) || 0;
 
   availableEl.innerText = formatCurrency(balance);
 
   let extra = '';
-  if (held > 0) extra += ' Đang tạm giữ ' + formatCurrency(held) + '.';
   if (debt > 0) extra += ' Bạn đang cần hoàn lại ' + formatCurrency(debt) + ' do hoa hồng bị thu hồi.';
 
   if (balance < min) {
@@ -2814,3 +2808,117 @@ window.closeGuideModal = function() {
 
   setTimeout(() => modal.classList.add('hidden'), 300);
 };
+
+/* ==========================================
+   Bộ điều phối hành động giao diện
+
+   Trước đây các file HTML dùng onclick="..." / onsubmit="..." (37 chỗ).
+   Cách đó buộc CSP phải bật 'unsafe-inline' cho script, làm giảm đáng kể
+   khả năng chặn XSS. Nay HTML chỉ khai báo data-action / data-change-action /
+   data-submit-action / data-enter-action, còn phần xử lý nằm ở đây.
+
+   Ưu điểm:
+   - CSP có thể bỏ 'unsafe-inline' (xem backend/server.js).
+   - Component nạp động (innerHTML) vẫn hoạt động vì nghe sự kiện ở document.
+   ========================================== */
+
+async function pasteClipboardInto(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  try {
+    input.value = await navigator.clipboard.readText();
+    input.focus();
+  } catch (err) {
+    // Trình duyệt chặn clipboard (không phải HTTPS hoặc người dùng từ chối).
+    // Giữ nguyên hành vi cũ: không làm gì.
+  }
+}
+
+const UI_ACTIONS = {
+  // Hộp thoại rút tiền
+  'close-withdraw-modal': () => closeWithdrawModal(),
+  'withdraw-mode': (el) => setWithdrawMode(el.dataset.mode),
+  'toggle-other-bank': () => toggleOtherBankInput(),
+  'pick-withdraw-qr': () => document.getElementById('withdraw-qr-upload')?.click(),
+  'remove-bank-qr': () => removeBankQr(),
+  'submit-withdraw': () => submitWithdraw(),
+
+  // Đăng nhập / đăng ký / quên mật khẩu
+  'open-auth': () => openAuthModal(true),
+  'close-auth': () => closeAuthModal(),
+  'auth-submit': (el, event) => handleAuthSubmit(event),
+  'auth-otp-submit': () => submitAuthOtp(),
+  'auth-otp-resend': () => resendAuthOtp(),
+  'auth-back': () => backToAuthForm(),
+  'forgot-show': () => showForgotPassword(),
+  'forgot-submit': () => submitForgotPassword(),
+  'forgot-admin-submit': () => submitForgotPasswordAdmin(),
+  'forgot-admin-toggle': () => toggleForgotAdmin(),
+  'forgot-hide': () => hideForgotPassword(),
+  'reset-submit': () => submitPasswordReset(),
+  'reset-resend': () => resendResetOtp(),
+  'reset-back': () => backToForgotPanel(),
+  'auth-toggle': () => toggleAuthMode(),
+
+  // Trang chủ / hướng dẫn
+  'open-guide': () => openGuideModal(),
+  'close-guide': () => closeGuideModal(),
+  'guide-backdrop': (el, event) => {
+    if (event.target === el) closeGuideModal();
+  },
+  'paste-landing-link': () => pasteClipboardInto('landing-link-input'),
+  'convert-landing-link': () => convertLandingLink(),
+
+  // Tạo đơn
+  'paste-order-link': () => pasteClipboardInto('link-input'),
+
+  // Điều hướng / tài khoản
+  logout: () => logoutUser(),
+  'navigate-guide': () => navigateTo('guide'),
+  'change-password': () => changePassword(),
+  'pick-avatar': () => document.getElementById('profile-avatar-upload')?.click(),
+  'send-profile-email-otp': () => sendProfileEmailOtp(),
+  'save-profile': () => saveProfileData()
+};
+
+function runUiAction(el, event) {
+  const name =
+    el.dataset.action ||
+    el.dataset.changeAction ||
+    el.dataset.submitAction ||
+    el.dataset.enterAction;
+  const handler = name ? UI_ACTIONS[name] : null;
+  if (!handler) {
+    console.warn('[GZ AFL] Hành động giao diện không xác định:', name);
+    return;
+  }
+  handler(el, event);
+}
+
+document.addEventListener('click', (event) => {
+  const el = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+  if (!el) return;
+  event.preventDefault();
+  runUiAction(el, event);
+});
+
+document.addEventListener('change', (event) => {
+  const el = event.target instanceof Element ? event.target.closest('[data-change-action]') : null;
+  if (!el) return;
+  runUiAction(el, event);
+});
+
+document.addEventListener('submit', (event) => {
+  const el = event.target instanceof Element ? event.target.closest('[data-submit-action]') : null;
+  if (!el) return;
+  event.preventDefault();
+  runUiAction(el, event);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  const el = event.target instanceof Element ? event.target.closest('[data-enter-action]') : null;
+  if (!el) return;
+  event.preventDefault();
+  runUiAction(el, event);
+});

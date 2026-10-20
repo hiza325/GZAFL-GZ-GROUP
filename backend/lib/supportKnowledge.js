@@ -25,19 +25,6 @@ const { CODE_LENGTH, TTL_SECONDS, RESEND_COOLDOWN_SECONDS } = require('./otp');
 const minWithdrawal = formatMoney(WITHDRAWAL_MIN);
 const otpTtlMinutes = Math.round(TTL_SECONDS / 60);
 
-/** Cùng quy tắc với lib/money.js: mặc định 7 ngày, 0 = không giữ. */
-function commissionHoldDays() {
-  const raw = Number(process.env.COMMISSION_HOLD_DAYS);
-  if (!Number.isFinite(raw)) return 7;
-  return Math.min(365, Math.max(0, Math.floor(raw)));
-}
-
-const holdDays = commissionHoldDays();
-const holdText =
-  holdDays > 0
-    ? `Hoa hồng được tạm giữ ${holdDays} ngày kể từ khi mạng duyệt trước khi có thể rút.`
-    : 'Hoa hồng được cộng vào số dư khả dụng ngay khi mạng duyệt (không tạm giữ).';
-
 /** Thông tin liên hệ hỗ trợ lấy từ backend/.env (rỗng nếu chưa cấu hình). */
 function supportContact() {
   const email = String(process.env.SUPPORT_EMAIL || '').trim();
@@ -90,16 +77,14 @@ const TOPICS = [
     title: 'Bao lâu mới nhận được hoa hồng',
     keywords: [
       'bao lau', 'khi nao', 'bao nhieu ngay', 'thoi gian', 'ghi nhan', 'tam giu',
-      'hoa hong', 'doi soat', 'cho duyet', 'dang xu ly', 'hoan thanh'
+      'hoa hong', 'doi soat', 'cho duyet', 'dang xu ly', 'hoan thanh', 'vao vi', 'admin duyet'
     ],
     answer: [
       'Sau khi bạn mua, đơn nằm ở trạng thái "Đang xử lý".',
       'Hệ thống chờ sàn đối soát (thường vài ngày, có sàn tới khoảng 30 ngày) rồi ghi nhận hoa hồng.',
-      'Khi mạng báo đã duyệt, đơn chuyển sang "Hoàn thành" và hoa hồng được ghi vào ví.',
-      holdText,
-      holdDays > 0
-        ? 'Trong thời gian tạm giữ, khoản tiền vẫn hiện trong ví nhưng chưa rút được.'
-        : 'Bạn có thể rút ngay khi số dư đạt mức tối thiểu.',
+      'Khi mạng báo đã duyệt, đơn chuyển sang "Chờ admin duyệt".',
+      'Quản trị viên kiểm tra và duyệt đơn thì hoa hồng mới được cộng vào ví. Không có thời gian tạm giữ cố định.',
+      'Sau khi được duyệt, bạn có thể rút khi số dư đạt mức tối thiểu.',
       'Đơn bị huỷ/hoàn trả sẽ chuyển thành "Đã huỷ" và hoa hồng bị thu hồi.'
     ].join('\n')
   },
@@ -143,7 +128,7 @@ const TOPICS = [
     ],
     answer: [
       `Mức rút tối thiểu là ${minWithdrawal}.`,
-      'Số dư khả dụng = hoa hồng đã ghi - tiền đang tạm giữ - tiền đã rút.',
+      'Số dư khả dụng = hoa hồng đã được admin duyệt - tiền đã rút.',
       'Mỗi lần rút là rút TOÀN BỘ số dư khả dụng, và mỗi tài khoản chỉ được có 1 lệnh rút đang xử lý tại một thời điểm.',
       'Bạn chọn 1 trong 2 cách nhận tiền: (1) nhập ngân hàng/ví + số tài khoản + tên chủ tài khoản, hoặc (2) tải lên ảnh QR nhận tiền.',
       'Sau khi gửi, lệnh ở trạng thái "Đang xử lý"; quản trị viên kiểm tra và chuyển khoản, tiền thường về trong vài giờ đến 1 ngày làm việc.',
@@ -237,7 +222,7 @@ const TOPICS = [
 /** Gợi ý câu hỏi hiện sẵn trong khung chat (giao diện lấy qua GET /api/config). */
 const SUGGESTIONS = [
   'Làm sao tạo đơn hoàn tiền?',
-  'Bao lâu thì rút được hoa hồng?',
+  'Khi nào hoa hồng vào ví?',
   'Rút tiền thế nào?',
   'Mức rút tối thiểu là bao nhiêu?',
   'Hoa hồng bị thu hồi thì sao?',

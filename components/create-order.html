@@ -38,7 +38,7 @@
       ></textarea>
       
       <!-- Nút Dán (Paste) tiện ích -->
-      <button onclick="navigator.clipboard.readText().then(text => document.getElementById('link-input').value = text)" class="absolute top-4 right-4 text-sm font-semibold text-red-500 hover:text-red-600 transition bg-red-50 px-3 py-1.5 rounded-lg">
+      <button data-action="paste-order-link" class="absolute top-4 right-4 text-sm font-semibold text-red-500 hover:text-red-600 transition bg-red-50 px-3 py-1.5 rounded-lg">
         Dán
       </button>
     </div>

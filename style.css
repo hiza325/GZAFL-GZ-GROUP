@@ -369,7 +369,7 @@ body.sidebar-open {
   }
 }
 
-/* Chip tạm giữ / khoản cần hoàn lại trên thẻ số dư */
+/* Chip khoản cần hoàn lại trên thẻ số dư */
 .wallet-meta {
   display: flex;
   flex-wrap: wrap;
@@ -385,12 +385,6 @@ body.sidebar-open {
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.4;
-}
-
-.wallet-chip-hold {
-  color: #fcd34d;
-  background: rgba(245, 158, 11, 0.14);
-  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .wallet-chip-debt {

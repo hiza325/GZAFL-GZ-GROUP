@@ -20,6 +20,15 @@ router.use(requireAuth);
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
 const emailOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'profile-email-otp' });
 
+// Tải ảnh (avatar / QR): 20 lần / 15 phút / tài khoản. Tránh việc một tài khoản
+// gửi liên tục làm đầy đĩa hoặc tạo hàng nghìn file rác.
+const uploadRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  name: 'profile-upload',
+  key: (req) => 'user:' + (req.user ? req.user.id : req.ip)
+});
+
 const ALLOWED_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB
 const BCRYPT_ROUNDS = 10;
@@ -169,7 +178,7 @@ router.post('/email/otp', emailOtpRateLimit, async (req, res) => {
 
 // Cập nhật avatar. Frontend gửi data URL base64; server ghi thành file trong uploads/
 // (không lưu base64 trong database để tránh phình dữ liệu).
-router.post('/avatar', (req, res) => {
+router.post('/avatar', uploadRateLimit, (req, res) => {
   const dataUrl = String((req.body && req.body.dataUrl) || '');
   const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
 
@@ -206,7 +215,7 @@ router.post('/avatar', (req, res) => {
 // Tải ảnh QR nhận tiền (VietQR...). CHỈ nhận PNG/JPG.
 // Frontend gửi data URL base64; server ghi thành file trong uploads/ để
 // database không phình lên và ảnh xem được ở cả trang quản trị.
-router.post('/bank-qr', (req, res) => {
+router.post('/bank-qr', uploadRateLimit, (req, res) => {
   const dataUrl = String((req.body && req.body.dataUrl) || '');
   const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
 
@@ -271,10 +280,12 @@ router.put(
     const passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
 
     // Tăng token_version -> mọi phiên đăng nhập cũ ở thiết bị khác lập tức hết hiệu lực.
-    db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
-      passwordHash,
-      req.user.id
-    );
+    // Xoá hạn mật khẩu tạm: tài khoản chuyển sang mật khẩu do chính người dùng đặt.
+    db.prepare(
+      `UPDATE users
+          SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = NULL
+        WHERE id = ?`
+    ).run(passwordHash, req.user.id);
 
     // Cấp lại cookie cho chính phiên đang thao tác để người dùng không bị văng ra.
     const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);

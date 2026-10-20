@@ -101,10 +101,11 @@ if (newPassword.length < 8) {
 }
 
 const hash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
-db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
-  hash,
-  row.id
-);
+db.prepare(
+  `UPDATE users
+      SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = NULL
+    WHERE id = ?`
+).run(hash, row.id);
 
 // Đóng luôn mọi yêu cầu khôi phục đang chờ của tài khoản này (nếu có),
 // để hàng đợi trong trang quản trị không còn hiện việc đã làm xong.

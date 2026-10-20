@@ -22,6 +22,20 @@ const router = express.Router();
 // Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
 router.use(rateLimit({ windowMs: 60 * 1000, max: 30, name: 'auth' }));
 
+// Chống dò mật khẩu PHÂN TÁN (nhiều IP cùng nhắm một tài khoản).
+// Giới hạn theo IP ở trên không chặn được kẻ dùng proxy xoay IP, nên thêm một
+// bộ đếm theo TÊN ĐĂNG NHẬP. Đây là đánh đổi có chủ đích: 30 lần / 15 phút cho
+// mỗi tài khoản là đủ rộng cho người dùng thật, nhưng chặn được dò diện rộng.
+const loginAccountRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  name: 'login-account',
+  key: (req) => {
+    const username = normalizeUsername((req.body && req.body.username) || '');
+    return username ? 'acct:' + username.toLowerCase() : 'ip:' + (req.ip || 'unknown');
+  }
+});
+
 // Riêng việc GỬI mã OTP khi ĐĂNG KÝ / KHÔI PHỤC MẬT KHẨU thì chặt hơn:
 // 10 lần / 15 phút / IP (dùng chung một bộ đếm cho các endpoint này).
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
@@ -258,7 +272,7 @@ router.post('/register', async (req, res) => {
    làm tốn thư trong hộp của người khác.
    ========================================== */
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginAccountRateLimit, async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
 
@@ -270,6 +284,13 @@ router.post('/login', async (req, res) => {
   const passwordOk = bcrypt.compareSync(password, row ? row.password_hash : DUMMY_HASH);
   if (!row || !passwordOk) {
     return res.status(401).json({ error: 'Tài khoản hoặc mật khẩu không đúng.' });
+  }
+
+  // Mật khẩu tạm do quản trị viên cấp chỉ có hiệu lực trong thời gian giới hạn.
+  if (row.temp_password_expires_at && Date.now() > new Date(row.temp_password_expires_at).getTime()) {
+    return res.status(401).json({
+      error: 'Mật khẩu tạm đã hết hạn. Vui lòng liên hệ quản trị viên để được cấp lại.'
+    });
   }
 
   // Tài khoản chưa có email thì không thể xác thực qua email -> cho vào luôn,
@@ -486,11 +507,13 @@ router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {
     return handleOtpError(res, err);
   }
 
-  // Đổi mật khẩu + tăng token_version -> mọi phiên đăng nhập cũ hết hiệu lực
-  db.prepare('UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?').run(
-    bcrypt.hashSync(newPassword, BCRYPT_ROUNDS),
-    row.id
-  );
+  // Đổi mật khẩu + tăng token_version -> mọi phiên đăng nhập cũ hết hiệu lực.
+  // Xoá luôn hạn của mật khẩu tạm: từ đây tài khoản dùng mật khẩu do chính họ đặt.
+  db.prepare(
+    `UPDATE users
+        SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = NULL
+      WHERE id = ?`
+  ).run(bcrypt.hashSync(newPassword, BCRYPT_ROUNDS), row.id);
 
   // Người dùng đã tự xử lý xong -> đóng luôn yêu cầu đang chờ quản trị viên (nếu có)
   db.prepare(

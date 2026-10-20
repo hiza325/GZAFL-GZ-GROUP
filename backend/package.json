@@ -12,10 +12,11 @@
     "make-admin": "node scripts/make-admin.js",
     "reset-password": "node scripts/reset-password.js",
     "backup": "node scripts/backup.js",
+    "check:deploy": "node scripts/check-deploy.js",
     "test": "node --test"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

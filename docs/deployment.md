@@ -7,7 +7,9 @@ Làm theo đúng thứ tự dưới đây là đủ; phần cuối có mục x�
 
 ## 0. Chuẩn bị
 
-- Máy chủ có **Node.js >= 22.5** (khuyến nghị 22 LTS hoặc 24).
+- Máy chủ có **Node.js >= 22.13** (khuyến nghị **Node 24 LTS**).
+  Lý do: backend dùng `node:sqlite`; từ Node 22.13 mới không cần cờ `--experimental-sqlite`.
+  Node 22.5–22.12 vẫn chạy được nếu thêm cờ đó, nhưng không nên dùng cho production mới.
 - Một tên miền đã trỏ về IP máy chủ (ví dụ `gzafl.vn`).
 - Quyền quản trị máy chủ (Linux thường dùng `sudo`).
 
@@ -95,6 +97,18 @@ Ghi chú quan trọng:
   bằng khoá mặc định, hoặc ngắn hơn 32 ký tự. Đây là chủ đích — khoá yếu = ai cũng
   giả được phiên đăng nhập của người khác.
 
+### Kiểm tra cấu hình trước khi chạy
+
+```bash
+cd backend
+npm run check:deploy
+```
+
+Script kiểm tra: phiên bản Node, `NODE_ENV`, độ mạnh `JWT_SECRET`, HTTPS/`TRUST_PROXY`,
+`PUBLIC_BASE_URL`, `CASHBACK_RATE`, cấu hình affiliate/postback/SMTP và quyền ghi các
+thư mục `data/`, `uploads/`, `backups/`. Dòng `[LỖI]` phải sửa hết; `[CẢNH BÁO]` là
+những điểm nên xem lại. Script **không** in ra giá trị bí mật và không gửi email.
+
 ---
 
 ## 2. Bật HTTPS
@@ -145,6 +159,11 @@ PUBLIC_BASE_URL=https://ten-mien-cua-ban.com
 
 - cookie phiên (đang bật `secure`) sẽ bị trình duyệt từ chối ⇒ **đăng nhập xong vẫn như chưa đăng nhập**;
 - link hoàn tiền tuyệt đối sẽ bị tạo với `http://` thay vì `https://`.
+
+> **Nhật ký truy cập và postback:** mạng affiliate gửi `POSTBACK_SECRET` trong query
+> string. Nếu Nginx ghi `$request` (format `combined` mặc định), khoá sẽ nằm trong
+> file access log. Hãy dùng log format chỉ ghi `$uri` (bỏ query) hoặc tắt access log
+> cho `location /api/postback/`. Nhật ký trong ứng dụng đã tự che tham số này.
 
 Xin chứng chỉ miễn phí bằng Let's Encrypt:
 
@@ -389,6 +408,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `MAIL_FROM` | theo `SMTP_USER` | Địa chỉ người gửi |
 | `MAIL_FROM_NAME` | `GZ AFL` | Tên người gửi hiện trên thư |
 | `WITHDRAWAL_MIN` | `1000` | Số dư tối thiểu được rút (đồng) |
+| `TEMP_PASSWORD_TTL_HOURS` | `24` | Số giờ mật khẩu tạm do quản trị viên cấp còn hiệu lực |
 | `AFFILIATE_PROVIDER` | `mock` | `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật (ví dụ `TikTok Shop`); sàn khác tạm dùng link thử nghiệm |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |
@@ -423,7 +443,7 @@ Khởi động lại rồi kiểm tra:
 
 ```bash
 curl http://127.0.0.1:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-3.5-flash-lite","maxTokens":2048,"dailyLimit":800,"usedToday":0}
+# {"ai":true,"dailyLimit":800,"usedToday":0,"remainingToday":800,"suggestions":8}
 ```
 
 Lưu ý khi vận hành:
