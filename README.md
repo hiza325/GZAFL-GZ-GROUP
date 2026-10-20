@@ -371,7 +371,7 @@ Chọn nhà cung cấp bằng biến `AFFILIATE_PROVIDER`:
 | Giá trị | Trạng thái | Ghi chú |
 |---|---|---|
 | `mock` (mặc định) | ✅ chạy được ngay | Trả về link nội bộ `http://localhost:3000/r/<mã đơn>`. Bấm vào sẽ được đếm lượt và chuyển hướng sang link gốc. **Không tạo ra hoa hồng thật** — hoa hồng vẫn do quản trị viên chốt tay. |
-| `accesstrade` | ✅ TikTok Shop đang chạy thật; Shopee/Tiki chờ duyệt campaign | Cần `ACCESSTRADE_API_KEY` + campaign ID từng sàn (`ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI`). Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
+| `accesstrade` | ✅ TikTok Shop và Tiki đang chạy thật; Shopee chờ duyệt campaign | Cần `ACCESSTRADE_API_KEY` + campaign ID từng sàn (`ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI`). Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
 | `shopee` | ⛔ chưa cài đặt | Cần `SHOPEE_AFFILIATE_APP_ID` + `SHOPEE_AFFILIATE_SECRET`, và phải đối chiếu tài liệu chính thức về cách ký request trước khi dùng. |
 
 > ⚠️ **Không thể tạo hoa hồng bằng cách tự thêm tham số vào link.** Muốn có ghi nhận thật, bắt buộc phải có tài khoản affiliate đã được duyệt rồi gọi API do họ cấp. Xem phân tích đầy đủ ở **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.

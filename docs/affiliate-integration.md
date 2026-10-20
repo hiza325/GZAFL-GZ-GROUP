@@ -7,8 +7,8 @@
 > link rút gọn `/r/<mã đơn>`, đơn hàng lưu `original_link` / `affiliate_link` / `sub_id`,
 > giao diện trả link hoàn tiền kèm nút Copy và Mua ngay).
 >
-> **Trạng thái hiện tại:** TikTok Shop đã được duyệt và đang dùng API thật.
-> Shopee và Tiki đang chờ duyệt campaign nên tạm dùng link nội bộ `/r/<mã đơn>`;
+> **Trạng thái hiện tại:** TikTok Shop và Tiki đã được duyệt và đang dùng API thật.
+> Shopee đang chờ duyệt campaign nên tạm dùng link nội bộ `/r/<mã đơn>`;
 > app vẫn tạo đơn bình thường, không bị lỗi.
 
 ---
