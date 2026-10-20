@@ -72,7 +72,8 @@ const MAX_ORDER_LINK_LENGTH = 2048;
 const ORDER_LINK_RULES = [
   { platform: 'TikTok Shop', suffixes: ['tiktok.com', 'tiktokshop.com'] },
   { platform: 'Shopee', suffixes: ['shopee.vn', 'shp.ee'] },
-  { platform: 'Tiki', suffixes: ['tiki.vn'] }
+  { platform: 'Tiki', suffixes: ['tiki.vn'] },
+  { platform: 'Lazada', suffixes: ['lazada.vn'] }
 ];
 
 function hostMatchesSuffix(host, suffix) {

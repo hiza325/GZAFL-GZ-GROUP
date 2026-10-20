@@ -217,7 +217,7 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(avatar.status, 200);
   });
 
-  await t.test('chặn link sàn giả, nhận link Shopee/Tiki hợp lệ', async () => {
+  await t.test('chặn link sàn giả, nhận link Shopee/Tiki/Lazada hợp lệ', async () => {
     const fakeDomain = await json('/api/orders', {
       method: 'POST',
       cookie: user.cookie,
@@ -255,6 +255,14 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     });
     assert.equal(tiki.res.status, 201);
     assert.equal(tiki.data.order.platform, 'Tiki');
+
+    const lazada = await json('/api/orders', {
+      method: 'POST',
+      cookie: user.cookie,
+      body: { link: 'https://www.lazada.vn/products/1.html' }
+    });
+    assert.equal(lazada.res.status, 201);
+    assert.equal(lazada.data.order.platform, 'Lazada');
   });
 
   await t.test('phân quyền quản trị', async () => {

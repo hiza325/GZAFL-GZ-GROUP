@@ -1255,6 +1255,7 @@ document.addEventListener('click', async function(event) {
   const shopeeRegex = /(shopee\.vn|shp\.ee)/i;
   const tiktokRegex = /(tiktok\.com|vt\.tiktok\.com)/i;
   const tikiRegex = /(tiki\.vn)/i;
+  const lazadaRegex = /(lazada\.vn|c\.lazada\.vn)/i;
 
   errorBox && errorBox.classList.add('hidden');
   inputElement.classList.remove('border-red-500', 'bg-red-50/50');
@@ -1283,8 +1284,8 @@ document.addEventListener('click', async function(event) {
   }
 
   const singleLink = links[0];
-  if (!(shopeeRegex.test(singleLink) || tiktokRegex.test(singleLink) || tikiRegex.test(singleLink))) {
-    showError('Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok hoặc Tiki.');
+  if (!(shopeeRegex.test(singleLink) || tiktokRegex.test(singleLink) || tikiRegex.test(singleLink) || lazadaRegex.test(singleLink))) {
+    showError('Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok, Tiki hoặc Lazada.');
     return;
   }
 
@@ -2577,7 +2578,7 @@ function renderNotifications() {
 // Link người dùng dán ở trang chủ, giữ lại để điền sẵn sau khi đăng nhập xong
 let pendingLandingLink = null;
 
-const LANDING_LINK_REGEX = /(shopee\.vn|shp\.ee|tiktok\.com|vt\.tiktok\.com|tiki\.vn)/i;
+const LANDING_LINK_REGEX = /(shopee\.vn|shp\.ee|tiktok\.com|vt\.tiktok\.com|tiki\.vn|lazada\.vn|c\.lazada\.vn)/i;
 
 window.convertLandingLink = function() {
   const input = document.getElementById('landing-link-input');
@@ -2589,7 +2590,7 @@ window.convertLandingLink = function() {
     return;
   }
   if (!LANDING_LINK_REGEX.test(value)) {
-    showToast('Link không hợp lệ. Vui lòng dán link Shopee, TikTok hoặc Tiki.', 'error');
+    showToast('Link không hợp lệ. Vui lòng dán link Shopee, TikTok, Tiki hoặc Lazada.', 'error');
     if (input) input.focus();
     return;
   }
