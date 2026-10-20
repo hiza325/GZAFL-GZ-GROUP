@@ -10,7 +10,7 @@
   'use strict';
 
   const PAGE_SIZE = 50;
-  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets', 'postbacks'];
+  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets', 'postbacks', 'audit'];
   const RESET_PENDING = 'Chờ xử lý';
 
   const state = {
@@ -30,6 +30,7 @@
       loading: false,
       stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
     },
+    audit: { items: [], total: 0, q: '', offset: 0, loading: false },
     editing: { order: null, withdrawal: null, user: null }
   };
 
@@ -195,7 +196,7 @@
       <tr class="border-b border-slate-50 hover:bg-slate-50/60">
         <td class="px-3 py-3">
           <div class="font-bold text-slate-700">${escapeHtml(o.id)}</div>
-          <a href="${escapeHtml(o.link)}" target="_blank" rel="noopener" class="text-[11px] text-red-500 hover:underline break-all">Xem link sản phẩm</a>
+          <a href="${escapeHtml(safeHttpUrl(o.link))}" target="_blank" rel="noopener" class="text-[11px] text-red-500 hover:underline break-all">Xem link sản phẩm</a>
         </td>
         <td class="px-3 py-3">
           <div class="font-semibold text-slate-700">${escapeHtml(o.user.name)}</div>
@@ -224,7 +225,7 @@
     setText('adm-order-info', `${order.user.name} (${order.user.username}) — ${order.platform}`);
     const link = document.getElementById('adm-order-link');
     if (link) {
-      link.href = order.link;
+      link.href = safeHttpUrl(order.link) || '#';
       link.innerText = order.link;
       link.classList.remove('hidden');
     }
@@ -967,6 +968,96 @@
   }
 
   /* ==========================================
+     Nhật ký quản trị
+
+     Ai đã đổi gì, khi nào — server ghi ở lib/audit.js.
+     Chỉ quản trị viên xem được (GET /api/admin/audit-logs).
+     Mật khẩu tạm KHÔNG bao giờ được ghi vào nhật ký.
+  ========================================== */
+
+  async function loadAuditLogs({ reset = false } = {}) {
+    const s = state.audit;
+    if (s.loading) return;
+    if (reset) {
+      s.offset = 0;
+      s.items = [];
+    }
+    s.loading = true;
+
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(s.offset) });
+    if (s.q) params.set('q', s.q);
+
+    try {
+      const data = await api('/admin/audit-logs?' + params.toString());
+      s.total = data.total || 0;
+      s.items = reset ? data.logs || [] : s.items.concat(data.logs || []);
+      s.offset = s.items.length;
+      renderAuditLogs();
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      s.loading = false;
+    }
+  }
+
+  function auditTargetLabel(item) {
+    const label =
+      {
+        user: 'Người dùng',
+        order: 'Đơn hàng',
+        withdrawal: 'Lệnh rút',
+        postback: 'Postback',
+        'password-reset': 'Yêu cầu khôi phục'
+      }[item.targetType] || item.targetType;
+    return label ? `${label} ${item.targetId}` : '';
+  }
+
+  function renderAuditLogs() {
+    const box = document.getElementById('adm-audit-list');
+    if (!box) return;
+    const { items, total } = state.audit;
+
+    if (items.length === 0) {
+      box.innerHTML = `
+        <div class="py-10 text-center">
+          <div class="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-3">
+            <i data-lucide="history" class="w-6 h-6 text-slate-300"></i>
+          </div>
+          <p class="text-slate-500 text-sm">Chưa có thao tác nào được ghi lại.</p>
+        </div>`;
+    } else {
+      box.innerHTML = items
+        .map((item) => {
+          const target = auditTargetLabel(item);
+          const actor = item.actor && (item.actor.username || item.actor.name);
+          return `
+      <div class="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4 p-4 rounded-2xl border border-slate-100 bg-slate-50/40">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-bold text-slate-700">${escapeHtml(item.action)}</span>
+            ${
+              target
+                ? `<span class="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">${escapeHtml(target)}</span>`
+                : ''
+            }
+          </div>
+          ${item.detail ? `<div class="text-sm text-slate-500 mt-1 break-words">${escapeHtml(item.detail)}</div>` : ''}
+        </div>
+        <div class="sm:text-right shrink-0">
+          <div class="text-xs font-semibold text-slate-600">${escapeHtml(actor || 'Hệ thống')}</div>
+          <div class="text-xs text-slate-400">${escapeHtml(item.date)}</div>
+        </div>
+      </div>`;
+        })
+        .join('');
+    }
+
+    setText('adm-audit-count', total + ' thao tác');
+    toggleMore('adm-audit-more', items.length < total);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  /* ==========================================
      Tab
   ========================================== */
 
@@ -995,6 +1086,7 @@
       else if (tab === 'referrals' && state.referrals.items.length === 0) loadReferrals({ reset: true });
       else if (tab === 'password-resets' && state.resets.items.length === 0) loadResets({ reset: true });
       else if (tab === 'postbacks' && state.postbacks.items.length === 0) loadPostbacks({ reset: true });
+      else if (tab === 'audit' && state.audit.items.length === 0) loadAuditLogs({ reset: true });
     }
   }
 
@@ -1081,6 +1173,7 @@
       if (event.target.closest('#adm-ref-more')) return loadReferrals();
       if (event.target.closest('#adm-reset-more')) return loadResets();
       if (event.target.closest('#adm-pb-more')) return loadPostbacks();
+      if (event.target.closest('#adm-audit-more')) return loadAuditLogs();
       if (event.target.closest('#adm-order-save')) return saveOrder();
       if (event.target.closest('#adm-wd-save')) return saveWithdrawal();
       if (event.target.closest('#adm-user-save')) return saveUser();
@@ -1095,7 +1188,8 @@
         'adm-orders-search': ['orders', 'q'],
         'adm-wd-search': ['withdrawals', 'q'],
         'adm-users-search': ['users', 'q'],
-        'adm-pb-search': ['postbacks', 'q']
+        'adm-pb-search': ['postbacks', 'q'],
+        'adm-audit-search': ['audit', 'q']
       };
       const target = targets[id];
       if (!target) return;
@@ -1108,6 +1202,7 @@
         if (bucket === 'orders') loadOrders({ reset: true });
         else if (bucket === 'withdrawals') loadWithdrawals({ reset: true });
         else if (bucket === 'postbacks') loadPostbacks({ reset: true });
+        else if (bucket === 'audit') loadAuditLogs({ reset: true });
         else loadUsers({ reset: true });
       }, 350);
     });
@@ -1160,6 +1255,7 @@
       loading: false,
       stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
     };
+    state.audit = { items: [], total: 0, q: '', offset: 0, loading: false };
     resetArmed = null;
 
     const ordersSearch = document.getElementById('adm-orders-search');
@@ -1171,6 +1267,7 @@
     const pbSearch = document.getElementById('adm-pb-search');
     const pbStatus = document.getElementById('adm-pb-status');
     const pbOnly = document.getElementById('adm-pb-only');
+    const auditSearch = document.getElementById('adm-audit-search');
     if (ordersSearch) ordersSearch.value = '';
     if (ordersStatus) ordersStatus.value = '';
     if (wdSearch) wdSearch.value = '';
@@ -1180,6 +1277,7 @@
     if (pbSearch) pbSearch.value = '';
     if (pbStatus) pbStatus.value = '';
     if (pbOnly) pbOnly.value = '';
+    if (auditSearch) auditSearch.value = '';
 
     await Promise.all([
       loadOverview(),
@@ -1188,7 +1286,8 @@
       loadUsers({ reset: true }),
       loadReferrals({ reset: true }),
       loadResets({ reset: true }),
-      loadPostbacks({ reset: true })
+      loadPostbacks({ reset: true }),
+      loadAuditLogs({ reset: true })
     ]);
   }
 
@@ -1216,6 +1315,7 @@
       stats: { total: 0, matched: 0, unmatched: 0, refused: 0, rewardTotal: 0, approvedTotal: 0, pendingTotal: 0 }
     };
     state.editing = { order: null, withdrawal: null, user: null };
+    state.audit = { items: [], total: 0, q: '', offset: 0, loading: false };
     resetArmed = null;
 
     // Tab đang hiển thị tải ngay, các tab khác tải khi bấm vào (xem setTab)

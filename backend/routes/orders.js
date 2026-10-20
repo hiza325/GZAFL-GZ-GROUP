@@ -3,32 +3,46 @@
 const express = require('express');
 const db = require('../db');
 const { toOrder } = require('../lib/serialize');
-const { generateOrderCode, detectPlatform } = require('../lib/validate');
+const { generateOrderCode, parseOrderLink, MAX_ORDER_LINK_LENGTH } = require('../lib/validate');
 const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
+const { rateLimit } = require('../lib/rateLimit');
 const affiliate = require('../lib/affiliate');
 
 const router = express.Router();
 router.use(requireAuth);
+
+// Chống spam tạo đơn: 20 đơn / 10 phút cho mỗi tài khoản (mỗi đơn còn gọi API sàn).
+const orderRateLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  key: (req) => 'user:' + (req.user ? req.user.id : req.ip)
+});
 
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC').all(req.user.id);
   return res.json({ orders: rows.map(toOrder) });
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', orderRateLimit, async (req, res, next) => {
   try {
-    const link = String((req.body && req.body.link) || '').trim();
+    const raw = String((req.body && req.body.link) || '').trim();
 
-    if (!link) return res.status(400).json({ error: 'Vui lòng dán link sản phẩm trước khi tiếp tục.' });
-    if (link.includes('\n') || link.split(/\s+/).filter(Boolean).length > 1) {
+    if (!raw) return res.status(400).json({ error: 'Vui lòng dán link sản phẩm trước khi tiếp tục.' });
+    if (raw.length > MAX_ORDER_LINK_LENGTH) {
+      return res.status(400).json({ error: 'Link quá dài. Vui lòng dán đúng link sản phẩm.' });
+    }
+    if (raw.includes('\n') || raw.split(/\s+/).filter(Boolean).length > 1) {
       return res.status(400).json({ error: 'Chỉ cho phép nhập đúng 1 link. Vui lòng không nhập nhiều link cùng lúc!' });
     }
 
-    const platform = detectPlatform(link);
-    if (!platform) {
+    // Parse URL thật + kiểm tra tên miền: chặn javascript:, data:... và tên miền giả mạo
+    const parsed = parseOrderLink(raw);
+    if (!parsed) {
       return res.status(400).json({ error: 'Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok hoặc Lazada.' });
     }
+    const link = parsed.url;
+    const platform = parsed.platform;
 
     let code = null;
     for (let attempt = 0; attempt < 20; attempt++) {

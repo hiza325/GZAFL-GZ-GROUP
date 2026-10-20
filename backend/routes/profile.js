@@ -59,6 +59,14 @@ function isJpeg(buffer) {
   return buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
 }
 
+function isWebp(buffer) {
+  return (
+    buffer.length > 12 &&
+    buffer.toString('latin1', 0, 4) === 'RIFF' &&
+    buffer.toString('latin1', 8, 12) === 'WEBP'
+  );
+}
+
 // Cập nhật hồ sơ
 router.put('/', (req, res) => {
   const name = String((req.body && req.body.name) || '').trim();
@@ -148,7 +156,15 @@ router.post('/avatar', (req, res) => {
     return res.status(400).json({ error: 'Kích thước ảnh quá lớn. Vui lòng chọn ảnh dưới 2MB.' });
   }
 
-  const filename = `avatar_${req.user.id}_${Date.now()}.${ext}`;
+  // Kiểm tra vài byte đầu: không tin vào nhãn "data:image/..." do trình duyệt gửi lên
+  const isRealImage = ext === 'png' ? isPng(buffer) : ext === 'jpg' ? isJpeg(buffer) : isWebp(buffer);
+  if (!isRealImage) {
+    return res.status(400).json({ error: 'File tải lên không phải ảnh hợp lệ.' });
+  }
+
+  // Tên file có thêm chuỗi ngẫu nhiên để không đoán được đường dẫn ảnh của người khác
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const filename = `avatar_${req.user.id}_${Date.now()}_${suffix}.${ext}`;
   fs.writeFileSync(path.join(UPLOAD_DIR, filename), buffer);
 
   // Xoá avatar cũ nếu là file do hệ thống lưu

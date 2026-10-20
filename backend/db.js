@@ -111,6 +111,15 @@ db.exec(`
     UNIQUE (purpose, email)
   );
 
+  -- Chống spam thư thông báo (ví dụ "tài khoản đã tồn tại"): mỗi email chỉ nhận
+  -- một thư cùng loại trong một khoảng thời gian.
+  CREATE TABLE IF NOT EXISTS email_notices (
+    email        TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    last_sent_at TEXT NOT NULL,
+    PRIMARY KEY (email, kind)
+  );
+
   -- Nhật ký postback: mạng affiliate gọi vào mỗi khi có chuyển đổi.
   -- Ghi NGUYÊN tham số nhận được TRƯỚC khi xử lý, để còn đối soát khi có khiếu nại.
   -- payload_hash dùng để chống xử lý trùng: mạng gửi lại y hệt thì chỉ tăng dup_count.
@@ -133,6 +142,21 @@ db.exec(`
     order_code       TEXT NOT NULL DEFAULT '',
     action           TEXT NOT NULL DEFAULT '',
     note             TEXT NOT NULL DEFAULT ''
+  );
+
+  -- Nhật ký thao tác của quản trị viên (ai đổi gì, khi nào).
+  -- CỐ Ý không dùng khoá ngoại tới users: xoá người dùng vẫn phải giữ lại nhật ký.
+  CREATE TABLE IF NOT EXISTS admin_audit_logs (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_id       INTEGER,
+    actor_name     TEXT NOT NULL DEFAULT '',
+    actor_username TEXT NOT NULL DEFAULT '',
+    action         TEXT NOT NULL,
+    target_type    TEXT NOT NULL DEFAULT '',
+    target_id      TEXT NOT NULL DEFAULT '',
+    detail         TEXT NOT NULL DEFAULT '',
+    ip             TEXT NOT NULL DEFAULT '',
+    created_at     TEXT NOT NULL
   );
 `);
 
@@ -187,6 +211,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);
   CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_postback_hash ON postback_logs (payload_hash);
+  CREATE INDEX IF NOT EXISTS idx_audit_created       ON admin_audit_logs (created_at);
 `);
 
 // Chống 2 đơn cùng nhận một giao dịch của mạng. Dùng chỉ mục một phần (chỉ áp dụng

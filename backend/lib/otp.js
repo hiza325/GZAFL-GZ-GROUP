@@ -280,6 +280,69 @@ async function sendOtp({ purpose, email, code, name = '' }) {
   await mailer.send({ to: normalizeEmail(email), subject, text, html });
 }
 
+// Chống spam thư "tài khoản đã tồn tại": mỗi email chỉ nhận 1 thư / 30 phút
+const NOTICE_COOLDOWN_SECONDS = 30 * 60;
+
+/**
+ * Gửi thư báo "tài khoản đã tồn tại" khi có người thử ĐĂNG KÝ trùng.
+ *
+ * QUAN TRỌNG: thư chỉ gửi tới ĐÚNG địa chỉ email đã đăng ký của chủ tài khoản,
+ * KHÔNG gửi tới email mà người gửi vừa nhập. Nhờ vậy kẻ dò tài khoản (nhập username
+ * của người khác nhưng email của mình) không nhận được gì và không biết tài khoản
+ * có tồn tại hay không.
+ *
+ * Trả về { sent, cooldown } — không ném lỗi vì đây chỉ là thư thông báo phụ.
+ */
+async function sendAccountExistsNotice({ email, name = '', username = '' }) {
+  const cleanEmail = normalizeEmail(email);
+  if (!cleanEmail) return { sent: false };
+
+  const kind = 'account_exists';
+  const row = db
+    .prepare('SELECT last_sent_at FROM email_notices WHERE email = ? AND kind = ?')
+    .get(cleanEmail, kind);
+
+  if (row && Date.now() - toMs(row.last_sent_at) < NOTICE_COOLDOWN_SECONDS * 1000) {
+    return { sent: false, cooldown: true };
+  }
+
+  const greet = name ? `Xin chào ${name},` : 'Xin chào,';
+  const loginBy = username ? `bằng tài khoản ${username}` : 'bằng tài khoản của bạn';
+
+  const text = [
+    greet,
+    '',
+    'Ai đó (có thể là bạn) vừa thử đăng ký tài khoản GZ AFL bằng địa chỉ email này.',
+    'Tài khoản đã tồn tại nên hệ thống không tạo tài khoản mới và không gửi mã đăng ký.',
+    '',
+    `Nếu là bạn: hãy đăng nhập ${loginBy}. Nếu quên mật khẩu, dùng chức năng "Quên mật khẩu" ở trang đăng nhập.`,
+    'Nếu không phải bạn: hãy bỏ qua thư này. Tài khoản của bạn vẫn an toàn — không ai đăng nhập được nếu không có mật khẩu và mã xác thực.',
+    '',
+    'GZ AFL'
+  ].join('\n');
+
+  const html = `<!doctype html>
+<html lang="vi"><body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;padding:32px">
+    <div style="font-size:13px;font-weight:bold;letter-spacing:1px;color:#f04d4d;text-transform:uppercase">GZ AFL</div>
+    <h1 style="font-size:20px;margin:16px 0 8px">Tài khoản đã tồn tại</h1>
+    <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0 0 16px">${escapeHtml(greet)}</p>
+    <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0 0 16px">Ai đó (có thể là bạn) vừa thử đăng ký tài khoản GZ AFL bằng địa chỉ email này. Tài khoản đã tồn tại nên hệ thống <b>không tạo tài khoản mới</b> và không gửi mã đăng ký.</p>
+    <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0 0 16px">Nếu là bạn: hãy đăng nhập ${escapeHtml(loginBy)}. Nếu quên mật khẩu, dùng chức năng <b>Quên mật khẩu</b> ở trang đăng nhập.</p>
+    <p style="font-size:13px;line-height:1.6;color:#6b7280;margin:0">Nếu không phải bạn: hãy bỏ qua thư này. Tài khoản của bạn vẫn an toàn — không ai đăng nhập được nếu không có mật khẩu và mã xác thực.</p>
+  </div>
+</body></html>`;
+
+  await mailer.send({ to: cleanEmail, subject: 'Tài khoản GZ AFL đã tồn tại', text, html });
+
+  db.prepare(
+    `INSERT INTO email_notices (email, kind, last_sent_at) VALUES (?, ?, ?)
+     ON CONFLICT (email, kind) DO UPDATE SET last_sent_at = excluded.last_sent_at`
+  ).run(cleanEmail, kind, new Date().toISOString());
+
+  return { sent: true };
+}
+
 /**
  * Tạo mã + gửi thư trong một bước.
  * Trả về { expiresInSeconds, resendInSeconds, devCode } — devCode chỉ có khi
@@ -330,6 +393,7 @@ module.exports = {
   issue,
   verify,
   clear,
+  sendAccountExistsNotice,
   issueAndSend,
   cleanup
 };

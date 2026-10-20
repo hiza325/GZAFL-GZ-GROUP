@@ -64,10 +64,54 @@ function generateWithdrawalCode() {
   return 'WD' + randomDigits(6);
 }
 
-function detectPlatform(link) {
-  if (/tiktok/i.test(link)) return 'TikTok Shop';
-  if (/lazada/i.test(link)) return 'Lazada';
-  if (/(shopee\.vn|shp\.ee)/i.test(link)) return 'Shopee';
+// Độ dài tối đa cho link sản phẩm người dùng dán vào
+const MAX_ORDER_LINK_LENGTH = 2048;
+
+// Chỉ chấp nhận link thuộc đúng các tên miền của sàn. Khớp theo hậu tố tên miền
+// để vẫn nhận tên miền con (vt.tiktok.com, s.shopee.vn...).
+const ORDER_LINK_RULES = [
+  { platform: 'TikTok Shop', suffixes: ['tiktok.com', 'tiktokshop.com'] },
+  { platform: 'Shopee', suffixes: ['shopee.vn', 'shp.ee'] },
+  { platform: 'Lazada', suffixes: ['lazada.vn'] }
+];
+
+function hostMatchesSuffix(host, suffix) {
+  return host === suffix || host.endsWith('.' + suffix);
+}
+
+/**
+ * Kiểm tra link sản phẩm NGƯỜI DÙNG gửi lên.
+ *
+ * QUAN TRỌNG: phải parse URL thật rồi kiểm tra giao thức + tên miền.
+ * Trước đây chỉ dùng regex "có chứa chữ tiktok/shopee" nên link dạng
+ * `javascript:alert(1)//tiktok` cũng lọt qua và bị lưu thành href -> XSS.
+ *
+ * @returns {{platform: string, url: string} | null}
+ */
+function parseOrderLink(raw) {
+  let text = String(raw == null ? '' : raw).trim();
+  if (!text || text.length > MAX_ORDER_LINK_LENGTH) return null;
+  if (text.includes('\n') || text.includes('\r')) return null;
+
+  // Người dùng thường dán thiếu "https://" -> tự thêm, nhưng vẫn phải kiểm tra giao thức.
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = 'https://' + text;
+
+  let url;
+  try {
+    url = new URL(text);
+  } catch (err) {
+    return null;
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  if (url.username || url.password) return null;
+
+  const host = url.hostname.toLowerCase();
+  for (const rule of ORDER_LINK_RULES) {
+    if (rule.suffixes.some((suffix) => hostMatchesSuffix(host, suffix))) {
+      return { platform: rule.platform, url: url.toString() };
+    }
+  }
   return null;
 }
 
@@ -75,6 +119,7 @@ module.exports = {
   EMAIL_REGEX,
   PHONE_REGEX,
   REFERRAL_CODE_LENGTH,
+  MAX_ORDER_LINK_LENGTH,
   isValidEmail,
   isValidPhone,
   isValidUsername,
@@ -82,5 +127,5 @@ module.exports = {
   generateOrderCode,
   generateWithdrawalCode,
   generateTempPassword,
-  detectPlatform
+  parseOrderLink
 };

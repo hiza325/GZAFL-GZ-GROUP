@@ -7,7 +7,8 @@
  *
  * Nguyên tắc bắt buộc:
  *  1. Xác thực `POSTBACK_SECRET` trước khi làm bất cứ việc gì (so sánh bằng timingSafeEqual).
- *  2. Ghi NGUYÊN tham số nhận được vào `postback_logs` TRƯỚC khi xử lý — có log mới đối soát được.
+ *  2. Ghi tham số nhận được vào `postback_logs` TRƯỚC khi xử lý — có log mới đối soát được.
+ *     Chìa khoá (POSTBACK_SECRET) và các tham số nhạy cảm được CHE trước khi lưu (lib/redact.js).
  *  3. Chống trùng: mạng gửi lại y hệt thì chỉ tăng `dup_count`, không cộng tiền lần hai.
  *  4. Trạng thái đơn: pending -> "Chờ đối soát" (chưa vào số dư),
  *     approved -> "Hoàn thành" (cộng tiền), rejected -> "Đã huỷ".
@@ -24,6 +25,7 @@
 const crypto = require('node:crypto');
 const db = require('../db');
 const { CANCELLED, AWAITING_RECONCILE } = require('./constants');
+const { redactParams } = require('./redact');
 
 const PROVIDER = String(process.env.AFFILIATE_PROVIDER || 'mock').toLowerCase();
 
@@ -188,6 +190,9 @@ function findOrder(parsed, userId) {
  * AccessTrade gửi mỗi sản phẩm một lần, nên phải cộng dồn theo đơn chứ không lấy từng lần.
  */
 function totalsFor(order) {
+  const tx = String(order.network_order_id || '');
+  // Khớp CHẶT theo mã giao dịch của đơn: khi đơn đã có mã giao dịch thì chỉ cộng các
+  // log của đúng giao dịch đó, không gộp thêm log "không có mã giao dịch" (dễ lẫn đơn khác).
   const row = db
     .prepare(
       `SELECT
@@ -196,9 +201,10 @@ function totalsFor(order) {
          COALESCE(SUM(CASE WHEN network_status = 'rejected' THEN reward ELSE 0 END), 0) AS rejected
        FROM postback_logs
        WHERE order_code = ?
-         AND (transaction_id = ? OR transaction_id = '')`
+         AND action != 'Từ chối'
+         AND ( (transaction_id = ? AND ? != '') OR (transaction_id = '' AND ? = '') )`
     )
-    .get(order.code, order.network_order_id || '');
+    .get(order.code, tx, tx, tx);
   return {
     approved: Number(row.approved) || 0,
     pending: Number(row.pending) || 0,
@@ -227,7 +233,8 @@ function hashPayload(parsed) {
 function rawQuery(params) {
   let text;
   try {
-    text = JSON.stringify(params);
+    // Che chìa khoá/token trước khi lưu: log còn dùng để hiển thị ở trang quản trị
+    text = JSON.stringify(redactParams(params));
   } catch (err) {
     text = String(params);
   }
@@ -444,6 +451,12 @@ function receiveRejected(params, meta = {}, reason = '') {
 function reapply(logId) {
   const log = db.prepare('SELECT * FROM postback_logs WHERE id = ?').get(logId);
   if (!log) return { ok: false, error: 'Không tìm thấy log.' };
+
+  // Log bị từ chối (sai chìa khoá / lỗi xử lý) KHÔNG được xử lý lại thành đơn hợp lệ:
+  // nó chưa từng được xác thực nguồn gửi.
+  if (log.action === 'Từ chối') {
+    return { ok: false, error: 'Bản ghi này đã bị từ chối (sai chìa khoá), không thể xử lý lại.' };
+  }
 
   const user = log.user_id ? db.prepare('SELECT id, name, username FROM users WHERE id = ?').get(log.user_id) : null;
   const parsed = {

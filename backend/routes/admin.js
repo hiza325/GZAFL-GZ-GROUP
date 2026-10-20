@@ -14,6 +14,7 @@
  *  GET    /api/admin/referrals           Lịch sử nhập mã giới thiệu (limit, offset)
  *  GET    /api/admin/postbacks           Nhật ký postback từ mạng affiliate (q, status, only, limit, offset)
  *  POST   /api/admin/postbacks/:id/reapply  Xử lý lại một log postback
+ *  GET    /api/admin/audit-logs          Nhật ký thao tác của quản trị viên (limit, offset)
  */
 
 const express = require('express');
@@ -27,6 +28,7 @@ const {
   toAdminWithdrawal,
   toAdminReferral,
   toAdminPasswordReset,
+  toAdminAudit,
   toAdminPostback
 } = require('../lib/serialize');
 const { formatMoney } = require('../lib/format');
@@ -40,6 +42,7 @@ const {
 } = require('../lib/constants');
 const { requireAdmin } = require('../lib/auth');
 const { notify } = require('../lib/notify');
+const { logAudit } = require('../lib/audit');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
 
@@ -310,6 +313,12 @@ router.patch('/users/:id', (req, res) => {
   }
 
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values, id);
+
+  const changes = [];
+  if (body.role !== undefined) changes.push(`vai trò ${target.role} → ${String(body.role)}`);
+  if (body.points !== undefined) changes.push(`điểm ${Number(target.points) || 0} → ${Number(body.points)}`);
+  logAudit(req, 'Cập nhật người dùng', 'user', target.username || id, changes.join('; '));
+
   return res.json({ user: toAdminUser(findUserById(id)) });
 });
 
@@ -331,22 +340,26 @@ router.delete('/users/:id', (req, res) => {
   // ON DELETE CASCADE sẽ xoá luôn orders / withdrawals / referrals của người này
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 
-  // Xoá file avatar do hệ thống lưu (nếu có)
-  if (target.avatar_url && target.avatar_url.startsWith('/uploads/')) {
+  // Xoá các file ảnh do hệ thống lưu (nếu có): avatar + ảnh QR nhận tiền.
+  // Lệnh rút của người này đã bị xoá theo, nên ảnh QR không còn ai dùng.
+  for (const url of [target.avatar_url, target.bank_qr_url]) {
+    if (!url || !String(url).startsWith('/uploads/')) continue;
     try {
-      const filePath = path.join(UPLOAD_DIR, path.basename(target.avatar_url));
+      const filePath = path.join(UPLOAD_DIR, path.basename(url));
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     } catch (err) {
       /* bỏ qua lỗi xoá file */
     }
   }
 
+  logAudit(req, 'Xoá người dùng', 'user', target.username || id, `${target.name || ''} (${target.role})`);
+
   return res.json({ ok: true, id });
 });
 
 /* ==========================================
    Đơn hàng
-========================================== */
+   ========================================== */
 
 router.get('/orders', (req, res) => {
   const status = String(req.query.status || '').trim();
@@ -442,6 +455,11 @@ router.patch('/orders/:code', (req, res) => {
     });
   }
 
+  const changes = [];
+  if (statusChanged) changes.push(`trạng thái ${before.status} → ${after.status}`);
+  if (commissionChanged) changes.push(`hoa hồng ${formatMoney(before.commission)} → ${formatMoney(after.commission)}`);
+  if (changes.length) logAudit(req, 'Cập nhật đơn hàng', 'order', code, changes.join('; '));
+
   return res.json({ order: toAdminOrder(after) });
 });
 
@@ -534,11 +552,12 @@ router.patch('/withdrawals/:code', (req, res) => {
     return res.status(400).json({ error: 'Không có thông tin nào để cập nhật.' });
   }
 
-  if (nextStatus === 'Đã thanh toán') {
-    if (nextAmount <= 0) {
+  // Không cho chi nhiều hơn số dư khả dụng (không tính chính lệnh này).
+  // Áp dụng cho MỌI thay đổi (kể cả chỉ sửa số tiền của lệnh đang chờ), tránh âm số dư.
+  if (nextStatus !== CANCELLED) {
+    if (nextStatus === 'Đã thanh toán' && nextAmount <= 0) {
       return res.status(400).json({ error: 'Vui lòng nhập số tiền thực chi trả trước khi đánh dấu đã thanh toán.' });
     }
-    // Không cho chi nhiều hơn số dư khả dụng (không tính chính lệnh này)
     const payable = payableForWithdrawal(row);
     if (nextAmount > payable) {
       return res.status(400).json({
@@ -564,6 +583,19 @@ router.patch('/withdrawals/:code', (req, res) => {
     }
 
     notify(row.user_id, { title, body, icon: 'banknote' });
+  }
+
+  const wdChanges = [];
+  if (nextStatus !== row.status) wdChanges.push(`trạng thái ${row.status} → ${nextStatus}`);
+  if (amountChanged) wdChanges.push(`số tiền ${formatMoney(Number(row.amount) || 0)} → ${formatMoney(nextAmount)}`);
+  if (wdChanges.length) {
+    logAudit(
+      req,
+      'Cập nhật lệnh rút',
+      'withdrawal',
+      code,
+      `${row.user_id ? 'người dùng #' + row.user_id + ' — ' : ''}${wdChanges.join('; ')}`
+    );
   }
 
   return res.json({ withdrawal: toAdminWithdrawal(findWithdrawalByCode(code)) });
@@ -664,6 +696,9 @@ router.post('/password-resets/:id/reset', (req, res) => {
     icon: 'key-round'
   });
 
+  // KHÔNG ghi mật khẩu tạm vào nhật ký, chỉ ghi việc đã đặt lại cho ai.
+  logAudit(req, 'Đặt lại mật khẩu', 'user', user.username || user.id, `yêu cầu #${id}`);
+
   return res.json({
     ok: true,
     tempPassword,
@@ -683,6 +718,8 @@ router.post('/password-resets/:id/cancel', (req, res) => {
   db.prepare(
     'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
   ).run(CANCELLED, new Date().toISOString(), req.user.id, id);
+
+  logAudit(req, 'Từ chối yêu cầu đặt lại mật khẩu', 'password-reset', id, `người dùng #${request.user_id}`);
 
   return res.json({ ok: true });
 });
@@ -784,6 +821,14 @@ router.post('/postbacks/:id/reapply', (req, res) => {
   const result = postback.reapply(id);
   if (!result.ok) return res.status(400).json({ error: result.error || 'Không xử lý lại được.' });
 
+  logAudit(
+    req,
+    'Xử lý lại postback',
+    'postback',
+    id,
+    result.matched ? `đã khớp${log.order_code ? ' đơn ' + log.order_code : ''}` : 'không khớp đơn nào'
+  );
+
   const after = db
     .prepare(
       `SELECT p.*, u.name AS user_name, u.username AS user_username
@@ -792,6 +837,30 @@ router.post('/postbacks/:id/reapply', (req, res) => {
     .get(id);
 
   return res.json({ ok: true, matched: Boolean(result.matched), postback: toAdminPostback(after) });
+});
+
+/* ==========================================
+   Nhật ký quản trị
+   ========================================== */
+
+router.get('/audit-logs', (req, res) => {
+  const { limit, offset } = readPaging(req.query);
+  const q = String(req.query.q || '').trim();
+
+  let where = '';
+  const params = [];
+  if (q) {
+    where = 'WHERE (action LIKE ? OR target_id LIKE ? OR actor_username LIKE ? OR detail LIKE ?)';
+    const like = `%${q}%`;
+    params.push(like, like, like, like);
+  }
+
+  const total = Number(db.prepare(`SELECT COUNT(*) AS c FROM admin_audit_logs ${where}`).get(...params).c) || 0;
+  const rows = db
+    .prepare(`SELECT * FROM admin_audit_logs ${where} ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset);
+
+  return res.json({ total, limit, offset, logs: rows.map(toAdminAudit) });
 });
 
 module.exports = router;

@@ -46,11 +46,10 @@ router.post('/redeem', (req, res) => {
     return res.status(404).json({ error: 'Mã giới thiệu không tồn tại. Vui lòng kiểm tra lại.' });
   }
 
-  const used = db
-    .prepare('SELECT 1 AS x FROM referrals WHERE user_id = ? AND code = ?')
-    .get(req.user.id, code);
+  // Mỗi tài khoản chỉ được nhập mã giới thiệu MỘT lần (tránh nhập hàng loạt mã để farm điểm)
+  const used = db.prepare('SELECT 1 AS x FROM referrals WHERE user_id = ?').get(req.user.id);
   if (used) {
-    return res.status(409).json({ error: 'Mã này đã được bạn sử dụng trước đó.' });
+    return res.status(409).json({ error: 'Mỗi tài khoản chỉ nhập được mã giới thiệu một lần.' });
   }
 
   db.prepare('INSERT INTO referrals (user_id, code, points, created_at) VALUES (?, ?, ?, ?)').run(

@@ -91,6 +91,7 @@ npm run watch:css
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API và tên model (chuẩn OpenAI). Chỉ cần khi muốn chỉ định rõ nhà cung cấp |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI (vẫn giữ khoá) mà không phải xoá cấu hình |
 | `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời |
+| `AI_DAILY_LIMIT` | `800` | Trần **tổng** số lượt gọi AI mỗi ngày (mọi IP cộng lại). Vượt trần thì trợ lý vẫn trả lời nhưng bằng kịch bản có sẵn. `0` = không giới hạn |
 
 > **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).
 
@@ -181,6 +182,7 @@ Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email ngư�
 - Nhập sai quá **5 lần** thì phải yêu cầu mã mới; mỗi lần yêu cầu lại phải chờ **60 giây**, tối đa **5 mã/giờ** cho mỗi email.
 - Mỗi IP chỉ được yêu cầu gửi mã **10 lần / 15 phút** (đăng ký & khôi phục mật khẩu) và **40 lần / 15 phút** (đăng nhập).
 - Bước yêu cầu gửi mã **luôn trả về cùng một thông báo** dù tài khoản có tồn tại hay không — người ngoài không dò được danh sách tài khoản.
+- Nếu ai đó thử **đăng ký trùng** email/tài khoản đã có: hệ thống **không gửi mã đăng ký** và **không tạo tài khoản mới**, nhưng gửi một thư báo *"tài khoản đã tồn tại — hãy đăng nhập hoặc dùng Quên mật khẩu"* tới **đúng email đã đăng ký của chủ tài khoản** (không gửi tới email người lạ vừa nhập), tối đa **1 thư / 30 phút**. Nhờ vậy chủ tài khoản biết chuyện, còn người dò tài khoản vẫn không nhận được thông tin gì.
 
 ### Chưa có tài khoản email?
 
@@ -384,7 +386,7 @@ GET /api/postback/accesstrade    ← khai URL này trong dashboard của mạng
 Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js`):
 
 1. **Xác thực** `POSTBACK_SECRET` (băm SHA-256 rồi so sánh bằng `timingSafeEqual`). Sai → `403` và **vẫn ghi vào nhật ký**. Chưa cấu hình secret → `503` (không nhận dữ liệu không rõ nguồn).
-2. **Ghi nguyên tham số** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại.
+2. **Ghi tham số nhận được** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại. `POSTBACK_SECRET` và các tham số nhạy cảm (`token`, `signature`…) được **che** trước khi lưu và trước khi hiển thị ở trang quản trị.
 3. **Chống trùng** theo `payload_hash`: mạng gửi lại y hệt thì chỉ tăng số lần nhận, **không cộng tiền lần hai**.
 4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.
 5. **Cộng dồn theo đơn** rồi cập nhật trạng thái:
@@ -397,7 +399,7 @@ Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js
 
 Tên tham số do người dùng tự đặt trong dashboard của mạng nên hệ thống **dò tự động** (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và còn **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` / `GZ…`. Khác hẳn thì ép lại bằng `POSTBACK_PARAM_*` trong `.env`.
 
-Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp được đơn) và bấm **Xử lý lại** ở **trang quản trị → tab Đối soát**.
+Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp được đơn) và bấm **Xử lý lại** ở **trang quản trị → tab Đối soát**. Log đã bị từ chối (sai chìa khoá) **không** xử lý lại được, và tổng hoa hồng của một đơn chỉ cộng các log khớp **mã giao dịch** của đơn đó (khi đơn chưa có mã giao dịch thì cộng các log không mang mã giao dịch).
 
 Điều kiện tiên quyết, đừng bỏ qua: **hỏi mạng trung gian xem điều khoản của họ có cho phép mô hình hoàn tiền lại cho người mua hay không** — nhiều chương trình affiliate cấm và có thể khoá tài khoản, thu hồi tiền đã trả.
 
@@ -487,7 +489,7 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Frontend **không thể sửa** dữ liệu đơn hàng/ví/điểm — tất cả kiểm tra ở server.
 - Mọi truy vấn theo `user_id` lấy từ token, người dùng chỉ thấy dữ liệu của mình.
 - API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
-- Thư mục nội bộ (`/backend`, `/data`, `/node_modules`, `package.json`) bị chặn không cho tải qua HTTP.
+- Chỉ **danh sách file giao diện đã biết** (index.html, script.js, admin.js, support.js, CSS, ảnh logo, components/, styles/) được phục vụ qua HTTP. Mọi đường dẫn khác trả `404`, kể cả khi bị mã hoá kiểu `/%62ackend/data/...` — không thể tải `backend/`, `data/`, `node_modules/` hay `package.json`.
 - Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
 - Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản. Bước yêu cầu gửi mã xác thực cũng vậy.
 - **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email / đăng nhập tách biệt nhau).
@@ -503,7 +505,7 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
 - Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**. Nhớ backup `backend/data/gzafl.sqlite` và `backend/uploads/`.
 - Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML. Trợ lý hỗ trợ cũng lấy hai giá trị này cho nút **"Liên hệ hỗ trợ"** trong khung chat.
-- **Trợ lý hỗ trợ chạy được ngay, không cần cấu hình** (chế độ kịch bản). Nếu đặt `AI_API_KEY` thì mỗi câu hỏi của khách là một lượt gọi API tính vào hạn mức/chi phí của khoá đó — nên đặt **hạn mức chi tiêu** ở phía nhà cung cấp và giữ nguyên giới hạn 30 tin nhắn/10 phút mỗi IP.
+- **Trợ lý hỗ trợ chạy được ngay, không cần cấu hình** (chế độ kịch bản). Nếu đặt `AI_API_KEY` thì mỗi câu hỏi của khách là một lượt gọi API tính vào hạn mức/chi phí của khoá đó — nên đặt **hạn mức chi tiêu** ở phía nhà cung cấp, giữ giới hạn 30 tin nhắn/10 phút mỗi IP và chỉnh trần **`AI_DAILY_LIMIT`** (mặc định 800 lượt/ngày cho toàn hệ thống; vượt trần thì trợ lý tự trả lời bằng kịch bản có sẵn).
 - **Trước khi dùng xác thực khi đăng nhập** (`LOGIN_OTP=auto` sẽ tự bật khi đã có SMTP): phải chắc chắn tài khoản quản trị có **email thật đọc được**, nếu không bạn sẽ tự khoá mình khỏi trang quản trị. Cách làm an toàn: để `LOGIN_OTP=off`, đăng nhập, đổi email ở trang **Cá nhân**, rồi bỏ dòng đó đi. Nếu máy chủ thư gặp sự cố (hết hạn mức/sai mật khẩu ứng dụng), thêm `LOGIN_OTP=off` rồi khởi động lại là mọi người vào được ngay bằng mật khẩu.
 
 > 📄 Muốn biến nút **"Tạo link & kiểm tra hoa hồng"** thành chức năng chuyển đổi link thật (trả về link mua hàng có ghi nhận hoa hồng), xem thiết kế chi tiết tại **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.

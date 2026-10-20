@@ -7,6 +7,7 @@
  * - Có AI_API_KEY  -> trả lời bằng AI (xem lib/ai.js), kèm kiến thức của web trong system prompt.
  * - Chưa có khoá   -> trả lời theo kịch bản có sẵn (lib/supportKnowledge.js).
  * - AI lỗi/hết hạn mức -> tự lùi về kịch bản, người dùng không bị "đứng" khung chat.
+ * - Có trần TỔNG lượt gọi AI mỗi ngày (AI_DAILY_LIMIT) để chặn lạm dụng quota từ nhiều IP.
  *
  * Lịch sử hội thoại do TRÌNH DUYỆT giữ (localStorage) rồi gửi lên kèm, server không lưu gì.
  */
@@ -24,6 +25,41 @@ const MAX_TOTAL = 8000;    // tổng ký tự tối đa cả đoạn hội tho�
 
 // 30 tin nhắn / 10 phút cho mỗi IP (đủ thoải mái cho người dùng thật, chặn spam khoá API)
 const chatRateLimit = rateLimit({ windowMs: 10 * 60 * 1000, max: 30 });
+
+/**
+ * Hạn mức TỔNG số lượt gọi AI trong một ngày — lá chắn cuối cùng cho quota/chi phí.
+ *
+ * Vì trợ lý hoạt động cả khi chưa đăng nhập, kẻ xấu rải từ nhiều IP có thể lách
+ * giới hạn theo-IP. Trần theo ngày sẽ khoá van lại: khi vượt, trợ lý vẫn trả lời
+ * nhưng bằng kịch bản có sẵn (không gọi AI), người dùng không thấy lỗi.
+ *
+ * Trần đọc từ AI_DAILY_LIMIT trong .env; đặt 0 = không giới hạn.
+ */
+const AI_DAILY_LIMIT =
+  process.env.AI_DAILY_LIMIT !== undefined && Number(process.env.AI_DAILY_LIMIT) >= 0
+    ? Math.floor(Number(process.env.AI_DAILY_LIMIT))
+    : 800;
+
+let aiUsage = { day: '', count: 0 };
+
+function currentDay() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (theo UTC)
+}
+
+/** Số lượt AI còn lại hôm nay (Infinity nếu không giới hạn). */
+function aiQuotaLeft() {
+  const day = currentDay();
+  if (aiUsage.day !== day) aiUsage = { day, count: 0 };
+  if (AI_DAILY_LIMIT <= 0) return Infinity;
+  return Math.max(0, AI_DAILY_LIMIT - aiUsage.count);
+}
+
+/** Ghi nhận một lượt gọi AI. */
+function consumeAiQuota() {
+  const day = currentDay();
+  if (aiUsage.day !== day) aiUsage = { day, count: 0 };
+  aiUsage.count += 1;
+}
 
 /**
  * Lọc và chuẩn hoá lịch sử hội thoại do client gửi lên.
@@ -66,6 +102,7 @@ router.get('/status', (req, res) => {
     ai: info.configured,
     provider: info.configured ? info.provider : null,
     model: info.configured ? info.model : null,
+    dailyLimit: AI_DAILY_LIMIT,
     suggestions: knowledge.SUGGESTIONS.length
   });
 });
@@ -81,6 +118,18 @@ router.post('/chat', chatRateLimit, async (req, res) => {
   if (!ai.isConfigured()) {
     return res.json({ reply: knowledge.faqAnswer(question) || knowledge.fallbackAnswer(), source: 'faq' });
   }
+
+  // Hết hạn mức AI trong ngày -> vẫn trả lời, nhưng bằng kịch bản có sẵn
+  if (aiQuotaLeft() <= 0) {
+    console.warn(`Đã chạm hạn mức AI trong ngày (${AI_DAILY_LIMIT} lượt), tạm dùng kịch bản có sẵn.`);
+    return res.json({
+      reply: knowledge.faqAnswer(question) || knowledge.fallbackAnswer(),
+      source: 'faq',
+      notice: 'Trợ lý AI đã đạt giới hạn trong ngày nên mình trả lời bằng kiến thức có sẵn. Bạn thử lại sau hoặc liên hệ hỗ trợ nhé.'
+    });
+  }
+
+  consumeAiQuota();
 
   try {
     const reply = await ai.ask(history);

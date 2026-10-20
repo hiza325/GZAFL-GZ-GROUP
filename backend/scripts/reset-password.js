@@ -4,11 +4,14 @@
  * Đặt lại mật khẩu cho một tài khoản (dùng khi quên mật khẩu / bị khoá).
  *
  *   node scripts/reset-password.js <username>
- *   node scripts/reset-password.js <username> MatKhauMoi123
+ *   node scripts/reset-password.js <username> --stdin        (khuyến nghị)
+ *   node scripts/reset-password.js <username> MatKhauMoi123  (lộ trong lịch sử lệnh)
  *   node scripts/reset-password.js --list
  *
  * `username` là Email hoặc Số điện thoại dùng để đăng nhập.
  * Nếu không truyền mật khẩu mới, script sẽ sinh một mật khẩu ngẫu nhiên và in ra.
+ * Với --stdin, mật khẩu được đọc từ stdin, ví dụ:
+ *   echo "MatKhauMoi123" | node scripts/reset-password.js user@example.com --stdin
  *
  * Việc đổi mật khẩu cũng tăng token_version -> mọi phiên đăng nhập cũ hết hiệu lực.
  * Chạy trong thư mục `backend`.
@@ -41,25 +44,45 @@ function listUsers() {
 }
 
 function makeRandomPassword() {
-  // 12 ký tự, bỏ các ký tự dễ nhầm (0/O, 1/l/I)
+  // 12 ký tự, bỏ các ký tự dễ nhầm (0/O, 1/l/I). Dùng randomInt (không lệch modulo).
   const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = crypto.randomBytes(12);
   let out = '';
-  for (let i = 0; i < 12; i += 1) out += alphabet[bytes[i] % alphabet.length];
+  for (let i = 0; i < 12; i += 1) out += alphabet[crypto.randomInt(alphabet.length)];
   return out;
 }
 
 if (!args.length || args[0] === '--list' || args[0] === '-l') {
   listUsers();
   console.log('');
-  console.log('Đặt lại mật khẩu: node scripts/reset-password.js <username> [mật khẩu mới]');
+  console.log('Đặt lại mật khẩu: node scripts/reset-password.js <username> [--stdin | mật khẩu mới]');
   process.exit(0);
 }
 
 const username = String(args[0]).trim();
-const provided = args[1];
 
-if (!provided && args.length > 1) {
+// Đọc mật khẩu từ stdin (an toàn) nếu dùng --stdin, ngược lại lấy từ tham số (tiện nhưng kém an toàn).
+function readPasswordFromStdin() {
+  try {
+    return require('node:fs').readFileSync(0, 'utf8').replace(/\r?\n$/, '');
+  } catch (err) {
+    return '';
+  }
+}
+
+let provided;
+if (args[1] === '--stdin') {
+  provided = readPasswordFromStdin().trim();
+  if (!provided) {
+    console.error('LỖI: Không đọc được mật khẩu mới từ stdin.');
+    process.exit(1);
+  }
+} else if (args.length > 1) {
+  provided = args[1];
+  console.warn('CẢNH BÁO: mật khẩu truyền qua tham số sẽ lộ trong lịch sử lệnh/tiến trình.');
+  console.warn('          Nên dùng: node scripts/reset-password.js <username> --stdin');
+}
+
+if (!provided && args.length > 1 && args[1] !== '--stdin') {
   console.error('LỖI: Mật khẩu mới không được để trống.');
   process.exit(1);
 }

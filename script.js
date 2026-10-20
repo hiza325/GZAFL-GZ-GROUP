@@ -51,6 +51,17 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+// Chỉ trả về URL http(s) an toàn, tránh javascript:/data: khi gán vào href
+function safeHttpUrl(url) {
+  try {
+    const u = new URL(String(url == null ? '' : url), window.location.origin);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch (err) {
+    /* bỏ qua */
+  }
+  return '';
+}
+
 // Gán text cho element theo id (bỏ qua nếu không tồn tại)
 function setText(id, text) {
   const el = document.getElementById(id);
@@ -1196,13 +1207,13 @@ document.addEventListener('click', async function(event) {
     return;
   }
 
-  // 3. Copy link hoàn tiền (trang Đơn hàng)
+  // 3. Sao chép link hoàn tiền (trang Đơn hàng)
   const copyLinkBtn = event.target.closest('[data-action="copy-link"]');
   if (copyLinkBtn) {
     event.preventDefault();
     copyTextToClipboard(copyLinkBtn.dataset.link || '').then((ok) => {
       showToast(
-        ok ? 'Đã copy link hoàn tiền.' : 'Không copy được. Hãy bôi đen link và copy thủ công.',
+        ok ? 'Đã sao chép link hoàn tiền.' : 'Không sao chép được. Hãy bôi đen link và sao chép thủ công.',
         ok ? 'success' : 'error'
       );
     });
@@ -1297,7 +1308,7 @@ document.addEventListener('click', async function(event) {
   }
 });
 
-// Hiển thị link hoàn tiền vừa tạo kèm nút Copy và Mua ngay
+// Hiển thị link hoàn tiền vừa tạo kèm nút Sao chép và Mua ngay
 function renderLinkResult(order, affiliate) {
   const box = document.getElementById('link-result');
   if (!box || !order) return;
@@ -1311,7 +1322,7 @@ function renderLinkResult(order, affiliate) {
   if (urlInput) urlInput.value = link;
 
   const openLink = document.getElementById('link-result-open');
-  if (openLink) openLink.href = link;
+  if (openLink) openLink.href = safeHttpUrl(link) || '#';
 
   const note = document.getElementById('link-result-note');
   if (note) {
@@ -1325,7 +1336,7 @@ function renderLinkResult(order, affiliate) {
     copyBtn.onclick = () => {
       copyTextToClipboard(link).then((ok) => {
         showToast(
-          ok ? 'Đã copy link hoàn tiền.' : 'Không copy được. Hãy bôi đen link và copy thủ công.',
+          ok ? 'Đã sao chép link hoàn tiền.' : 'Không sao chép được. Hãy bôi đen link và sao chép thủ công.',
           ok ? 'success' : 'error'
         );
       });
@@ -1547,7 +1558,7 @@ async function updateOrdersData() {
                   <span class="text-xs text-slate-400 font-medium">(${escapeHtml(order.id)})</span>
                   ${order.clicks > 0 ? `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">${Number(order.clicks) || 0} lượt bấm</span>` : ''}
                 </div>
-                <a href="${escapeHtml(order.link)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(order.link)}" class="text-xs text-slate-400 hover:text-red-500 mt-1 block truncate max-w-md transition">${escapeHtml(order.link)}</a>
+                <a href="${escapeHtml(safeHttpUrl(order.link))}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(order.link)}" class="text-xs text-slate-400 hover:text-red-500 mt-1 block truncate max-w-md transition">${escapeHtml(order.link)}</a>
                 <div class="text-xs font-semibold text-slate-500 mt-2">Ngày tạo: ${escapeHtml(order.date)}</div>
               </div>
             </div>
@@ -1568,9 +1579,9 @@ async function updateOrdersData() {
             </span>
             <input readonly value="${escapeHtml(order.affiliateLink)}" class="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-xs text-slate-600 focus:outline-none">
             <button data-action="copy-link" data-link="${escapeHtml(order.affiliateLink)}" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs transition whitespace-nowrap">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Sao chép
             </button>
-            <a href="${escapeHtml(order.affiliateLink)}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold text-xs transition whitespace-nowrap">
+            <a href="${escapeHtml(safeHttpUrl(order.affiliateLink))}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-1.5 px-3 py-2 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold text-xs transition whitespace-nowrap">
               <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Mua ngay
             </a>
           </div>` : ''}
@@ -1692,9 +1703,9 @@ async function initReferralPage() {
       copyTextToClipboard(referralState.code).then((ok) => {
         const original = btnCopy.innerHTML;
         if (ok) {
-          btnCopy.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Đã copy!</span>`;
+          btnCopy.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i><span>Đã sao chép!</span>`;
         } else {
-          btnCopy.innerHTML = `<i data-lucide="x" class="w-4 h-4"></i><span>Copy thất bại</span>`;
+          btnCopy.innerHTML = `<i data-lucide="x" class="w-4 h-4"></i><span>Sao chép thất bại</span>`;
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
         setTimeout(() => { btnCopy.innerHTML = original; if (typeof lucide !== 'undefined') lucide.createIcons(); }, 1500);

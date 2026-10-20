@@ -133,7 +133,7 @@ function supportContactHtml() {
       <div class="flex items-center gap-2">
         <i data-lucide="headphones" class="w-4 h-4 text-red-500 flex-shrink-0"></i>
         <span class="flex-1 min-w-0 text-slate-700">Điện thoại / Zalo: <b>${escapeHtml(supportConfig.contact.zalo)}</b></span>
-        <button type="button" data-support-copy="${escapeHtml(supportConfig.contact.zalo)}" class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex-shrink-0">Copy</button>
+        <button type="button" data-support-copy="${escapeHtml(supportConfig.contact.zalo)}" class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex-shrink-0">Sao chép</button>
       </div>`);
   }
 
@@ -142,7 +142,7 @@ function supportContactHtml() {
       <div class="flex items-center gap-2">
         <i data-lucide="mail" class="w-4 h-4 text-red-500 flex-shrink-0"></i>
         <span class="flex-1 min-w-0 text-slate-700 break-all">Email: <b>${escapeHtml(supportConfig.contact.email)}</b></span>
-        <button type="button" data-support-copy="${escapeHtml(supportConfig.contact.email)}" class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex-shrink-0">Copy</button>
+        <button type="button" data-support-copy="${escapeHtml(supportConfig.contact.email)}" class="text-[11px] font-semibold text-[#18253f] hover:text-red-500 transition flex-shrink-0">Sao chép</button>
       </div>`);
   }
 
@@ -340,8 +340,8 @@ async function supportCopy(value, label) {
   }
 
   if (typeof showToast !== 'function') return;
-  if (ok) showToast(`Đã copy ${label}: ${value}`, 'success');
-  else showToast(`Không copy tự động được. ${label}: ${value}`, 'error');
+  if (ok) showToast(`Đã sao chép ${label}: ${value}`, 'success');
+  else showToast(`Không sao chép tự động được. ${label}: ${value}`, 'error');
 }
 
 /* ==========================================

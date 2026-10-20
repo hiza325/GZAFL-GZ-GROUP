@@ -8,6 +8,7 @@
 
 // NẠP .env TRƯỚC TIÊN: db.js và các module trong lib/ đọc process.env ngay khi require
 const { cookieSecure, isProduction } = require('./lib/env');
+const { loadUser } = require('./lib/auth');
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -77,20 +78,72 @@ if (TRUST_PROXY) {
 app.use(express.json({ limit: '6mb' })); // đủ cho avatar base64 tối đa 2MB
 app.use(cookieParser());
 
-// Không cho truy cập tài nguyên nội bộ của backend qua đường dẫn tĩnh
-const BLOCKED_PREFIXES = ['/backend', '/node_modules', '/data', '/.git'];
-const BLOCKED_FILES = ['/package.json', '/package-lock.json'];
-app.use((req, res, next) => {
-  const p = req.path.toLowerCase();
-  const blocked =
-    BLOCKED_PREFIXES.some((prefix) => p === prefix || p.startsWith(prefix + '/')) ||
-    BLOCKED_FILES.includes(p);
-  if (blocked) return res.status(404).send('Not found');
-  next();
-});
+/* ==========================================
+   Frontend tĩnh: CHỈ phục vụ file giao diện đã biết.
 
-// Ảnh avatar
-app.use('/uploads', express.static(UPLOAD_DIR));
+   Trước đây dùng "danh sách chặn" (/backend, /data, /node_modules...) nhưng có thể
+   bị lách bằng percent-encoding, ví dụ /%62ackend/data/gzafl.sqlite -> tải được cả
+   database (express.static tự giải mã đường dẫn, còn middleware thì không).
+   Chuyển sang "danh sách cho phép": đường dẫn phải khớp chính xác, không giải mã,
+   nên không còn cách lách.
+   ========================================== */
+const PUBLIC_ROOT_FILES = new Set([
+  '/index.html',
+  '/script.js',
+  '/admin.js',
+  '/support.js',
+  '/style.css',
+  '/tailwind.build.css',
+  '/logo.png',
+  '/chatbot.png'
+]);
+// Chỉ cho đúng một cấp file trong thư mục con; không '%', không '..'
+const PUBLIC_SUBDIR_FILE = /^\/(?:components|styles)\/[a-z0-9][a-z0-9._-]*$/;
+
+function isPublicAssetPath(rawPath) {
+  const p = String(rawPath || '').toLowerCase();
+  return PUBLIC_ROOT_FILES.has(p) || PUBLIC_SUBDIR_FILE.test(p);
+}
+
+const publicStatic = express.static(ROOT, { dotfiles: 'deny', index: false, redirect: false });
+
+/* ==========================================
+   Ảnh trong /uploads
+
+   - avatar_* : công khai (ảnh đại diện, không nhạy cảm).
+   - qr_*     : chỉ CHỦ SỞ HỮU hoặc quản trị viên xem được, vì ảnh QR chứa số tài
+                khoản ngân hàng. Tên file có dạng qr_<userId>_<random>.webp nên ta
+                so được id trong tên với người đang đăng nhập.
+
+   express.static tự giải mã percent-encoding, nên guard phải từ chối mọi đường dẫn
+   còn ký tự '%' (và cả '\\', '..') — nếu không sẽ lách được kiểm tra.
+   ========================================== */
+const SAFE_UPLOAD_NAME = /^[a-z0-9][a-z0-9._-]*$/;
+const QR_UPLOAD_NAME = /^qr_(\d+)_[a-z0-9._-]+$/;
+
+function uploadGuard(req, res, next) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).end();
+
+  const raw = String(req.path || '');
+  if (!raw || raw.includes('%') || raw.includes('\\') || raw.includes('..')) {
+    return res.status(404).send('Không tìm thấy.');
+  }
+
+  const name = path.posix.basename(raw).toLowerCase();
+  if (!SAFE_UPLOAD_NAME.test(name)) return res.status(404).send('Không tìm thấy.');
+
+  const qr = QR_UPLOAD_NAME.exec(name);
+  if (!qr) return next(); // không phải ảnh QR -> công khai
+
+  const user = loadUser(req);
+  if (!user) return res.status(401).json({ error: 'Bạn chưa đăng nhập.' });
+  if (user.role !== 'admin' && String(user.id) !== qr[1]) {
+    return res.status(403).json({ error: 'Bạn không có quyền xem ảnh này.' });
+  }
+  return next();
+}
+
+app.use('/uploads', uploadGuard, express.static(UPLOAD_DIR, { dotfiles: 'deny', index: false, redirect: false }));
 
 /* ==========================================
    Link hoàn tiền rút gọn: /r/<mã đơn>
@@ -117,7 +170,17 @@ app.get('/r/:code', (req, res) => {
     target = row.original_link || row.link;
   }
 
-  return res.redirect(302, target);
+  // Chỉ chuyển hướng tới http(s): chặn link cũ lỡ lưu javascript:, data:...
+  let safeTarget = null;
+  try {
+    const u = new URL(target);
+    if (u.protocol === 'http:' || u.protocol === 'https:') safeTarget = u.toString();
+  } catch (err) {
+    safeTarget = null;
+  }
+  if (!safeTarget) return res.status(404).send('Link hoàn tiền không hợp lệ.');
+
+  return res.redirect(302, safeTarget);
 });
 
 // API
@@ -165,8 +228,16 @@ app.use('/api/postback', require('./routes/postback'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
-// Frontend tĩnh
-app.use(express.static(ROOT));
+// Frontend tĩnh (xem danh sách cho phép ở trên)
+app.get(['/', '/index.html'], (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (!isPublicAssetPath(req.path)) return next();
+  return publicStatic(req, res, next);
+});
+
+// Không khớp gì thì trả 404 gọn
+app.use((req, res) => res.status(404).send('Không tìm thấy.'));
 
 // Xử lý lỗi tập trung
 app.use((err, req, res, next) => {

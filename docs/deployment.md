@@ -347,6 +347,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API + tên model (chuẩn OpenAI) |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI mà vẫn giữ khoá |
 | `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ, độ dài và độ "sáng tạo" của câu trả lời |
+| `AI_DAILY_LIMIT` | `800` | Trần tổng số lượt gọi AI mỗi ngày (mọi IP cộng lại); vượt trần thì trả lời bằng kịch bản có sẵn. `0` = không giới hạn |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 
 ---

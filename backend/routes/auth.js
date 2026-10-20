@@ -29,6 +29,10 @@ const loginOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40 });
 
 const BCRYPT_ROUNDS = 10;
 
+// Hash giả dùng khi tài khoản không tồn tại: vẫn tốn thời gian bcrypt như thật,
+// để kẻ dò không phân biệt được "sai tài khoản" và "sai mật khẩu".
+const DUMMY_HASH = bcrypt.hashSync('gzafl-dummy-password', BCRYPT_ROUNDS);
+
 /**
  * Chạy hàm xử lý và tự trả về đúng mã lỗi của OtpError (400/429/502...).
  */
@@ -85,8 +89,37 @@ router.post('/register/otp', otpRateLimit, async (req, res) => {
     return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.' });
   }
 
-  const exists = db.prepare('SELECT 1 AS x FROM users WHERE username = ?').get(username);
-  if (exists) return res.status(409).json({ error: 'Email hoặc Số điện thoại này đã được đăng ký.' });
+  const existing = db
+    .prepare('SELECT id, email, name FROM users WHERE username = ?')
+    .get(username);
+  if (existing) {
+    // Không phát mã đăng ký (không thể tạo trùng tài khoản). Thay vào đó gửi thư báo
+    // tới ĐÚNG email đã đăng ký của chủ tài khoản — KHÔNG gửi tới email mà người gửi
+    // vừa nhập, nên kẻ dò tài khoản (dùng username người khác + email của mình)
+    // không nhận được gì và không biết tài khoản có tồn tại hay không.
+    // Phản hồi vẫn GIỐNG HỆT trường hợp đăng ký bình thường.
+    if (existing.email) {
+      try {
+        await otp.sendAccountExistsNotice({
+          email: existing.email,
+          name: existing.name,
+          username
+        });
+      } catch (err) {
+        // Thư thông báo chỉ là phụ — lỗi gửi không được làm lộ thông tin hay chặn người dùng.
+        console.error('Không gửi được thư báo tài khoản đã tồn tại:', err.message);
+      }
+    } else {
+      console.warn(`Bỏ qua gửi OTP đăng ký: tài khoản đã tồn tại nhưng chưa có email (${username}).`);
+    }
+
+    return res.json({
+      ok: true,
+      email,
+      expiresInSeconds: otp.TTL_SECONDS,
+      resendInSeconds: otp.RESEND_COOLDOWN_SECONDS
+    });
+  }
 
   try {
     const sent = await otp.issueAndSend({ purpose: 'register', email, username, name });
@@ -182,9 +215,11 @@ router.post('/login', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Vui lòng điền đầy đủ thông tin.' });
 
   const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
-  if (!row) return res.status(401).json({ error: 'Tài khoản này chưa được đăng ký.' });
-  if (!bcrypt.compareSync(password, row.password_hash)) {
-    return res.status(401).json({ error: 'Mật khẩu không chính xác.' });
+  // Trả CÙNG một thông báo dù sai tài khoản hay sai mật khẩu (tránh dò tài khoản).
+  // Vẫn chạy bcrypt khi không có tài khoản để thời gian phản hồi không khác biệt.
+  const passwordOk = bcrypt.compareSync(password, row ? row.password_hash : DUMMY_HASH);
+  if (!row || !passwordOk) {
+    return res.status(401).json({ error: 'Tài khoản hoặc mật khẩu không đúng.' });
   }
 
   // Tài khoản chưa có email thì không thể xác thực qua email -> cho vào luôn,

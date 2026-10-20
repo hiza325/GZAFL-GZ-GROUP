@@ -34,7 +34,7 @@ Ba việc trên phải làm cùng nhau. Làm lẻ một việc thì tính năng 
         │
         ▼
 ② POST /api/orders                      ← đã có, cần sửa
-        │   - detectPlatform(link)  → 'Shopee'
+        │   - parseOrderLink(link)  → { platform: 'Shopee', url }  (kiểm tra giao thức + tên miền)
         │   - subId = "gzafl-u{userId}"          (mã định danh người dùng)
         │   - GỌI PROVIDER để đổi link
         ▼

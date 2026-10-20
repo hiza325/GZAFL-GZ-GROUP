@@ -3,6 +3,7 @@
 // Chuyển dữ liệu thô trong SQLite thành JSON mà frontend đang dùng.
 
 const { formatDate, formatDateTime } = require('./format');
+const { redactStoredQuery } = require('./redact');
 
 function toUser(row) {
   if (!row) return null;
@@ -132,7 +133,7 @@ function toAdminOrder(row) {
 
 /**
  * Nhật ký postback cho trang quản trị (xem lib/postback.js).
- * `query` là tham số thô mạng gửi vào — giữ nguyên để đối soát khi có khiếu nại.
+ * `query` là tham số thô mạng gửi vào, nhưng chìa khoá/token đã được CHE (lib/redact.js).
  */
 function toAdminPostback(row) {
   if (!row) return null;
@@ -162,7 +163,8 @@ function toAdminPostback(row) {
     // tentative = chỉ khớp tạm theo đơn mới nhất của khách, cần người kiểm tra lại
     matched: Boolean(row.order_code && row.action !== 'Từ chối' && row.action !== 'Khớp tạm'),
     tentative: row.action === 'Khớp tạm',
-    query: row.query || ''
+    // Che chìa khoá/token trong dữ liệu CŨ (lưu trước khi có lib/redact.js)
+    query: redactStoredQuery(row.query)
   };
 }
 
@@ -214,6 +216,28 @@ function toAdminReferral(row) {
   };
 }
 
+/**
+ * Một dòng nhật ký quản trị (xem lib/audit.js).
+ */
+function toAdminAudit(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    actor: {
+      id: row.actor_id || null,
+      name: row.actor_name || '(không rõ)',
+      username: row.actor_username || ''
+    },
+    action: row.action || '',
+    targetType: row.target_type || '',
+    targetId: row.target_id || '',
+    detail: row.detail || '',
+    ip: row.ip || '',
+    createdAt: row.created_at,
+    date: formatDateTime(row.created_at)
+  };
+}
+
 function toAdminPasswordReset(row) {
   if (!row) return null;
   return {
@@ -244,5 +268,6 @@ module.exports = {
   toAdminWithdrawal,
   toAdminReferral,
   toAdminPasswordReset,
+  toAdminAudit,
   toAdminPostback
 };
