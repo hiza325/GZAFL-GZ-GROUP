@@ -77,7 +77,9 @@ npm run watch:css
 | `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
 | `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
-| `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Token và campaign của AccessTrade (`campaign_id` giữ **dạng chuỗi**) |
+| `ACCESSTRADE_API_KEY` | – | Token API của AccessTrade |
+| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_LAZADA` | – | Campaign ID riêng cho từng sàn (giữ **dạng chuỗi**) |
+| `ACCESSTRADE_CAMPAIGN_ID` | – | Tuỳ chọn: campaign mặc định nếu sàn chưa có biến riêng |
 | `ACCESSTRADE_SHORT_DOMAIN` | – | Tuỳ chọn: domain rút gọn riêng đã đăng ký với AccessTrade |
 | `POSTBACK_SECRET` | – | Chìa khoá xác thực báo cáo chuyển đổi (postback). **Bỏ trống thì mọi postback bị từ chối** (xem mục [Nhận hoa hồng về](#nhận-hoa-hồng-về--đối-soát-postback)) |
 | `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB` |
@@ -368,7 +370,7 @@ Chọn nhà cung cấp bằng biến `AFFILIATE_PROVIDER`:
 | Giá trị | Trạng thái | Ghi chú |
 |---|---|---|
 | `mock` (mặc định) | ✅ chạy được ngay | Trả về link nội bộ `http://localhost:3000/r/<mã đơn>`. Bấm vào sẽ được đếm lượt và chuyển hướng sang link gốc. **Không tạo ra hoa hồng thật** — hoa hồng vẫn do quản trị viên chốt tay. |
-| `accesstrade` | ✅ đã cài đặt, chờ tài khoản để test | Cần `ACCESSTRADE_API_KEY` + `ACCESSTRADE_CAMPAIGN_ID`. Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
+| `accesstrade` | ✅ đã cài đặt, chờ tài khoản để test | Cần `ACCESSTRADE_API_KEY` + campaign ID từng sàn (`ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_LAZADA`). Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
 | `shopee` | ⛔ chưa cài đặt | Cần `SHOPEE_AFFILIATE_APP_ID` + `SHOPEE_AFFILIATE_SECRET`, và phải đối chiếu tài liệu chính thức về cách ký request trước khi dùng. |
 
 > ⚠️ **Không thể tạo hoa hồng bằng cách tự thêm tham số vào link.** Muốn có ghi nhận thật, bắt buộc phải có tài khoản affiliate đã được duyệt rồi gọi API do họ cấp. Xem phân tích đầy đủ ở **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.

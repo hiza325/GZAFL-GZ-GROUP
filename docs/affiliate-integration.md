@@ -117,7 +117,9 @@ https://shopee.vn/product/111
 
 **Provider `accesstrade`** (REST) — ✅ đã đối chiếu tài liệu chính thức và cài đặt:
 
-- Cần: `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID`
+- Cần: `ACCESSTRADE_API_KEY`, và campaign ID riêng cho từng sàn:
+  `ACCESSTRADE_CAMPAIGN_SHOPEE`, `ACCESSTRADE_CAMPAIGN_TIKTOK`, `ACCESSTRADE_CAMPAIGN_LAZADA`
+  (`ACCESSTRADE_CAMPAIGN_ID` là mặc định chung nếu một sàn chưa có biến riêng)
 - `POST https://api.accesstrade.vn/v1/product_link/create`, header `Authorization: token <API_KEY>`
 - Body: `campaign_id` (**chuỗi**, không phải Number), `urls: [url]`, `url_enc: true`, `sub1`, `sub2`
 - Nhận về `data.success_link[0].aff_link` (hoặc `short_link`); lỗi nằm ở `data.error_link`
@@ -143,7 +145,8 @@ https://shopee.vn/product/111
 | `AFFILIATE_PROVIDER` | `mock` | `mock` \| `accesstrade` \| `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id`, tránh trùng với hệ thống khác |
 | `ACCESSTRADE_API_KEY` | — | Token do AccessTrade cấp |
-| `ACCESSTRADE_CAMPAIGN_ID` | — | Campaign Shopee trong AccessTrade (giữ dạng chuỗi) |
+| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_LAZADA` | — | Campaign ID riêng từng sàn (giữ dạng chuỗi) |
+| `ACCESSTRADE_CAMPAIGN_ID` | — | Tuỳ chọn: campaign mặc định chung |
 | `ACCESSTRADE_SHORT_DOMAIN` | — | Tuỳ chọn: domain rút gọn riêng của bạn |
 | `SHOPEE_AFFILIATE_APP_ID` / `_SECRET` | — | Do Shopee cấp |
 | `POSTBACK_SECRET` | — | Chuỗi bí mật để xác thực postback |

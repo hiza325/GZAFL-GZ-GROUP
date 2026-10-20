@@ -12,7 +12,9 @@
  *
  * Chọn nhà cung cấp bằng biến môi trường AFFILIATE_PROVIDER:
  *   mock         (mặc định) — chạy thử được toàn bộ luồng, KHÔNG tạo hoa hồng thật
- *   accesstrade             — cần ACCESSTRADE_API_KEY + ACCESSTRADE_CAMPAIGN_ID
+ *   accesstrade             — cần ACCESSTRADE_API_KEY và campaign ID của từng sàn
+ *                             (ACCESSTRADE_CAMPAIGN_SHOPEE / _TIKTOK / _LAZADA,
+ *                              hoặc ACCESSTRADE_CAMPAIGN_ID làm mặc định chung)
  *   shopee                  — cần SHOPEE_AFFILIATE_APP_ID + SHOPEE_AFFILIATE_SECRET
  */
 
@@ -65,19 +67,43 @@ function convertMock({ code, baseUrl, subId }) {
    Lưu ý quan trọng:
    - `campaign_id` là số rất lớn (19 chữ số) -> phải giữ dạng CHUỖI,
      chuyển sang Number sẽ mất chữ số cuối và tạo link sai campaign.
+   - Mỗi sàn là một campaign riêng. Cấu hình:
+       ACCESSTRADE_CAMPAIGN_SHOPEE
+       ACCESSTRADE_CAMPAIGN_TIKTOK
+       ACCESSTRADE_CAMPAIGN_LAZADA
+     hoặc ACCESSTRADE_CAMPAIGN_ID làm mặc định chung.
    - Ta gắn 2 mã vào link:
        sub1 = gzafl-u<id>  : biết hoa hồng thuộc về ai
        sub2 = <mã đơn>     : biết hoa hồng thuộc đơn nào (để đối soát tự động)
      AccessTrade trả lại tất cả sub khi gọi postback (không cần cấu hình thêm).
    - Mọi tham số khác (utm_source...) để trống, tránh ghi đè dữ liệu của mạng.
 ========================================== */
-async function convertAccessTrade({ url, subId, code }) {
-  const apiKey = process.env.ACCESSTRADE_API_KEY;
-  const campaignId = String(process.env.ACCESSTRADE_CAMPAIGN_ID || '').trim();
 
-  if (!apiKey || !campaignId) {
+const CAMPAIGN_ENV_BY_PLATFORM = {
+  Shopee: 'ACCESSTRADE_CAMPAIGN_SHOPEE',
+  'TikTok Shop': 'ACCESSTRADE_CAMPAIGN_TIKTOK',
+  Lazada: 'ACCESSTRADE_CAMPAIGN_LAZADA'
+};
+
+function campaignIdFor(platform) {
+  const specificEnv = CAMPAIGN_ENV_BY_PLATFORM[platform];
+  const specific = specificEnv ? String(process.env[specificEnv] || '').trim() : '';
+  return specific || String(process.env.ACCESSTRADE_CAMPAIGN_ID || '').trim();
+}
+
+async function convertAccessTrade({ url, platform, subId, code }) {
+  const apiKey = process.env.ACCESSTRADE_API_KEY;
+  const campaignId = campaignIdFor(platform);
+
+  if (!apiKey) {
     throw new AffiliateError(
-      'Chưa cấu hình AccessTrade. Cần đặt ACCESSTRADE_API_KEY và ACCESSTRADE_CAMPAIGN_ID.'
+      'Chưa cấu hình AccessTrade. Cần đặt ACCESSTRADE_API_KEY.'
+    );
+  }
+  if (!campaignId) {
+    const suggested = CAMPAIGN_ENV_BY_PLATFORM[platform] || 'ACCESSTRADE_CAMPAIGN_ID';
+    throw new AffiliateError(
+      `Chưa cấu hình campaign AccessTrade cho ${platform}. Đặt ${suggested} (hoặc ACCESSTRADE_CAMPAIGN_ID).`
     );
   }
 

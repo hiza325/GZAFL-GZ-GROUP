@@ -389,7 +389,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `WITHDRAWAL_MIN` | `1000` | Số dư tối thiểu được rút (đồng) |
 | `AFFILIATE_PROVIDER` | `mock` | `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |
-| `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Khi `AFFILIATE_PROVIDER=accesstrade` |
+| `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_LAZADA` | – | Khi `AFFILIATE_PROVIDER=accesstrade` (`ACCESSTRADE_CAMPAIGN_ID` là mặc định chung, tuỳ chọn) |
 | `SHOPEE_AFFILIATE_APP_ID`, `SHOPEE_AFFILIATE_SECRET` | – | Khi `AFFILIATE_PROVIDER=shopee` |
 | `POSTBACK_SECRET` | – | Khoá xác thực postback do mạng gửi kèm. **Bắt buộc** để nhận chuyển đổi; thiếu thì mọi postback bị từ chối (503) |
 | `POSTBACK_PARAM_*` | tự dò | Ép tên tham số postback (ví dụ `POSTBACK_PARAM_TRANSACTION=transaction_id`) |
