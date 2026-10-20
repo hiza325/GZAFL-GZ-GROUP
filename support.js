@@ -9,6 +9,7 @@ const SUPPORT_LS_KEY = 'gzafl_support_chat_v1';
 
 const SUPPORT_MAX_STORED = 60;   // số tin nhắn lưu lại trong máy
 const SUPPORT_SEND_HISTORY = 10; // số tin nhắn gửi kèm mỗi lần hỏi (tiết kiệm token)
+const SUPPORT_MAX_MESSAGE_CHARS = 20000; // đủ cho câu trả lời AI dài, tránh bị cắt khi tải lại trang
 
 // Dùng khi không gọi được /api/config (bình thường các giá trị này lấy từ server)
 const SUPPORT_DEFAULT_SUGGESTIONS = [
@@ -75,7 +76,7 @@ function supportLoadState() {
         .map((msg) => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           kind: msg.kind === 'contact' ? 'contact' : msg.kind === 'welcome' ? 'welcome' : 'text',
-          content: String(msg.content == null ? '' : msg.content).slice(0, 4000)
+          content: String(msg.content == null ? '' : msg.content).slice(0, SUPPORT_MAX_MESSAGE_CHARS)
         }))
     };
     supportSeen = true;

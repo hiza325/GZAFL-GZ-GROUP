@@ -25,6 +25,19 @@ const { CODE_LENGTH, TTL_SECONDS, RESEND_COOLDOWN_SECONDS } = require('./otp');
 const minWithdrawal = formatMoney(WITHDRAWAL_MIN);
 const otpTtlMinutes = Math.round(TTL_SECONDS / 60);
 
+/** Cùng quy tắc với lib/money.js: mặc định 7 ngày, 0 = không giữ. */
+function commissionHoldDays() {
+  const raw = Number(process.env.COMMISSION_HOLD_DAYS);
+  if (!Number.isFinite(raw)) return 7;
+  return Math.min(365, Math.max(0, Math.floor(raw)));
+}
+
+const holdDays = commissionHoldDays();
+const holdText =
+  holdDays > 0
+    ? `Hoa hồng được tạm giữ ${holdDays} ngày kể từ khi mạng duyệt trước khi có thể rút.`
+    : 'Hoa hồng được cộng vào số dư khả dụng ngay khi mạng duyệt (không tạm giữ).';
+
 /** Thông tin liên hệ hỗ trợ lấy từ backend/.env (rỗng nếu chưa cấu hình). */
 function supportContact() {
   const email = String(process.env.SUPPORT_EMAIL || '').trim();
@@ -76,14 +89,18 @@ const TOPICS = [
     id: 'thoi-gian-hoa-hong',
     title: 'Bao lâu mới nhận được hoa hồng',
     keywords: [
-      'bao lau', 'khi nao', 'bao nhieu ngay', 'thoi gian', 'ghi nhan',
+      'bao lau', 'khi nao', 'bao nhieu ngay', 'thoi gian', 'ghi nhan', 'tam giu',
       'hoa hong', 'doi soat', 'cho duyet', 'dang xu ly', 'hoan thanh'
     ],
     answer: [
       'Sau khi bạn mua, đơn nằm ở trạng thái "Đang xử lý".',
-      `Hệ thống cần chờ sàn đối soát (thường vài ngày, có sàn tới khoảng 30 ngày) rồi quản trị viên duyệt hoa hồng.`,
-      'Khi đơn chuyển sang "Hoàn thành", hoa hồng được cộng vào số dư khả dụng trong "Ví hoàn tiền".',
-      'Đơn bị người mua huỷ/hoàn trả hoặc sàn không ghi nhận sẽ chuyển thành "Đã huỷ" và không được tính hoa hồng.'
+      'Hệ thống chờ sàn đối soát (thường vài ngày, có sàn tới khoảng 30 ngày) rồi ghi nhận hoa hồng.',
+      'Khi mạng báo đã duyệt, đơn chuyển sang "Hoàn thành" và hoa hồng được ghi vào ví.',
+      holdText,
+      holdDays > 0
+        ? 'Trong thời gian tạm giữ, khoản tiền vẫn hiện trong ví nhưng chưa rút được.'
+        : 'Bạn có thể rút ngay khi số dư đạt mức tối thiểu.',
+      'Đơn bị huỷ/hoàn trả sẽ chuyển thành "Đã huỷ" và hoa hồng bị thu hồi.'
     ].join('\n')
   },
   {
@@ -103,6 +120,21 @@ const TOPICS = [
     ].join('\n')
   },
   {
+    id: 'hoa-hong-thu-hoi',
+    title: 'Hoa hồng bị thu hồi / số dư âm',
+    keywords: [
+      'thu hoi', 'hoa hong bi thu hoi', 'hoa hong bi huy', 'hoan tra', 'tra hang',
+      'so du am', 'bi tru', 'no', 'can hoan lai', 'clawback'
+    ],
+    answer: [
+      'Khi đơn bị huỷ/hoàn trả sau khi đã ghi hoa hồng, hệ thống ghi nhận thu hồi khoản hoa hồng đó.',
+      'Nếu bạn chưa rút, khoản thu hồi chỉ làm giảm hoa hồng và số dư khả dụng.',
+      'Nếu bạn đã rút trước đó, số dư có thể âm và ví hiện "Cần hoàn lại". Khoản này sẽ tự trừ vào hoa hồng tiếp theo.',
+      'Bạn không cần chuyển tiền lại; cứ tiếp tục mua sắm, hệ thống tự cấn trừ.',
+      'Nếu thấy sai, hãy gửi mã đơn hàng để được kiểm tra.'
+    ].join('\n')
+  },
+  {
     id: 'rut-tien',
     title: 'Rút tiền',
     keywords: [
@@ -111,9 +143,11 @@ const TOPICS = [
     ],
     answer: [
       `Mức rút tối thiểu là ${minWithdrawal}.`,
+      'Số dư khả dụng = hoa hồng đã ghi - tiền đang tạm giữ - tiền đã rút.',
       'Mỗi lần rút là rút TOÀN BỘ số dư khả dụng, và mỗi tài khoản chỉ được có 1 lệnh rút đang xử lý tại một thời điểm.',
       'Bạn chọn 1 trong 2 cách nhận tiền: (1) nhập ngân hàng/ví + số tài khoản + tên chủ tài khoản, hoặc (2) tải lên ảnh QR nhận tiền.',
       'Sau khi gửi, lệnh ở trạng thái "Đang xử lý"; quản trị viên kiểm tra và chuyển khoản, tiền thường về trong vài giờ đến 1 ngày làm việc.',
+      'Nếu hoa hồng bị thu hồi sau khi bạn đã rút, số dư có thể âm và khoản đó tự trừ vào hoa hồng tiếp theo.',
       'Trạng thái lệnh rút: "Đang xử lý" -> "Đã thanh toán" (hoặc "Đã huỷ" nếu thông tin sai).'
     ].join('\n')
   },
@@ -203,9 +237,10 @@ const TOPICS = [
 /** Gợi ý câu hỏi hiện sẵn trong khung chat (giao diện lấy qua GET /api/config). */
 const SUGGESTIONS = [
   'Làm sao tạo đơn hoàn tiền?',
-  'Bao lâu thì nhận được hoa hồng?',
+  'Bao lâu thì rút được hoa hồng?',
   'Rút tiền thế nào?',
   'Mức rút tối thiểu là bao nhiêu?',
+  'Hoa hồng bị thu hồi thì sao?',
   'Rút tiền bằng ảnh QR thế nào?',
   'Không nhận được mã OTP?',
   'Mời bạn bè nhận thưởng ra sao?'
@@ -276,7 +311,7 @@ function buildSystemPrompt() {
     '- Không chắc chắn thì nói rõ là chưa có thông tin và mời người dùng liên hệ hỗ trợ, tuyệt đối không đoán bừa.',
     '- Không bao giờ hỏi mật khẩu, mã OTP, số tài khoản ngân hàng hay thông tin cá nhân của người dùng; không hướng dẫn chuyển tiền cho bất kỳ ai.',
     '- Câu hỏi ngoài phạm vi website (chính trị, y tế, pháp luật, lập trình...) thì từ chối nhẹ nhàng và mời quay lại việc hỗ trợ.',
-    '- Tối đa khoảng 5 câu hoặc 5 gạch đầu dòng. Chỉ dùng dấu "- " hoặc số thứ tự; không dùng bảng, không dùng ký hiệu markdown phức tạp.',
+    '- Trả lời đúng trọng tâm và ĐỦ Ý, không cắt câu giữa chừng. Câu đơn giản 2-4 câu; câu cần hướng dẫn thì tối đa khoảng 8 gạch đầu dòng.',
     '- Không viết lời chào dài dòng ở mỗi câu trả lời; vào thẳng nội dung.',
     '',
     contact.line

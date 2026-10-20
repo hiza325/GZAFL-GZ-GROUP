@@ -67,6 +67,7 @@ async function startServer() {
     AI_API_KEY: '',
     AFFILIATE_PROVIDER: 'mock',
     POSTBACK_SECRET,
+    COMMISSION_HOLD_DAYS: '7',
     RATE_LIMIT_STORE: 'sqlite',
     SMTP_HOST: '',
     SMTP_USER: '',
@@ -503,6 +504,25 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.ok(adminWd);
     assert.equal(adminWd.debt, 100000);
     assert.equal(adminWd.payable, 0);
+  });
+
+  await t.test('chatbot FAQ biết tạm giữ và thu hồi hoa hồng', async () => {
+    const hold = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Hoa hồng tạm giữ bao lâu thì rút được?' }] }
+    });
+    assert.equal(hold.res.status, 200);
+    assert.equal(hold.data.source, 'faq');
+    assert.match(hold.data.reply, /tạm giữ 7 ngày/);
+
+    const clawback = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Hoa hồng bị thu hồi thì sao?' }] }
+    });
+    assert.equal(clawback.res.status, 200);
+    assert.equal(clawback.data.source, 'faq');
+    assert.match(clawback.data.reply, /thu hồi/);
+    assert.match(clawback.data.reply, /số dư có thể âm/);
   });
 
   await t.test('chặn dò mật khẩu (rate limit dùng SQLite)', async () => {

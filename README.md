@@ -95,7 +95,7 @@ npm run watch:css
 | `AI_API_KEY` | – | Khoá API cho **trợ lý hỗ trợ (chatbot)**. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn trong `backend/lib/supportKnowledge.js`. Điền khoá là trợ lý trả lời bằng AI (xem mục [Trợ lý hỗ trợ (chatbot)](#trợ-lý-hỗ-trợ-chatbot)) |
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API và tên model (chuẩn OpenAI). Chỉ cần khi muốn chỉ định rõ nhà cung cấp |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI (vẫn giữ khoá) mà không phải xoá cấu hình |
-| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `2048`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời (Gemini 2.5 dùng thêm token "suy nghĩ" trong trần này) |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `4096`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời. Nếu AI vẫn bị cắt vì hết token, server tự gọi tiếp tối đa 2 lần để hoàn thành câu trả lời |
 | `AI_DAILY_LIMIT` | `800` | Trần **tổng** số lượt gọi AI mỗi ngày (mọi IP cộng lại). Vượt trần thì trợ lý vẫn trả lời nhưng bằng kịch bản có sẵn. `0` = không giới hạn |
 
 > **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).
@@ -240,7 +240,7 @@ Cần tỉ lệ vào Inbox tốt hơn Gmail thì dùng Brevo (`smtp-relay.brevo.
 
 Góc phải-dưới của **mọi trang** (kể cả trang chủ với khách chưa đăng nhập) có một nút tròn mở khung chat hỗ trợ:
 
-- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
+- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, **tạm giữ hoa hồng `COMMISSION_HOLD_DAYS` ngày**, **thu hồi hoa hồng/số dư âm**, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
 - Nút **"Liên hệ hỗ trợ"** ngay trong khung chat: hiện số điện thoại/Zalo và email (lấy từ `SUPPORT_ZALO`, `SUPPORT_EMAIL`) kèm nút copy.
 - **Gợi ý câu hỏi** sẵn ở trên ô nhập — bấm là hỏi luôn.
 - **Nhớ hội thoại**: lịch sử chat lưu trong trình duyệt (`localStorage`), tải lại trang không mất. Server **không lưu** nội dung chat.
@@ -270,7 +270,7 @@ Kiểm tra nhanh sau khi khởi động lại:
 
 ```bash
 curl http://localhost:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-3.5-flash-lite","maxTokens":2048,"dailyLimit":800,"usedToday":0}
+# {"ai":true,"provider":"Google Gemini","model":"gemini-3.5-flash-lite","maxTokens":4096,"dailyLimit":800,"usedToday":0}
 ```
 
 > Khoá API **chỉ nằm ở server**, không bao giờ gửi xuống trình duyệt. Mỗi IP được hỏi tối đa **30 tin nhắn / 10 phút** (chống spam, tránh cháy hạn mức khoá API). Muốn tạm tắt AI mà vẫn giữ khoá: đặt `AI_ENABLED=off`.
