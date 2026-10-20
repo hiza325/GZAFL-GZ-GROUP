@@ -10,7 +10,9 @@
     "start:prod": "node scripts/start-prod.js",
     "gen-secret": "node scripts/generate-secret.js",
     "make-admin": "node scripts/make-admin.js",
-    "reset-password": "node scripts/reset-password.js"
+    "reset-password": "node scripts/reset-password.js",
+    "backup": "node scripts/backup.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=22.5.0"

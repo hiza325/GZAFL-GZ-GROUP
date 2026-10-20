@@ -62,11 +62,57 @@ if (IS_PRODUCTION && cookieSecure() && !USE_HTTPS && !TRUST_PROXY) {
 }
 
 const ROOT = path.join(__dirname, '..');
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
+// Cho phép đổi thư mục ảnh (hữu ích khi chạy test hoặc gắn ổ đĩa riêng)
+const UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(__dirname, process.env.UPLOAD_DIR)
+  : path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const app = express();
 app.disable('x-powered-by');
+
+/* ==========================================
+   Header bảo mật (áp cho mọi response)
+
+   CSP hiện vẫn phải có 'unsafe-inline' cho script vì giao diện dùng
+   onclick="..." / onsubmit="..." (khoảng 40 chỗ). Khi nào refactor hết sang
+   addEventListener thì bỏ 'unsafe-inline' để CSP chặn được cả script nội tuyến.
+   Các chỉ thị còn lại (object-src, base-uri, frame-ancestors, form-action)
+   vẫn chặn được nhiều kiểu tấn công phổ biến.
+   ========================================== */
+const CSP_DIRECTIVES = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' https://unpkg.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "frame-src 'none'"
+];
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', CSP_DIRECTIVES.join('; '));
+
+  // HSTS chỉ bật khi thật sự có HTTPS (tránh khoá cứng localhost lúc dev)
+  if (IS_PRODUCTION && (req.secure || USE_HTTPS)) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  }
+  next();
+});
+
+// Dữ liệu API (ví, đơn, thông tin cá nhân) không cho trình duyệt/proxy lưu đệm
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 if (TRUST_PROXY) {
   app.set(
@@ -184,7 +230,15 @@ app.get('/r/:code', (req, res) => {
 });
 
 // API
-app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get('/api/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1 AS ok').get();
+    return res.json({ ok: true, db: 'ok', time: new Date().toISOString() });
+  } catch (err) {
+    console.error('Health check lỗi database:', err.message);
+    return res.status(503).json({ ok: false, db: 'error', time: new Date().toISOString() });
+  }
+});
 
 // Cấu hình công khai cho giao diện (KHÔNG chứa bí mật nào)
 app.get('/api/config', (req, res) => {
@@ -268,6 +322,12 @@ if (USE_HTTPS) {
   server = http.createServer(app);
 }
 
+// Giới hạn thời gian đọc header/request: giảm rủi ro slowloris.
+// requestTimeout để 5 phút (mặc định của Node) vì ảnh avatar 2MB có thể tải chậm trên 3G.
+server.headersTimeout = 20_000;
+server.requestTimeout = 300_000;
+server.keepAliveTimeout = 65_000;
+
 server.listen(PORT, () => {
   const scheme = USE_HTTPS ? 'https' : 'http';
   console.log(`GZ AFL backend đang chạy tại ${scheme}://localhost:${PORT}`);
@@ -275,11 +335,20 @@ server.listen(PORT, () => {
   console.log(`  HTTPS                 : ${USE_HTTPS ? 'có' : 'không'}`);
   console.log(`  Cookie chỉ-HTTPS      : ${cookieSecure() ? 'BẬT' : 'tắt'}`);
   console.log(`  Tin cậy reverse proxy : ${TRUST_PROXY || 'không'}`);
+  const rlStore = require('./lib/rateLimit').storeName();
+  console.log(
+    `  Giới hạn tần suất    : ${
+      rlStore === 'sqlite' ? 'SQLite (dùng chung nhiều tiến trình)' : 'bộ nhớ (chỉ đúng khi chạy 1 tiến trình)'
+    }`
+  );
+  if (IS_PRODUCTION && rlStore !== 'sqlite') {
+    console.warn('  CẢNH BÁO: production nên đặt RATE_LIMIT_STORE=sqlite nếu chạy nhiều tiến trình/instance.');
+  }
   const affiliate = require('./lib/affiliate').describe();
   console.log(`  Nhà cung cấp hoàn tiền: ${affiliate.provider}${affiliate.isReal ? '' : ' (thử nghiệm, chưa tạo hoa hồng thật)'}`);
 
   const postback = require('./lib/postback').describe();
-  const postbackHost = `http://localhost:${PORT}`;
+  const postbackHost = `${scheme}://localhost:${PORT}`;
   if (postback.configured) {
     console.log(`  Nhận báo cáo chuyển đổi: BẬT - khai với mạng URL ${postbackHost}${postback.url}`);
     console.log(
@@ -332,3 +401,40 @@ server.listen(PORT, () => {
   const cleaned = otp.cleanup();
   if (cleaned) console.log(`  Đã dọn ${cleaned} mã xác thực hết hạn.`);
 });
+
+/* ==========================================
+   Dừng an toàn (systemd/PM2 gửi SIGTERM)
+   - Ngừng nhận request mới
+   - Chờ request đang chạy xong (tối đa 10 giây)
+   - Đóng database để không hỏng file SQLite/WAL
+   ========================================== */
+let shuttingDown = false;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\nNhận tín hiệu ${signal}, đang dừng máy chủ...`);
+
+  const force = setTimeout(() => {
+    console.error('Quá 10 giây, buộc dừng.');
+    process.exit(1);
+  }, 10_000);
+  force.unref();
+
+  server.close(() => {
+    clearTimeout(force);
+    try {
+      db.close();
+    } catch (err) {
+      console.warn(`Không đóng được database: ${err.message}`);
+    }
+    console.log('Đã dừng.');
+    process.exit(0);
+  });
+
+  // Đóng các kết nối keep-alive đang rảnh để không phải chờ hết timeout
+  if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

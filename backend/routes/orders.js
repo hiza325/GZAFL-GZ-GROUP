@@ -16,6 +16,7 @@ router.use(requireAuth);
 const orderRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 20,
+  name: 'orders-create',
   key: (req) => 'user:' + (req.user ? req.user.id : req.ip)
 });
 

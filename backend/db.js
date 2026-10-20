@@ -17,6 +17,9 @@ const db = new DatabaseSync(DB_PATH);
 
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
+// Chờ tối đa 5 giây khi tiến trình khác đang ghi (tránh lỗi SQLITE_BUSY khi
+// chạy nhiều instance hoặc khi vừa backup vừa có người dùng thao tác).
+db.exec('PRAGMA busy_timeout = 5000;');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -158,6 +161,21 @@ db.exec(`
     ip             TEXT NOT NULL DEFAULT '',
     created_at     TEXT NOT NULL
   );
+
+  -- Bộ đếm giới hạn tần suất dùng chung khi chạy nhiều tiến trình
+  -- (RATE_LIMIT_STORE=sqlite). Khoá gồm tên bộ đếm + IP/người dùng.
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    key      TEXT PRIMARY KEY,
+    count    INTEGER NOT NULL DEFAULT 0,
+    reset_at INTEGER NOT NULL
+  );
+
+  -- Hạn mức gọi AI theo ngày, dùng chung giữa nhiều tiến trình.
+  -- Nhờ vậy chạy 2-4 instance vẫn không vượt AI_DAILY_LIMIT.
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    day   TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 /**
@@ -212,6 +230,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_postback_hash ON postback_logs (payload_hash);
   CREATE INDEX IF NOT EXISTS idx_audit_created       ON admin_audit_logs (created_at);
+  CREATE INDEX IF NOT EXISTS idx_rate_limits_reset   ON rate_limits (reset_at);
 `);
 
 // Chống 2 đơn cùng nhận một giao dịch của mạng. Dùng chỉ mục một phần (chỉ áp dụng

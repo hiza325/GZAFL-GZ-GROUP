@@ -182,6 +182,7 @@ GZ AFL backend đang chạy tại https://localhost:3000
   HTTPS                 : có
   Cookie chỉ-HTTPS      : BẬT
   Tin cậy reverse proxy : 1
+  Giới hạn tần suất    : SQLite (dùng chung nhiều tiến trình)
   Nhà cung cấp hoàn tiền: mock (thử nghiệm, chưa tạo hoa hồng thật)
 ```
 
@@ -194,6 +195,10 @@ pm2 start scripts/start-prod.js --name gzafl
 pm2 save
 pm2 startup     # làm theo hướng dẫn in ra để tự chạy khi reboot
 ```
+
+> **Khuyến nghị chạy 1 tiến trình** (PM2 mặc định là fork mode). Nếu bạn buộc phải chạy
+> nhiều instance/tiến trình, đặt `RATE_LIMIT_STORE=sqlite` trong `.env` — bộ đếm chống spam
+> và hạn mức AI sẽ dùng chung qua database thay vì mỗi tiến trình một bản riêng.
 
 Hoặc service systemd (`/etc/systemd/system/gzafl.service`):
 
@@ -232,6 +237,15 @@ sudo systemctl enable --now gzafl
 6. Bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, gửi mã cho tài khoản thử ⇒ phải nhận được thư thứ hai và đặt lại được mật khẩu.
 7. Vào **Cá nhân**, sửa ô Email ⇒ phải hiện khối **Xác thực email mới**; bấm *Gửi mã*, nhập mã nhận được ở địa chỉ mới rồi bấm *Lưu thay đổi* ⇒ email mới phải được lưu.
 8. **Đăng nhập 2 lớp**: đăng xuất rồi đăng nhập lại ⇒ sau khi nhập đúng mật khẩu phải hiện màn hình **Xác thực đăng nhập** và có thư chứa mã; nhập mã mới vào được. Bấm *Quay lại* ở màn đó phải trở về form đăng nhập.
+9. Chạy `npm test` — toàn bộ test phải **xanh**. Test dùng database + thư mục ảnh tạm, **không đụng dữ liệu thật**.
+10. Kiểm tra header bảo mật:
+
+```bash
+curl -I https://gzafl.vn/
+```
+
+Phải thấy `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy` và (khi chạy HTTPS) `Strict-Transport-Security`.
 
 ---
 
@@ -245,7 +259,7 @@ sudo systemctl enable --now gzafl
 | Quên mật khẩu / bị khoá | `npm run reset-password -- <email>` |
 | Đặt mật khẩu cụ thể | `npm run reset-password -- <email> MatKhauMoi123` |
 | Đổi JWT_SECRET | `npm run gen-secret -- --write` rồi khởi động lại |
-| Sao lưu dữ liệu | copy file `backend/data/gzafl.sqlite` |
+| Sao lưu dữ liệu | `npm run backup` |
 
 Khách quên mật khẩu thường sẽ **tự xử lý được**: bấm **"Quên mật khẩu?"** ở màn hình đăng nhập,
 hệ thống gửi mã xác thực về email đã đăng ký, khách nhập mã kèm mật khẩu mới là xong.
@@ -261,9 +275,40 @@ Khách tự đặt lại thành công thì yêu cầu đang chờ của họ **t
 > Không đặt lại mật khẩu cho **chính tài khoản đang đăng nhập** trong trang quản trị —
 > thao tác đó huỷ phiên hiện tại ngay. Hãy dùng **Cá nhân → Đổi mật khẩu**.
 
-**Sao lưu:** toàn bộ dữ liệu nằm trong một file `backend/data/gzafl.sqlite`.
-Muốn backup thì dừng server (hoặc dùng `sqlite3 gzafl.sqlite ".backup ..."`) rồi copy file đi.
-Ảnh đại diện **và ảnh QR nhận tiền** nằm trong `backend/uploads/` — cũng cần backup.
+**Sao lưu:** dùng script có sẵn (sao lưu "nóng", **không cần dừng server**):
+
+```bash
+cd backend
+npm run backup
+```
+
+Script sẽ:
+- Dùng `VACUUM INTO` để tạo bản sao database **nhất quán**, kể cả khi đang có người dùng ghi dữ liệu.
+- Copy toàn bộ `backend/uploads/` (ảnh đại diện + ảnh QR nhận tiền).
+- Ghi `manifest.json` (thời điểm, dung lượng, số ảnh).
+- Tự xoá bản sao lưu cũ hơn `BACKUP_KEEP_DAYS` ngày (mặc định **14**).
+
+Kết quả nằm trong `backend/backups/<thời-điểm>/`.
+
+> Bản sao lưu chứa thông tin cá nhân (email, số tài khoản, ảnh QR) — đặt quyền truy cập
+> hạn chế và nên đồng bộ thư mục `backups/` sang ổ/cloud khác (quy tắc 3-2-1: 3 bản,
+> 2 loại thiết bị, 1 bản ngoài máy chủ).
+
+Đặt lịch chạy:
+- **Windows** (Task Scheduler): chương trình `node`, tham số `scripts/backup.js`,
+  "Start in" = thư mục `backend`, mỗi ngày 02:00.
+- **Linux** (cron):
+  ```bash
+  0 2 * * * cd /var/www/gzafl/backend && node scripts/backup.js >> backups/backup.log 2>&1
+  ```
+
+**Phục hồi từ bản sao lưu:**
+1. Dừng server (`pm2 stop gzafl` hoặc `sudo systemctl stop gzafl`).
+2. Giữ lại file hiện tại để có thể quay lại nếu bản backup bị lỗi.
+3. Chép `gzafl.sqlite` từ thư mục backup vào `backend/data/gzafl.sqlite`.
+4. Chép thư mục `uploads/` từ backup vào `backend/uploads/`.
+5. Phân quyền lại (Linux): `chown -R www-data backend/data backend/uploads`.
+6. Khởi động lại và mở `/api/health` để kiểm tra.
 
 > Đổi `JWT_SECRET` làm **mọi phiên đăng nhập hiện tại hết hiệu lực**. Người dùng chỉ
 > cần đăng nhập lại; nếu ai đó quên mật khẩu thì dùng `npm run reset-password`.
@@ -330,6 +375,10 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SSL_CERT_PATH` | – | Chứng chỉ TLS (chỉ dùng cho Cách B) |
 | `TRUST_PROXY` | – | `1` / `true` / danh sách IP — bật khi chạy sau reverse proxy |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
+| `RATE_LIMIT_STORE` | `memory` | `memory` / `sqlite` — dùng `sqlite` khi chạy nhiều tiến trình/instance |
+| `UPLOAD_DIR` | `backend/uploads` | Thư mục ảnh đại diện + ảnh QR (đường dẫn tương đối tính từ `backend/`) |
+| `BACKUP_DIR` | `backend/backups` | Nơi lưu bản sao lưu (`npm run backup`) |
+| `BACKUP_KEEP_DAYS` | `14` | Số ngày giữ bản sao lưu trước khi tự xoá |
 | `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off` |
 | `LOGIN_OTP` | `auto` | Bật xác thực khi đăng nhập: `auto` / `on` / `off` |
 | `SMTP_HOST`, `SMTP_PORT` | – | Máy chủ gửi thư (mặc định cổng `587`) |
@@ -342,12 +391,15 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gửi sang nhà cung cấp |
 | `ACCESSTRADE_API_KEY`, `ACCESSTRADE_CAMPAIGN_ID` | – | Khi `AFFILIATE_PROVIDER=accesstrade` |
 | `SHOPEE_AFFILIATE_APP_ID`, `SHOPEE_AFFILIATE_SECRET` | – | Khi `AFFILIATE_PROVIDER=shopee` |
+| `POSTBACK_SECRET` | – | Khoá xác thực postback do mạng gửi kèm. **Bắt buộc** để nhận chuyển đổi; thiếu thì mọi postback bị từ chối (503) |
+| `POSTBACK_PARAM_*` | tự dò | Ép tên tham số postback (ví dụ `POSTBACK_PARAM_TRANSACTION=transaction_id`) |
+| `CASHBACK_RATE` | `1` | Tỷ lệ hoa hồng trả cho người dùng (0–1) |
 | `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp + nút "Liên hệ hỗ trợ" của khung chat |
 | `AI_API_KEY` | – | Khoá API cho trợ lý hỗ trợ. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn (xem mục 8) |
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API + tên model (chuẩn OpenAI) |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI mà vẫn giữ khoá |
 | `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ, độ dài và độ "sáng tạo" của câu trả lời |
-| `AI_DAILY_LIMIT` | `800` | Trần tổng số lượt gọi AI mỗi ngày (mọi IP cộng lại); vượt trần thì trả lời bằng kịch bản có sẵn. `0` = không giới hạn |
+| `AI_DAILY_LIMIT` | `800` | Trần tổng số lượt gọi AI mỗi ngày (mọi IP cộng lại); vượt trần thì trả lời bằng kịch bản có sẵn. `0` = không giới hạn. Bộ đếm lưu trong SQLite nên nhiều tiến trình dùng chung |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 
 ---
@@ -375,6 +427,7 @@ Lưu ý khi vận hành:
 
 - Khoá API **chỉ nằm ở server** (không lộ xuống trình duyệt). Đặt **hạn mức chi tiêu** ở phía nhà cung cấp để tránh phát sinh ngoài ý muốn.
 - Mỗi IP bị giới hạn **30 tin nhắn / 10 phút**; nếu AI lỗi hoặc hết hạn mức, trợ lý **tự lùi về chế độ kịch bản** nên khách vẫn được trả lời.
+- Tổng số lượt gọi AI mỗi ngày bị chặn bởi `AI_DAILY_LIMIT`; bộ đếm lưu trong SQLite nên chạy nhiều tiến trình vẫn không vượt trần.
 - Hội thoại lưu ở `localStorage` của trình duyệt, server **không lưu** nội dung chat.
 - Muốn sửa nội dung trả lời: sửa `backend/lib/supportKnowledge.js` (nguồn duy nhất cho cả hai chế độ). Sau khi sửa **không cần build CSS**, chỉ cần khởi động lại server.
 

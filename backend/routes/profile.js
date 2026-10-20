@@ -17,7 +17,7 @@ router.use(requireAuth);
 
 // Gửi mã xác thực để đổi email: 10 lần / 15 phút / IP.
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
-const emailOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const emailOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'profile-email-otp' });
 
 const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const ALLOWED_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
@@ -221,7 +221,7 @@ router.delete('/bank-qr', (req, res) => {
 // Đổi mật khẩu. Giới hạn chặt hơn để tránh dò mật khẩu hiện tại.
 router.put(
   '/password',
-  rateLimit({ windowMs: 15 * 60 * 1000, max: 10 }),
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'profile-password' }),
   (req, res) => {
     const currentPassword = String((req.body && req.body.currentPassword) || '').trim();
     const newPassword = String((req.body && req.body.newPassword) || '').trim();

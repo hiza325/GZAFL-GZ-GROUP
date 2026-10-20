@@ -24,7 +24,7 @@ router.use(express.urlencoded({ extended: false, limit: '128kb' }));
 
 // Chống ngập: 3000 lượt / 5 phút cho mỗi IP. Một ngày cao điểm cũng khó vượt,
 // nhưng vẫn đủ để chặn kẻ gọi bừa. Lưu ý AccessTrade chỉ gửi lại tối đa 3 lần.
-const floodLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 3000 });
+const floodLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 3000, name: 'postback' });
 
 const MAX_KEYS = 60;        // số tham số tối đa nhận từ một lần gọi
 const MAX_VALUE = 300;      // độ dài tối đa mỗi giá trị tham số

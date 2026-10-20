@@ -2,6 +2,7 @@ node_modules/
 data/
 uploads/*
 !uploads/.gitkeep
+backups/
 
 # Bí mật cục bộ (JWT_SECRET, API key affiliate...) - KHÔNG commit
 .env

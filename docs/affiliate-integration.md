@@ -33,12 +33,12 @@ Ba việc trên phải làm cùng nhau. Làm lẻ một việc thì tính năng 
 ① Người dùng dán link Shopee
         │
         ▼
-② POST /api/orders                      ← đã có, cần sửa
+② POST /api/orders                      ← đã có
         │   - parseOrderLink(link)  → { platform: 'Shopee', url }  (kiểm tra giao thức + tên miền)
         │   - subId = "gzafl-u{userId}"          (mã định danh người dùng)
         │   - GỌI PROVIDER để đổi link
         ▼
-③ backend/lib/affiliate.js              ← CHƯA CÓ, cần viết
+③ backend/lib/affiliate.js              ← đã có (mock + AccessTrade; Shopee còn khung)
         │   convert({ url, platform, subId })
         │     ├─ provider "mock"        → link nội bộ /r/<mã>
         │     ├─ provider "accesstrade" → gọi API AccessTrade
@@ -53,7 +53,7 @@ Ba việc trên phải làm cùng nhau. Làm lẻ một việc thì tính năng 
 ⑥ Người dùng mua hàng trên Shopee
         │
         ▼
-⑦ Shopee/AccessTrade gọi POSTBACK về server  ← CHƯA CÓ, cần viết
+⑦ Shopee/AccessTrade gọi POSTBACK về server  ← đã có (backend/routes/postback.js)
         │   "sub_id = gzafl-u7, hoa hồng = 75.000đ"
         ▼
 ⑧ Hệ thống tra sub_id → ra user 7 → cộng tiền vào ví

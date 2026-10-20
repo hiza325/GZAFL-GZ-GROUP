@@ -13,6 +13,7 @@
  */
 
 const express = require('express');
+const db = require('../db');
 const { rateLimit } = require('../lib/rateLimit');
 const ai = require('../lib/ai');
 const knowledge = require('../lib/supportKnowledge');
@@ -24,7 +25,7 @@ const MAX_LENGTH = 1200;   // ký tự tối đa mỗi tin nhắn
 const MAX_TOTAL = 8000;    // tổng ký tự tối đa cả đoạn hội thoại gửi lên
 
 // 30 tin nhắn / 10 phút cho mỗi IP (đủ thoải mái cho người dùng thật, chặn spam khoá API)
-const chatRateLimit = rateLimit({ windowMs: 10 * 60 * 1000, max: 30 });
+const chatRateLimit = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, name: 'support-chat' });
 
 /**
  * Hạn mức TỔNG số lượt gọi AI trong một ngày — lá chắn cuối cùng cho quota/chi phí.
@@ -40,25 +41,70 @@ const AI_DAILY_LIMIT =
     ? Math.floor(Number(process.env.AI_DAILY_LIMIT))
     : 800;
 
-let aiUsage = { day: '', count: 0 };
+// Bộ đếm nằm trong SQLite (bảng ai_usage) để nhiều tiến trình dùng chung.
+// Trước đây để trong RAM: chạy 2-4 instance thì mỗi instance đều tưởng mình
+// còn đủ hạn mức, tổng lượt gọi AI có thể vượt trần nhiều lần.
+const AI_USAGE_KEEP_DAYS = 31;
+
+function dayString(offsetDays = 0) {
+  return new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+}
 
 function currentDay() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (theo UTC)
+  return dayString(0);
+}
+
+// Dọn bản ghi cũ một lần lúc nạp module (bảng chỉ có 1 dòng/ngày).
+try {
+  db.prepare('DELETE FROM ai_usage WHERE day < ?').run(dayString(-AI_USAGE_KEEP_DAYS));
+} catch (err) {
+  console.warn(`Không dọn được ai_usage cũ: ${err.message}`);
 }
 
 /** Số lượt AI còn lại hôm nay (Infinity nếu không giới hạn). */
 function aiQuotaLeft() {
-  const day = currentDay();
-  if (aiUsage.day !== day) aiUsage = { day, count: 0 };
   if (AI_DAILY_LIMIT <= 0) return Infinity;
-  return Math.max(0, AI_DAILY_LIMIT - aiUsage.count);
+  try {
+    const row = db.prepare('SELECT count FROM ai_usage WHERE day = ?').get(currentDay());
+    return Math.max(0, AI_DAILY_LIMIT - (Number(row && row.count) || 0));
+  } catch (err) {
+    console.error('Không đọc được hạn mức AI:', err.message);
+    return 0; // thận trọng: coi như đã hết, trả lời bằng kịch bản
+  }
 }
 
-/** Ghi nhận một lượt gọi AI. */
-function consumeAiQuota() {
+/**
+ * Giữ chỗ MỘT lượt gọi AI (tăng bộ đếm trước khi gọi).
+ * Dùng UPSERT ... RETURNING nên hai request đồng thời không cùng lọt qua trần.
+ * Nếu vượt trần thì trả lại lượt vừa giữ và báo false.
+ */
+function reserveAiQuota() {
+  if (AI_DAILY_LIMIT <= 0) return true;
+
   const day = currentDay();
-  if (aiUsage.day !== day) aiUsage = { day, count: 0 };
-  aiUsage.count += 1;
+  try {
+    const row = db
+      .prepare(
+        `INSERT INTO ai_usage (day, count) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET count = count + 1
+         RETURNING count`
+      )
+      .get(day);
+
+    const used = Number(row && row.count) || 1;
+    if (used > AI_DAILY_LIMIT) {
+      try {
+        db.prepare('UPDATE ai_usage SET count = count - 1 WHERE day = ?').run(day);
+      } catch (err) {
+        // Không trả lại được lượt cũng không sao: bộ đếm chỉ hơi cao hơn thực tế
+      }
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Không ghi được hạn mức AI:', err.message);
+    return false; // không gọi AI khi không kiểm soát được chi phí
+  }
 }
 
 /**
@@ -98,11 +144,14 @@ function normalizeHistory(input) {
 /** Trạng thái trợ lý (dùng để kiểm tra nhanh khi cấu hình .env). */
 router.get('/status', (req, res) => {
   const info = ai.describe();
+  const left = aiQuotaLeft();
   res.json({
     ai: info.configured,
     provider: info.configured ? info.provider : null,
     model: info.configured ? info.model : null,
     dailyLimit: AI_DAILY_LIMIT,
+    usedToday: AI_DAILY_LIMIT > 0 ? AI_DAILY_LIMIT - left : 0,
+    remainingToday: AI_DAILY_LIMIT > 0 ? left : null,
     suggestions: knowledge.SUGGESTIONS.length
   });
 });
@@ -120,7 +169,7 @@ router.post('/chat', chatRateLimit, async (req, res) => {
   }
 
   // Hết hạn mức AI trong ngày -> vẫn trả lời, nhưng bằng kịch bản có sẵn
-  if (aiQuotaLeft() <= 0) {
+  if (!reserveAiQuota()) {
     console.warn(`Đã chạm hạn mức AI trong ngày (${AI_DAILY_LIMIT} lượt), tạm dùng kịch bản có sẵn.`);
     return res.json({
       reply: knowledge.faqAnswer(question) || knowledge.fallbackAnswer(),
@@ -128,8 +177,6 @@ router.post('/chat', chatRateLimit, async (req, res) => {
       notice: 'Trợ lý AI đã đạt giới hạn trong ngày nên mình trả lời bằng kiến thức có sẵn. Bạn thử lại sau hoặc liên hệ hỗ trợ nhé.'
     });
   }
-
-  consumeAiQuota();
 
   try {
     const reply = await ai.ask(history);

@@ -480,6 +480,32 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 
 ---
 
+## Kiểm thử và sao lưu
+
+**Chạy test tự động** (dùng database + thư mục ảnh tạm, không đụng dữ liệu thật):
+
+```bash
+cd backend
+npm test
+```
+
+Bộ test kiểm tra: health, header bảo mật, chặn tải file nội bộ, quyền xem ảnh QR,
+chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, rate limit dùng SQLite
+và script sao lưu.
+
+**Sao lưu nóng** (không cần dừng server):
+
+```bash
+cd backend
+npm run backup
+```
+
+Bản sao lưu nằm trong `backend/backups/<thời-điểm>/`, gồm database, thư mục `uploads/`
+và `manifest.json`; tự xoá bản cũ hơn `BACKUP_KEEP_DAYS` ngày (mặc định 14).
+Cách đặt lịch và phục hồi: xem [docs/deployment.md](docs/deployment.md#5-vận-hành-thường-ngày).
+
+---
+
 
 ## Bảo mật
 
@@ -495,6 +521,8 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email / đăng nhập tách biệt nhau).
 - **Xác thực khi đăng nhập**: mã chỉ được gửi **sau khi mật khẩu đã đúng**, nên người không biết mật khẩu không làm tốn thư trong hộp của người khác. Bước 2 dùng một **phiếu đăng nhập** ký sẵn (sống 5 phút) thay cho việc gửi lại mật khẩu, và phiếu tự hết hiệu lực khi mật khẩu bị đổi.
 - **Mật khẩu tạm** do quản trị viên cấp không được lưu dưới dạng văn bản thường — chỉ hiện một lần cho quản trị viên rồi thôi.
+- Mọi response có **header bảo mật**: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`; khi chạy HTTPS có thêm `Strict-Transport-Security`. API trả `Cache-Control: no-store` để không lưu đệm dữ liệu ví/đơn.
+- **Postback** từ mạng affiliate phải kèm `POSTBACK_SECRET`; thiếu hoặc sai khoá đều bị từ chối (503/403) và được ghi nhật ký.
 
 ### Lưu ý khi triển khai thật
 
@@ -503,7 +531,7 @@ Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông b
 - Đổi `JWT_SECRET` và bật HTTPS — khi đó cookie tự động được đặt `secure: true`. Server đã **từ chối khởi động** ở `NODE_ENV=production` nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự.
 - Nếu chạy sau Nginx/Caddy/Cloudflare thì **phải** đặt `TRUST_PROXY` — thiếu biến này cookie `secure` sẽ bị trình duyệt từ chối (đăng nhập xong vẫn như chưa đăng nhập) và link hoàn tiền sẽ bị tạo với `http://`.
 - Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
-- Nên dùng một lớp lưu trữ phiên/rate-limit tập trung (Redis...) nếu chạy nhiều tiến trình; SQLite cũng chỉ phù hợp khi chạy **một tiến trình**. Nhớ backup `backend/data/gzafl.sqlite` và `backend/uploads/`.
+- Nếu chạy nhiều tiến trình/instance, đặt `RATE_LIMIT_STORE=sqlite` để bộ đếm chống spam và hạn mức AI dùng chung qua database (khuyến nghị vẫn chạy **một tiến trình**). Sao lưu định kỳ bằng `npm run backup` — script sao lưu cả database và ảnh, tự dọn bản cũ.
 - Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML. Trợ lý hỗ trợ cũng lấy hai giá trị này cho nút **"Liên hệ hỗ trợ"** trong khung chat.
 - **Trợ lý hỗ trợ chạy được ngay, không cần cấu hình** (chế độ kịch bản). Nếu đặt `AI_API_KEY` thì mỗi câu hỏi của khách là một lượt gọi API tính vào hạn mức/chi phí của khoá đó — nên đặt **hạn mức chi tiêu** ở phía nhà cung cấp, giữ giới hạn 30 tin nhắn/10 phút mỗi IP và chỉnh trần **`AI_DAILY_LIMIT`** (mặc định 800 lượt/ngày cho toàn hệ thống; vượt trần thì trợ lý tự trả lời bằng kịch bản có sẵn).
 - **Trước khi dùng xác thực khi đăng nhập** (`LOGIN_OTP=auto` sẽ tự bật khi đã có SMTP): phải chắc chắn tài khoản quản trị có **email thật đọc được**, nếu không bạn sẽ tự khoá mình khỏi trang quản trị. Cách làm an toàn: để `LOGIN_OTP=off`, đăng nhập, đổi email ở trang **Cá nhân**, rồi bỏ dòng đó đi. Nếu máy chủ thư gặp sự cố (hết hạn mức/sai mật khẩu ứng dụng), thêm `LOGIN_OTP=off` rồi khởi động lại là mọi người vào được ngay bằng mật khẩu.

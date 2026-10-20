@@ -14,18 +14,18 @@ const otp = require('../lib/otp');
 const router = express.Router();
 
 // Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
-router.use(rateLimit({ windowMs: 60 * 1000, max: 30 }));
+router.use(rateLimit({ windowMs: 60 * 1000, max: 30, name: 'auth' }));
 
 // Riêng việc GỬI mã OTP khi ĐĂNG KÝ / KHÔI PHỤC MẬT KHẨU thì chặt hơn:
 // 10 lần / 15 phút / IP (dùng chung một bộ đếm cho các endpoint này).
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
-const otpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const otpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, name: 'otp-send' });
 
 // Mã xác thực khi ĐĂNG NHẬP dùng bộ đếm riêng và rộng hơn (40 lần / 15 phút / IP),
 // vì mỗi lần đăng nhập đều tốn 1-2 lượt (nhập sai vài lần là hết hạn mức 10).
 // Chống dò mã vẫn nhờ lib/otp.js: mỗi mã chỉ cho sai tối đa 5 lần, và mã chỉ
 // được phát ra SAU KHI mật khẩu đã đúng.
-const loginOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40 });
+const loginOtpRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 40, name: 'login-otp' });
 
 const BCRYPT_ROUNDS = 10;
 
