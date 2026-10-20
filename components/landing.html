@@ -16,30 +16,51 @@
     </div>
 
     <!-- Center Menu -->
-    <div class="hidden md:flex items-center gap-8">
-      <a href="#" class="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-[#f04d4d] rounded-full font-bold text-sm border border-red-100/50 transition">
-        <i data-lucide="home" class="w-4 h-4"></i> Trang chủ
+    <div class="hidden lg:flex items-center gap-6 xl:gap-8">
+      <a href="#" class="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-[#f04d4d] rounded-full font-bold text-sm border border-red-100/50 transition whitespace-nowrap">
+        <i data-lucide="home" class="w-4 h-4"></i> <span data-i18n="nav.home">Trang chủ</span>
       </a>
-      <a href="#" data-action="open-auth" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
-        <i data-lucide="search" class="w-4 h-4"></i> Tra cứu đơn hàng
+      <a href="#" data-action="open-auth" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition whitespace-nowrap">
+        <i data-lucide="search" class="w-4 h-4"></i> <span data-i18n="nav.lookup">Tra cứu đơn hàng</span>
       </a>
-      <a href="#" data-action="open-auth" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
-        <i data-lucide="wallet" class="w-4 h-4"></i> Ví của bạn
+      <a href="#" data-action="open-auth" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition whitespace-nowrap">
+        <i data-lucide="wallet" class="w-4 h-4"></i> <span data-i18n="nav.wallet">Ví của bạn</span>
       </a>
-      <a href="#" data-action="open-guide" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition">
-        <i data-lucide="help-circle" class="w-4 h-4"></i> Hướng dẫn
+      <a href="#" data-action="open-guide" class="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-semibold text-sm transition whitespace-nowrap">
+        <i data-lucide="help-circle" class="w-4 h-4"></i> <span data-i18n="nav.guide">Hướng dẫn</span>
       </a>
     </div>
 
-    <!-- Right (Login Button) -->
-    <div>
-      <button data-action="open-auth" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-5 py-1.5 rounded-full hover:shadow-md transition group">
+    <!-- Right (Language + Login Button) -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Chuyển đổi ngôn ngữ VI / EN -->
+      <div id="lang-switcher" class="relative">
+        <button type="button" id="lang-toggle" data-action="toggle-lang-menu" aria-label="Chọn ngôn ngữ" aria-haspopup="listbox" aria-expanded="false" class="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 pl-2 pr-2.5 sm:pr-3 py-2 rounded-full hover:shadow-md transition">
+          <img id="lang-flag" src="assets/flags/vn.svg" alt="Tiếng Việt" class="w-5 h-3.5 rounded-sm object-cover">
+          <span id="lang-label" class="text-xs font-bold text-slate-700">VI</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 hidden sm:block"></i>
+        </button>
+        <div id="lang-menu" role="listbox" aria-label="Chọn ngôn ngữ" data-i18n-aria-label="lang.switch" class="hidden absolute right-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl p-1.5 z-[60]">
+          <button type="button" role="option" data-action="set-lang" data-lang="vi" data-lang-option aria-selected="true" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition text-left">
+            <img src="assets/flags/vn.svg" alt="" class="w-5 h-3.5 rounded-sm object-cover">
+            <span class="text-sm font-semibold text-slate-700">Tiếng Việt</span>
+            <i data-lucide="check" class="lang-check w-4 h-4 text-[#f04d4d] ml-auto"></i>
+          </button>
+          <button type="button" role="option" data-action="set-lang" data-lang="en" data-lang-option aria-selected="false" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition text-left">
+            <img src="assets/flags/gb.svg" alt="" class="w-5 h-3.5 rounded-sm object-cover">
+            <span class="text-sm font-semibold text-slate-700">English</span>
+            <i data-lucide="check" class="lang-check w-4 h-4 text-[#f04d4d] ml-auto hidden"></i>
+          </button>
+        </div>
+      </div>
+
+      <button data-action="open-auth" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-4 sm:pr-5 py-1.5 rounded-full hover:shadow-md transition group whitespace-nowrap">
         <div class="w-9 h-9 bg-[#18253f] group-hover:bg-[#233559] text-white rounded-full flex items-center justify-center font-bold text-sm transition">
           <i data-lucide="user" class="w-4 h-4"></i>
         </div>
         <div class="text-left">
-          <div class="text-[10px] text-slate-500 font-medium leading-none">Xin chào!</div>
-          <div class="text-sm font-bold text-slate-800 leading-none mt-1">Đăng nhập</div>
+          <div class="text-[10px] text-slate-500 font-medium leading-none" data-i18n="nav.hello">Xin chào!</div>
+          <div class="text-sm font-bold text-slate-800 leading-none mt-1" data-i18n="nav.login">Đăng nhập</div>
         </div>
       </button>
     </div>
@@ -51,16 +72,16 @@
     
     <!-- Badge -->
     <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-red-100 text-[#f04d4d] text-xs font-bold mb-8 shadow-sm">
-      <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Nền tảng Affiliate uy tín tại Việt Nam
+      <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> <span data-i18n="hero.badge">Nền tảng Affiliate uy tín tại Việt Nam</span>
     </div>
 
     <!-- Tiêu đề lớn -->
     <h1 class="text-[40px] md:text-[56px] lg:text-[64px] font-extrabold text-[#1a202c] tracking-tight leading-[1.1] mb-5">
-      Chuyển đổi link mua sắm <br>
-      <span class="text-[#f04d4d]">Nhận hoa hồng</span>
+      <span data-i18n="hero.title.line1">Chuyển đổi link mua sắm</span> <br>
+      <span class="text-[#f04d4d]" data-i18n="hero.title.line2">Nhận hoa hồng</span>
     </h1>
 
-    <p class="text-slate-500 font-medium italic mb-12 max-w-md mx-auto text-sm md:text-base leading-relaxed">
+    <p class="text-slate-500 font-medium italic mb-12 max-w-2xl mx-auto text-sm md:text-base leading-relaxed" data-i18n-html="hero.subtitle">
       Link hoàn tiền cho Shopee, Tiki, Lazada, TikTok Shop — công khai, <br class="hidden md:block">minh bạch
     </p>
 
@@ -83,24 +104,24 @@
          
          <!-- Nút Dán -->
          <button data-action="paste-landing-link" class="flex items-center justify-center gap-2 px-6 py-3.5 bg-red-50 text-[#f04d4d] rounded-xl font-bold hover:bg-red-100 transition whitespace-nowrap w-full md:w-auto">
-           <i data-lucide="clipboard" class="w-4 h-4"></i> Dán
+           <i data-lucide="clipboard" class="w-4 h-4"></i> <span data-i18n="hero.paste">Dán</span>
          </button>
          
          <!-- Ô nhập link -->
          <div class="flex-1 w-full relative flex items-center px-4 py-3 md:py-0">
             <i data-lucide="link-2" class="text-slate-300 w-5 h-5 mr-3 flex-shrink-0"></i>
-            <input id="landing-link-input" type="text" placeholder="Dán link sản phẩm..." class="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-slate-700 placeholder-slate-400 font-medium text-base">
+            <input id="landing-link-input" type="text" placeholder="Dán link sản phẩm..." data-i18n-placeholder="hero.input.placeholder" class="w-full bg-transparent border-none focus:outline-none focus:ring-0 text-slate-700 placeholder-slate-400 font-medium text-base">
          </div>
 
          <!-- Nút Chuyển đổi -->
          <button data-action="convert-landing-link" class="flex items-center justify-center gap-2 px-8 py-3.5 bg-[#f04d4d] hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-500/20 transition whitespace-nowrap w-full md:w-auto transform active:scale-95">
-           <i data-lucide="boxes" class="w-4 h-4 text-white"></i> Chuyển đổi link
+           <i data-lucide="boxes" class="w-4 h-4 text-white"></i> <span data-i18n="hero.convert">Chuyển đổi link</span>
          </button>
       </div>
 
       <div class="mt-5 text-left flex items-center justify-center md:justify-start gap-2 text-xs font-medium text-slate-500">
         <i data-lucide="info" class="w-3.5 h-3.5"></i>
-        Mỗi lần chuyển đổi 1 link. Đăng nhập để hệ thống lưu đơn và đối soát hoa hồng cho bạn.
+        <span data-i18n="hero.note">Mỗi lần chuyển đổi 1 link. Đăng nhập để hệ thống lưu đơn và đối soát hoa hồng cho bạn.</span>
       </div>
     </div>
   </div>
@@ -113,7 +134,7 @@
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative transform scale-95 transition-transform duration-300" id="auth-modal-content">
       
       <!-- Nút Đóng -->
-      <button data-action="close-auth" aria-label="Đóng" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <button data-action="close-auth" aria-label="Đóng" data-i18n-aria-label="common.close" class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
 
@@ -134,15 +155,15 @@
         <form id="auth-form" data-submit-action="auth-submit">
           <!-- Nhập Tên -->
           <div id="auth-name-group" class="mb-4 hidden">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên hiển thị</label>
-            <input type="text" id="auth-name" placeholder="Nguyễn Văn A" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.name.label">Tên hiển thị</label>
+            <input type="text" id="auth-name" placeholder="Nguyễn Văn A" data-i18n-placeholder="auth.name.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Nhập Email / SĐT -->
           <div class="mb-4">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
-            <input type="text" id="auth-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
-            <p class="text-[11px] text-slate-400 mt-1.5">Dùng để đăng nhập.</p>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.username.label">Email hoặc Số điện thoại</label>
+            <input type="text" id="auth-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <p class="text-[11px] text-slate-400 mt-1.5" data-i18n="auth.username.hint">Dùng để đăng nhập.</p>
           </div>
 
           <!-- Email nhận mã xác thực (chỉ hiện khi đăng ký) -->
@@ -154,14 +175,14 @@
 
           <!-- Nhập Mật khẩu -->
           <div class="mb-6">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu</label>
-            <input type="password" id="auth-password" placeholder="••••••••" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.password.label">Mật khẩu</label>
+            <input type="password" id="auth-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Xác nhận mật khẩu (chỉ hiện khi đăng ký) -->
           <div id="auth-confirm-group" class="mb-6 hidden">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Xác nhận mật khẩu</label>
-            <input type="password" id="auth-confirm-password" placeholder="••••••••" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.confirm.label">Xác nhận mật khẩu</label>
+            <input type="password" id="auth-confirm-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Nút Submit -->
@@ -172,15 +193,15 @@
 
         <!-- Bước 2 (dùng chung): nhập mã xác thực gửi qua email - đăng ký hoặc đăng nhập -->
         <div id="auth-otp-panel" class="hidden">
-          <p class="text-sm text-slate-500 mb-5"><span id="auth-otp-lead">Mã xác thực đã được gửi tới </span><span id="auth-otp-email" class="font-semibold text-slate-700 break-all"></span><span id="auth-otp-tail">. Nhập mã để hoàn tất đăng ký.</span></p>
+          <p class="text-sm text-slate-500 mb-5"><span id="auth-otp-lead" data-i18n="auth.otp.lead">Mã xác thực đã được gửi tới </span><span id="auth-otp-email" class="font-semibold text-slate-700 break-all"></span><span id="auth-otp-tail">. Nhập mã để hoàn tất đăng ký.</span></p>
 
           <div id="auth-otp-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4">
             <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
-            <span>Chưa cấu hình gửi thư — mã thử nghiệm: <b id="auth-otp-devcode" class="font-mono text-sm"></b></span>
+            <span><span data-i18n="auth.otp.dev">Chưa cấu hình gửi thư — mã thử nghiệm:</span> <b id="auth-otp-devcode" class="font-mono text-sm"></b></span>
           </div>
 
           <div class="mb-6">
-            <label for="auth-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
+            <label for="auth-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.otp.label">Mã xác thực</label>
             <input type="text" id="auth-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-enter-action="auth-otp-submit" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
@@ -190,38 +211,38 @@
 
           <div class="mt-4 flex items-center justify-between text-xs font-semibold">
             <button type="button" id="auth-otp-resend-btn" data-action="auth-otp-resend" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
-            <button type="button" data-action="auth-back" class="text-slate-400 hover:text-slate-600 transition">Quay lại</button>
+            <button type="button" data-action="auth-back" class="text-slate-400 hover:text-slate-600 transition" data-i18n="auth.back">Quay lại</button>
           </div>
         </div>
 
         <!-- Quên mật khẩu (chỉ hiện ở chế độ đăng nhập) -->
         <div id="auth-forgot-row" class="mt-4 text-center">
-          <button type="button" data-action="forgot-show" class="text-xs font-semibold text-slate-400 hover:text-[#f04d4d] transition">Quên mật khẩu?</button>
+          <button type="button" data-action="forgot-show" class="text-xs font-semibold text-slate-400 hover:text-[#f04d4d] transition" data-i18n="auth.forgot.link">Quên mật khẩu?</button>
         </div>
 
         <!-- Quên mật khẩu, bước 1: gửi mã xác thực về email -->
         <div id="auth-forgot-panel" class="hidden">
-          <p class="text-sm text-slate-500 mb-5">Nhập tài khoản cần khôi phục. Mã xác thực sẽ được gửi tới email bạn đã đăng ký.</p>
+          <p class="text-sm text-slate-500 mb-5" data-i18n="auth.forgot.subtitle.default">Nhập tài khoản cần khôi phục. Mã xác thực sẽ được gửi tới email bạn đã đăng ký.</p>
 
           <div class="mb-5">
-            <label for="forgot-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email hoặc Số điện thoại</label>
-            <input type="text" id="forgot-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="forgot-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.username.label">Email hoặc Số điện thoại</label>
+            <input type="text" id="forgot-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
-          <button type="button" id="forgot-submit-btn" data-action="forgot-submit" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+          <button type="button" id="forgot-submit-btn" data-action="forgot-submit" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]" data-i18n="auth.forgot.submit">
             Gửi mã xác thực
           </button>
 
           <!-- Đường dự phòng: nhờ quản trị viên cấp lại mật khẩu -->
           <div id="forgot-admin-block" class="hidden mt-5 pt-5 border-t border-slate-100">
-            <p class="text-xs text-slate-500 mb-4">Không nhận được mã (tài khoản chưa có email, hoặc email sai)? Gửi yêu cầu để quản trị viên cấp lại mật khẩu cho bạn.</p>
+            <p class="text-xs text-slate-500 mb-4" data-i18n="auth.forgot.adminHelp">Không nhận được mã (tài khoản chưa có email, hoặc email sai)? Gửi yêu cầu để quản trị viên cấp lại mật khẩu cho bạn.</p>
 
             <div class="mb-4">
-              <label for="forgot-note" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách liên hệ lại</label>
-              <input type="text" id="forgot-note" placeholder="Ví dụ: Zalo 0987 654 321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+              <label for="forgot-note" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.forgot.note.label">Cách liên hệ lại</label>
+              <input type="text" id="forgot-note" placeholder="Ví dụ: Zalo 0987 654 321" data-i18n-placeholder="auth.forgot.note.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
             </div>
 
-            <button type="button" id="forgot-admin-btn" data-action="forgot-admin-submit" class="w-full bg-white border-2 border-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:border-slate-300 hover:bg-slate-50 transition-all transform active:scale-[0.98]">
+            <button type="button" id="forgot-admin-btn" data-action="forgot-admin-submit" class="w-full bg-white border-2 border-slate-200 text-slate-600 font-bold py-3 rounded-xl hover:border-slate-300 hover:bg-slate-50 transition-all transform active:scale-[0.98]" data-i18n="auth.forgot.adminSubmit">
               Nhờ quản trị viên hỗ trợ
             </button>
           </div>
@@ -231,41 +252,41 @@
           </div>
 
           <div class="mt-6 text-center text-sm font-medium text-slate-500">
-            <button type="button" data-action="forgot-hide" class="text-[#f04d4d] font-bold hover:underline">Quay lại đăng nhập</button>
+            <button type="button" data-action="forgot-hide" class="text-[#f04d4d] font-bold hover:underline" data-i18n="auth.forgot.back">Quay lại đăng nhập</button>
           </div>
         </div>
 
         <!-- Quên mật khẩu, bước 2: nhập mã + mật khẩu mới -->
         <div id="auth-reset-panel" class="hidden">
-          <p class="text-sm text-slate-500 mb-5">Nếu tài khoản tồn tại và đã có email, mã xác thực đã được gửi tới email đó. Nhập mã kèm mật khẩu mới để hoàn tất.</p>
+          <p class="text-sm text-slate-500 mb-5" data-i18n="auth.reset.subtitle">Nếu tài khoản tồn tại và đã có email, mã xác thực đã được gửi tới email đó. Nhập mã kèm mật khẩu mới để hoàn tất.</p>
 
           <div id="reset-dev" class="hidden flex items-start gap-2 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4">
             <i data-lucide="flask-conical" class="w-4 h-4 flex-shrink-0"></i>
-            <span>Chưa cấu hình gửi thư — mã thử nghiệm: <b id="reset-devcode" class="font-mono text-sm"></b></span>
+            <span><span data-i18n="auth.reset.dev">Chưa cấu hình gửi thư — mã thử nghiệm:</span> <b id="reset-devcode" class="font-mono text-sm"></b></span>
           </div>
 
           <div class="mb-4">
-            <label for="reset-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mã xác thực</label>
+            <label for="reset-otp" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.reset.otpLabel">Mã xác thực</label>
             <input type="text" id="reset-otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-enter-action="reset-submit" placeholder="123456" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 text-center text-2xl font-bold tracking-[0.4em] placeholder-slate-300 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <div class="mb-4">
-            <label for="reset-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mật khẩu mới</label>
-            <input type="password" id="reset-password" autocomplete="new-password" placeholder="Ít nhất 8 ký tự" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="reset-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.reset.passwordLabel">Mật khẩu mới</label>
+            <input type="password" id="reset-password" autocomplete="new-password" placeholder="Ít nhất 8 ký tự" data-i18n-placeholder="auth.reset.passwordPlaceholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <div class="mb-5">
-            <label for="reset-confirm" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Xác nhận mật khẩu mới</label>
-            <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="••••••••" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="reset-confirm" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.reset.confirmLabel">Xác nhận mật khẩu mới</label>
+            <input type="password" id="reset-confirm" autocomplete="new-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
-          <button type="button" id="reset-submit-btn" data-action="reset-submit" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]">
+          <button type="button" id="reset-submit-btn" data-action="reset-submit" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]" data-i18n="auth.reset.submit">
             Đặt lại mật khẩu
           </button>
 
           <div class="mt-4 flex items-center justify-between text-xs font-semibold">
             <button type="button" id="reset-resend-btn" data-action="reset-resend" disabled class="text-[#f04d4d] hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-default">Gửi lại mã</button>
-            <button type="button" data-action="reset-back" class="text-slate-400 hover:text-slate-600 transition">Quay lại</button>
+            <button type="button" data-action="reset-back" class="text-slate-400 hover:text-slate-600 transition" data-i18n="auth.reset.back">Quay lại</button>
           </div>
         </div>
 
@@ -284,13 +305,13 @@
   =============================================== -->
   <div id="guide-modal" role="dialog" aria-modal="true" aria-labelledby="guide-modal-title" data-action="guide-backdrop" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] hidden flex items-center justify-center opacity-0 transition-opacity duration-300 px-4">
     <div class="bg-white w-full max-w-3xl max-h-[88vh] rounded-3xl shadow-2xl relative transform scale-95 transition-transform duration-300 flex flex-col" id="guide-modal-content">
-      <button data-action="close-guide" aria-label="Đóng" class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+      <button data-action="close-guide" aria-label="Đóng" data-i18n-aria-label="common.close" class="absolute top-4 right-4 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
         <i data-lucide="x" class="w-4 h-4"></i>
       </button>
-      <h2 id="guide-modal-title" class="sr-only">Hướng dẫn &amp; Điều khoản</h2>
+      <h2 id="guide-modal-title" class="sr-only" data-i18n="guide.modalTitle">Hướng dẫn &amp; Điều khoản</h2>
       <div id="guide-modal-body" class="overflow-y-auto flex-1">
         <div class="p-8 text-sm text-slate-400 flex items-center gap-2">
-          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang tải...
+          <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> <span data-i18n="guide.loading">Đang tải...</span>
         </div>
       </div>
     </div>

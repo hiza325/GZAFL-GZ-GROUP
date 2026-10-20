@@ -63,6 +63,14 @@ npm run watch:css
 
 > Quên build lại thì class mới sẽ **không có tác dụng** (giao diện thiếu định dạng) — đây là đánh đổi để bỏ được CDN.
 
+### Ngôn ngữ (VI / EN)
+
+Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn được lưu vào `localStorage` nên giữ nguyên khi tải lại trang.
+
+- Đã dịch: trang chủ, modal đăng nhập / đăng ký / quên mật khẩu / đặt lại mật khẩu, modal hướng dẫn.
+- Chưa dịch: các trang bên trong app và trợ lý hỗ trợ (chatbot) — vẫn dùng tiếng Việt.
+- Thêm chuỗi mới: khai báo khóa ở **cả** `vi` và `en` trong `i18n.js`; HTML dùng `data-i18n`, JS dùng `tr('key')`.
+
 ### Biến môi trường (tuỳ chọn)
 
 | Biến | Mặc định | Ý nghĩa |
@@ -121,9 +129,13 @@ tailwind.build.css         # CSS Tailwind đã build (KHÔNG sửa tay - xem m�
 package.json               # Công cụ build CSS (không phải gói chạy server)
 tailwind.config.js         # Cấu hình Tailwind: nơi Tailwind quét tên class
 styles/tailwind.css        # File nguồn của Tailwind
+styles/inter-variable.woff2 # Font Inter tự host (không phụ thuộc Google Fonts)
+styles/Inter-LICENSE.txt   # Giấy phép SIL Open Font License của Inter
 script.js                  # Toàn bộ logic frontend (gọi API)
+i18n.js                    # Bộ dịch VI/EN cho trang chủ + đăng nhập (lưu lựa chọn vào localStorage)
 admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
 support.js                 # Logic khung trợ lý hỗ trợ (chatbot) ở góc phải-dưới
+assets/flags/              # Cờ SVG (Việt Nam, Vương quốc Anh) cho nút chuyển ngôn ngữ
 components/                # Các mảnh giao diện (landing, sidebar, header, các trang...)
   admin.html               # Giao diện trang quản trị
   support-widget.html      # Khung chat + nút tròn của trợ lý hỗ trợ

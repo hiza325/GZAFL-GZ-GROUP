@@ -12,6 +12,9 @@ let pendingLogin = null;
 // Bộ đếm ngược cho nút "Gửi lại mã" của các luồng: đăng ký, đăng nhập, quên mật khẩu và đổi email
 let otpTimers = { register: null, login: null, reset: null, profile: null };
 
+// Dịch chuỗi giao diện theo ngôn ngữ đang chọn (i18n.js được nạp trước script.js)
+const tr = (key, vars) => (window.GZ_I18N ? window.GZ_I18N.t(key, vars) : key);
+
 /* ==========================================
    TIỆN ÍCH DÙNG CHUNG
 ========================================== */
@@ -171,12 +174,14 @@ function applyAffiliateStatus() {
 
   let text;
   if (!affiliateConfig.isReal) {
-    text = 'Các sàn đang ở chế độ thử nghiệm: link chỉ mở sản phẩm, chưa gắn hoa hồng tự động.';
+    text = tr('hero.status.mock');
   } else if (restricted) {
-    text = live.length ? `Đang gắn hoa hồng tự động: ${live.join(', ')}.` : 'Đang bật link hoàn tiền thật cho một số sàn.';
-    if (missing.length) text += ` Đang thử nghiệm: ${missing.join(', ')}.`;
+    text = live.length
+      ? tr('hero.status.live', { list: live.join(', ') })
+      : tr('hero.status.liveSome');
+    if (missing.length) text += ' ' + tr('hero.status.experimental', { list: missing.join(', ') });
   } else {
-    text = 'Tất cả các sàn đang dùng link hoàn tiền thật.';
+    text = tr('hero.status.liveAll');
   }
 
   el.textContent = text;
@@ -193,6 +198,13 @@ fetchAppConfig().then((cfg) => {
   }
   if (typeof populateBankOptions === 'function') populateBankOptions();
   if (typeof updateAuthUI === 'function') updateAuthUI();
+});
+
+// Đổi ngôn ngữ: cập nhật lại các đoạn chữ do JS sinh ra
+window.addEventListener('languagechange', () => {
+  applyAffiliateStatus();
+  const form = document.getElementById('auth-form');
+  if (form && !form.classList.contains('hidden')) updateAuthUI();
 });
 
 async function fetchSupportContact() {
@@ -219,7 +231,14 @@ async function loadComponent(elementId, filePath) {
     if (!response.ok) throw new Error('Không thể tải file ' + filePath);
 
     const html = await response.text();
-    document.getElementById(elementId).innerHTML = html;
+    const container = document.getElementById(elementId);
+    container.innerHTML = html;
+
+    // Dịch các nhãn tĩnh ngay sau khi chèn component (trang chủ, hướng dẫn...)
+    if (window.GZ_I18N) {
+      window.GZ_I18N.applyTranslations(container);
+      window.GZ_I18N.updateLangSwitcher();
+    }
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -424,27 +443,27 @@ function updateAuthUI() {
   if (!title || !subtitle || !nameGroup || !submitBtn) return;
 
   if (isLoginMode) {
-    title.innerText = 'Đăng nhập';
+    title.innerText = tr('auth.login.title');
     subtitle.innerText = otpConfig.loginRequired
-      ? 'Nhập tài khoản và mật khẩu. Sau đó bạn cần nhập thêm mã xác thực gửi tới email.'
-      : 'Vui lòng đăng nhập để theo dõi và nhận hoa hồng.';
+      ? tr('auth.login.subtitle.otp')
+      : tr('auth.login.subtitle.default');
     nameGroup.classList.add('hidden');
     if (confirmGroup) confirmGroup.classList.add('hidden');
     if (emailGroup) emailGroup.classList.add('hidden');
-    submitBtn.innerHTML = `<span>Đăng nhập</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
-    toggleText.innerText = 'Chưa có tài khoản?';
-    toggleBtn.innerText = 'Đăng ký ngay';
+    submitBtn.innerHTML = `<span>${tr('auth.submit.login')}</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
+    toggleText.innerText = tr('auth.toggle.noAccount');
+    toggleBtn.innerText = tr('auth.toggle.register');
     if (forgotRow) forgotRow.classList.remove('hidden');
   } else {
-    title.innerText = 'Đăng ký tài khoản';
+    title.innerText = tr('auth.register.title');
     subtitle.innerText = otpConfig.enabled
-      ? 'Tạo tài khoản mới. Mã xác thực sẽ được gửi tới email bạn nhập.'
-      : 'Tạo tài khoản mới bằng Email hoặc Số điện thoại.';
+      ? tr('auth.register.subtitle.otp')
+      : tr('auth.register.subtitle.noOtp');
     nameGroup.classList.remove('hidden');
     if (confirmGroup) confirmGroup.classList.remove('hidden');
-    submitBtn.innerHTML = `<span>Tạo tài khoản</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
-    toggleText.innerText = 'Đã có tài khoản?';
-    toggleBtn.innerText = 'Đăng nhập ngay';
+    submitBtn.innerHTML = `<span>${tr('auth.submit.register')}</span> <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>`;
+    toggleText.innerText = tr('auth.toggle.hasAccount');
+    toggleBtn.innerText = tr('auth.toggle.login');
     if (forgotRow) forgotRow.classList.add('hidden');
 
     // Ô email chỉ cần khi đăng ký. Nếu tên đăng nhập đã là email thì điền sẵn cho tiện.
@@ -457,11 +476,11 @@ function updateAuthUI() {
       }
       const label = document.getElementById('auth-email-label');
       const hint = document.getElementById('auth-email-hint');
-      if (label) label.innerText = otpConfig.enabled ? 'Email nhận mã xác thực' : 'Email liên hệ';
+      if (label) label.innerText = otpConfig.enabled ? tr('auth.email.label.otp') : tr('auth.email.label.contact');
       if (hint) {
         hint.innerText = otpConfig.enabled
-          ? `Mã xác thực ${otpConfig.length} số sẽ được gửi tới email này.`
-          : 'Dùng để khôi phục mật khẩu sau này.';
+          ? tr('auth.email.hint.otp', { n: otpConfig.length })
+          : tr('auth.email.hint.contact');
       }
     }
   }
@@ -485,7 +504,7 @@ function hideForgotAdminBlock() {
   const block = document.getElementById('forgot-admin-block');
   const toggle = document.getElementById('forgot-admin-toggle');
   if (block) block.classList.add('hidden');
-  if (toggle) toggle.innerText = 'Không nhận được mã?';
+  if (toggle) toggle.innerText = tr('auth.forgot.toggle');
 }
 
 window.toggleForgotAdmin = function() {
@@ -493,7 +512,7 @@ window.toggleForgotAdmin = function() {
   const toggle = document.getElementById('forgot-admin-toggle');
   if (!block) return;
   const showing = !block.classList.toggle('hidden');
-  if (toggle) toggle.innerText = showing ? 'Ẩn phần nhờ quản trị viên' : 'Không nhận được mã?';
+  if (toggle) toggle.innerText = showing ? tr('auth.forgot.toggleHide') : tr('auth.forgot.toggle');
 };
 
 // Hiện mã thử nghiệm — chỉ có khi server chưa cấu hình gửi thư và đang ở dev
@@ -531,11 +550,11 @@ function startResendCountdown(kind, seconds) {
       clearInterval(otpTimers[kind]);
       otpTimers[kind] = null;
       btn.disabled = false;
-      btn.innerText = 'Gửi lại mã';
+      btn.innerText = tr('auth.otp.resend');
       return;
     }
     btn.disabled = true;
-    btn.innerText = `Gửi lại mã (${left}s)`;
+    btn.innerText = tr('auth.otp.resendCountdown', { s: left });
     left -= 1;
   };
   paint();
@@ -594,23 +613,23 @@ function showOtpPanel(email, devCode, resendSeconds, purpose, note) {
   if (forgotRow) forgotRow.classList.add('hidden');
   panel.classList.remove('hidden');
 
-  if (title) title.innerText = kind === 'login' ? 'Xác thực đăng nhập' : 'Xác thực email';
+  if (title) title.innerText = kind === 'login' ? tr('auth.otp.title.login') : tr('auth.otp.title.register');
   if (subtitle) {
     subtitle.innerText = kind === 'login'
-      ? (note || 'Nhập mã xác thực để hoàn tất đăng nhập.')
-      : 'Nhập mã xác thực để hoàn tất đăng ký.';
+      ? ((note && (!window.GZ_I18N || window.GZ_I18N.getLanguage() === 'vi')) ? note : tr('auth.otp.subtitle.login.default'))
+      : tr('auth.otp.subtitle.register');
   }
 
   const tail = document.getElementById('auth-otp-tail');
   if (tail) {
     tail.innerText = kind === 'login'
-      ? '. Nhập mã để hoàn tất đăng nhập.'
-      : '. Nhập mã để hoàn tất đăng ký.';
+      ? tr('auth.otp.tail.login')
+      : tr('auth.otp.tail.register');
   }
 
   const submitBtn = document.getElementById('auth-otp-submit-btn');
   if (submitBtn) {
-    submitBtn.innerText = kind === 'login' ? 'Xác nhận đăng nhập' : 'Xác nhận & tạo tài khoản';
+    submitBtn.innerText = kind === 'login' ? tr('auth.otp.submit.login') : tr('auth.otp.submit.register');
   }
 
   const emailEl = document.getElementById('auth-otp-email');
@@ -662,15 +681,15 @@ window.submitRegisterOtp = async function() {
   showAuthErrorHidden();
 
   if (!pendingRegister) {
-    return showAuthMessage('Thông tin đăng ký đã hết. Vui lòng nhập lại từ đầu.');
+    return showAuthMessage(tr('auth.error.infoExpired'));
   }
 
   const code = otpEl ? otpEl.value.trim() : '';
   if (!isValidOtpCode(code)) {
-    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+    return showAuthMessage(tr('auth.error.otpLength', { n: otpConfig.length }));
   }
 
-  const restore = busyButton(btn, 'Đang xác thực...');
+  const restore = busyButton(btn, tr('auth.busy.verifying'));
   try {
     await api('/auth/register', {
       method: 'POST',
@@ -682,7 +701,7 @@ window.submitRegisterOtp = async function() {
     toggleAuthMode(); // trở về form đăng nhập
     const passwordEl = document.getElementById('auth-password');
     if (passwordEl) passwordEl.value = '';
-    showAuthMessage('Tạo tài khoản thành công! Vui lòng đăng nhập lại.', true);
+    showAuthMessage(tr('auth.success.registered'), true);
   } catch (err) {
     showAuthMessage(err.message);
   } finally {
@@ -708,7 +727,7 @@ window.resendRegisterOtp = async function() {
     // -> giữ nguyên mã cũ đang hiện để không xoá trắng ô thử nghiệm
     if (data.devCode) setDevCode('auth-otp-dev', 'auth-otp-devcode', data.devCode);
     startResendCountdown('register', data.resendInSeconds);
-    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+    showAuthMessage(tr('auth.success.resend'), true);
   } catch (err) {
     showAuthMessage(err.message);
     if (err.status === 429) startResendCountdown('register', otpConfig.resendSeconds);
@@ -725,15 +744,15 @@ window.submitLoginOtp = async function() {
   showAuthErrorHidden();
 
   if (!pendingLogin) {
-    return showAuthMessage('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.');
+    return showAuthMessage(tr('auth.error.loginExpired'));
   }
 
   const code = otpEl ? otpEl.value.trim() : '';
   if (!isValidOtpCode(code)) {
-    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+    return showAuthMessage(tr('auth.error.otpLength', { n: otpConfig.length }));
   }
 
-  const restore = busyButton(btn, 'Đang xác thực...');
+  const restore = busyButton(btn, tr('auth.busy.verifying'));
   try {
     const data = await api('/auth/login/otp', {
       method: 'POST',
@@ -769,7 +788,7 @@ window.resendLoginOtp = async function() {
     });
     if (data.devCode) setDevCode('auth-otp-dev', 'auth-otp-devcode', data.devCode);
     startResendCountdown('login', data.resendInSeconds);
-    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+    showAuthMessage(tr('auth.success.resend'), true);
   } catch (err) {
     showAuthMessage(err.message);
     if (err.status === 429) startResendCountdown('login', otpConfig.resendSeconds);
@@ -808,16 +827,16 @@ window.showForgotPassword = function() {
   if (toggleBlock) toggleBlock.classList.add('hidden');
   if (forgotRow) forgotRow.classList.add('hidden');
   panel.classList.remove('hidden');
-  if (title) title.innerText = 'Quên mật khẩu';
+  if (title) title.innerText = tr('auth.forgot.title');
 
   if (otpConfig.enabled && otpConfig.delivery) {
-    if (subtitle) subtitle.innerText = 'Mã xác thực sẽ được gửi tới email bạn đã đăng ký.';
+    if (subtitle) subtitle.innerText = tr('auth.forgot.subtitle.sent');
     if (submitBtn) submitBtn.classList.remove('hidden');
     if (toggleRow) toggleRow.classList.remove('hidden');
     if (adminBlock) adminBlock.classList.add('hidden');
   } else {
     // Chưa gửi được email -> chỉ còn đường nhờ quản trị viên
-    if (subtitle) subtitle.innerText = 'Hệ thống chưa gửi được email. Gửi yêu cầu để quản trị viên cấp lại mật khẩu.';
+    if (subtitle) subtitle.innerText = tr('auth.forgot.subtitle.noEmail');
     if (submitBtn) submitBtn.classList.add('hidden');
     if (toggleRow) toggleRow.classList.add('hidden');
     if (adminBlock) adminBlock.classList.remove('hidden');
@@ -841,17 +860,17 @@ window.submitForgotPassword = async function() {
   if (!usernameEl) return;
 
   const username = usernameEl.value.trim();
-  if (!username) return showAuthMessage('Vui lòng nhập Email hoặc Số điện thoại.');
+  if (!username) return showAuthMessage(tr('auth.error.usernameRequired'));
   if (!validateUsername(username)) {
-    return showAuthMessage('Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.');
+    return showAuthMessage(tr('auth.error.usernameInvalid'));
   }
 
-  const restore = busyButton(btn, 'Đang gửi...');
+  const restore = busyButton(btn, tr('auth.busy.sending'));
   try {
     const data = await api('/auth/forgot-password/otp', { method: 'POST', body: { username } });
     showResetPanel(data);
   } catch (err) {
-    showAuthMessage(err.message || 'Không gửi được mã xác thực. Vui lòng thử lại.');
+    showAuthMessage(err.message || tr('auth.error.otpSend'));
   } finally {
     restore();
   }
@@ -867,16 +886,16 @@ function showResetPanel(data) {
 
   if (forgotPanel) forgotPanel.classList.add('hidden');
   panel.classList.remove('hidden');
-  if (title) title.innerText = 'Đặt lại mật khẩu';
-  if (subtitle) subtitle.innerText = 'Nhập mã xác thực đã gửi tới email kèm mật khẩu mới.';
+  if (title) title.innerText = tr('auth.reset.title');
+  if (subtitle) subtitle.innerText = tr('auth.reset.subtitle2');
 
   setDevCode('reset-dev', 'reset-devcode', data && data.devCode);
   startResendCountdown('reset', (data && data.resendInSeconds) || otpConfig.resendSeconds);
   showAuthErrorHidden();
-  showAuthMessage(
-    (data && data.message) || 'Nếu tài khoản tồn tại, mã xác thực đã được gửi tới email đã đăng ký.',
-    true
-  );
+  const resetSentMessage = (data && data.message && (!window.GZ_I18N || window.GZ_I18N.getLanguage() === 'vi'))
+    ? data.message
+    : tr('auth.info.resetSent');
+  showAuthMessage(resetSentMessage, true);
 
   const otpEl = document.getElementById('reset-otp');
   if (otpEl) {
@@ -894,8 +913,8 @@ window.backToForgotPanel = function() {
   clearInterval(otpTimers.reset);
   otpTimers.reset = null;
   setDevCode('reset-dev', 'reset-devcode', '');
-  setText('auth-title', 'Quên mật khẩu');
-  setText('auth-subtitle', 'Mã xác thực sẽ được gửi tới email bạn đã đăng ký.');
+  setText('auth-title', tr('auth.forgot.title'));
+  setText('auth-subtitle', tr('auth.forgot.subtitle.sent'));
   showAuthErrorHidden();
   ['reset-otp', 'reset-password', 'reset-confirm'].forEach((id) => {
     const el = document.getElementById(id);
@@ -918,12 +937,12 @@ window.submitPasswordReset = async function() {
   const confirm = cfEl ? cfEl.value.trim() : '';
 
   if (!isValidOtpCode(code)) {
-    return showAuthMessage(`Vui lòng nhập mã xác thực gồm ${otpConfig.length} chữ số.`);
+    return showAuthMessage(tr('auth.error.otpLength', { n: otpConfig.length }));
   }
-  if (password.length < 8) return showAuthMessage('Mật khẩu mới phải có ít nhất 8 ký tự.');
-  if (confirm !== password) return showAuthMessage('Mật khẩu xác nhận không khớp.');
+  if (password.length < 8) return showAuthMessage(tr('auth.error.newPasswordShort'));
+  if (confirm !== password) return showAuthMessage(tr('auth.error.passwordMismatch'));
 
-  const restore = busyButton(btn, 'Đang xử lý...');
+  const restore = busyButton(btn, tr('auth.busy.processing'));
   try {
     const data = await api('/auth/forgot-password/confirm', {
       method: 'POST',
@@ -932,9 +951,12 @@ window.submitPasswordReset = async function() {
     resetAuthPanels();
     isLoginMode = true;
     updateAuthUI();
-    showAuthMessage(data.message || 'Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.', true);
+    const resetDoneMessage = (data && data.message && (!window.GZ_I18N || window.GZ_I18N.getLanguage() === 'vi'))
+      ? data.message
+      : tr('auth.success.reset');
+    showAuthMessage(resetDoneMessage, true);
   } catch (err) {
-    showAuthMessage(err.message || 'Không đặt lại được mật khẩu. Vui lòng thử lại.');
+    showAuthMessage(err.message || tr('auth.error.reset'));
   } finally {
     restore();
   }
@@ -953,7 +975,7 @@ window.resendResetOtp = async function() {
     // -> giữ nguyên mã cũ đang hiện để không xoá trắng ô thử nghiệm
     if (data.devCode) setDevCode('reset-dev', 'reset-devcode', data.devCode);
     startResendCountdown('reset', data.resendInSeconds);
-    showAuthMessage('Đã gửi lại mã xác thực. Vui lòng kiểm tra email (kể cả thư rác).', true);
+    showAuthMessage(tr('auth.success.resend'), true);
   } catch (err) {
     showAuthMessage(err.message);
     if (err.status === 429) startResendCountdown('reset', otpConfig.resendSeconds);
@@ -973,23 +995,26 @@ window.submitForgotPasswordAdmin = async function() {
   const username = usernameEl.value.trim();
   const note = noteEl ? noteEl.value.trim() : '';
 
-  if (!username) return showAuthMessage('Vui lòng nhập Email hoặc Số điện thoại.');
+  if (!username) return showAuthMessage(tr('auth.error.usernameRequired'));
   if (!validateUsername(username)) {
-    return showAuthMessage('Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.');
+    return showAuthMessage(tr('auth.error.usernameInvalid'));
   }
   if (!note) {
-    return showAuthMessage('Vui lòng nhập Zalo hoặc Số điện thoại để quản trị viên liên hệ lại.');
+    return showAuthMessage(tr('auth.error.contactRequired'));
   }
 
-  const restore = busyButton(btn, 'Đang gửi...');
+  const restore = busyButton(btn, tr('auth.busy.sending'));
   try {
     const data = await api('/auth/forgot-password', {
       method: 'POST',
       body: { username, note }
     });
-    showAuthMessage(data.message || 'Đã gửi yêu cầu khôi phục mật khẩu.', true);
+    const requestSentMessage = (data && data.message && (!window.GZ_I18N || window.GZ_I18N.getLanguage() === 'vi'))
+      ? data.message
+      : tr('auth.success.requestSent');
+    showAuthMessage(requestSentMessage, true);
   } catch (err) {
-    showAuthMessage(err.message || 'Không gửi được yêu cầu. Vui lòng thử lại.');
+    showAuthMessage(err.message || tr('auth.error.request'));
   } finally {
     restore();
   }
@@ -1052,24 +1077,24 @@ window.handleAuthSubmit = async function(event) {
   let registerEmail = '';
 
   if (!usernameInput || !passwordInput) {
-    return showAuthMessage('Vui lòng điền đầy đủ thông tin.');
+    return showAuthMessage(tr('auth.error.fillAll'));
   }
   if (!validateUsername(usernameInput)) {
-    return showAuthMessage('Định dạng không hợp lệ. Vui lòng nhập đúng Email hoặc Số điện thoại.');
+    return showAuthMessage(tr('auth.error.usernameInvalid'));
   }
   if (!isLoginMode) {
-    if (!nameInput) return showAuthMessage('Vui lòng nhập tên hiển thị.');
-    if (passwordInput.length < 8) return showAuthMessage('Mật khẩu phải có ít nhất 8 ký tự.');
+    if (!nameInput) return showAuthMessage(tr('auth.error.nameRequired'));
+    if (passwordInput.length < 8) return showAuthMessage(tr('auth.error.passwordShort'));
     const confirmEl = document.getElementById('auth-confirm-password');
     const confirmInput = confirmEl ? confirmEl.value.trim() : '';
-    if (confirmInput !== passwordInput) return showAuthMessage('Mật khẩu xác nhận không khớp.');
+    if (confirmInput !== passwordInput) return showAuthMessage(tr('auth.error.passwordMismatch'));
 
     const emailEl = document.getElementById('auth-email');
     const emailInput = emailEl ? emailEl.value.trim() : '';
     // Chưa nhập gì mà tên đăng nhập đã là email thì dùng luôn email đó
     registerEmail = emailInput || (isValidEmail(usernameInput) ? usernameInput : '');
     if (!isValidEmail(registerEmail)) {
-      return showAuthMessage('Vui lòng nhập địa chỉ email hợp lệ để nhận mã xác thực.');
+      return showAuthMessage(tr('auth.error.emailRequired'));
     }
   }
 
@@ -1078,7 +1103,7 @@ window.handleAuthSubmit = async function(event) {
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.classList.add('opacity-70');
-    submitBtn.innerText = 'Đang xử lý...';
+    submitBtn.innerText = tr('auth.busy.processing');
   }
 
   try {
@@ -1115,7 +1140,7 @@ window.handleAuthSubmit = async function(event) {
         });
         toggleAuthMode();
         passwordEl.value = '';
-        showAuthMessage('Tạo tài khoản thành công! Vui lòng đăng nhập lại.', true);
+        showAuthMessage(tr('auth.success.registered'), true);
       } else {
         // Bước 1: xin mã xác thực rồi chuyển sang màn nhập mã
         const data = await api('/auth/register/otp', {
@@ -2081,7 +2106,7 @@ window.sendProfileEmailOtp = async function() {
   if (!isValidEmail(email)) return showToast('Email không hợp lệ. Vui lòng kiểm tra lại.', 'error');
 
   let data = null;
-  const restore = busyButton(btn, 'Đang gửi...');
+  const restore = busyButton(btn, tr('auth.busy.sending'));
   try {
     data = await api('/profile/email/otp', { method: 'POST', body: { email } });
   } catch (err) {
@@ -2736,18 +2761,18 @@ window.convertLandingLink = function() {
   const value = input ? input.value.trim() : '';
 
   if (!value) {
-    showToast('Vui lòng dán link sản phẩm trước khi chuyển đổi.', 'error');
+    showToast(tr('landing.error.empty'), 'error');
     if (input) input.focus();
     return;
   }
   if (!LANDING_LINK_REGEX.test(value)) {
-    showToast('Link không hợp lệ. Vui lòng dán link Shopee, TikTok, Tiki hoặc Lazada.', 'error');
+    showToast(tr('landing.error.invalid'), 'error');
     if (input) input.focus();
     return;
   }
 
   pendingLandingLink = value;
-  showToast('Đăng nhập để tạo link hoàn tiền cho sản phẩm này.', 'info');
+  showToast(tr('landing.info.loginToConvert'), 'info');
   openAuthModal(false);
 };
 
@@ -2765,7 +2790,7 @@ async function handlePendingLandingLink() {
     input.value = link;
     input.focus();
   }
-  showToast('Đã điền sẵn link của bạn. Bấm "Tạo link" để tiếp tục.', 'info');
+  showToast(tr('landing.info.linkFilled'), 'info');
 }
 
 // Modal hướng dẫn ở trang chủ — nạp chung nội dung với trang Trợ giúp
@@ -2784,16 +2809,16 @@ window.openGuideModal = async function() {
 
   if (body.dataset.loaded === '1') return;
 
+  const loadErrorHtml = '<div class="p-8 text-sm text-slate-500" data-i18n="guide.loadError">Không tải được nội dung hướng dẫn.</div>';
   try {
     const res = await fetch('components/guide.html');
-    body.innerHTML = res.ok
-      ? await res.text()
-      : '<div class="p-8 text-sm text-slate-500">Không tải được nội dung hướng dẫn.</div>';
+    body.innerHTML = res.ok ? await res.text() : loadErrorHtml;
     body.dataset.loaded = '1';
   } catch (err) {
-    body.innerHTML = '<div class="p-8 text-sm text-slate-500">Không tải được nội dung hướng dẫn.</div>';
+    body.innerHTML = loadErrorHtml;
   }
 
+  if (window.GZ_I18N) window.GZ_I18N.applyTranslations(body);
   applySupportContact(body);
   if (typeof lucide !== 'undefined') lucide.createIcons();
 };
@@ -2868,6 +2893,10 @@ const UI_ACTIONS = {
   },
   'paste-landing-link': () => pasteClipboardInto('landing-link-input'),
   'convert-landing-link': () => convertLandingLink(),
+
+  // Chuyển đổi ngôn ngữ VI / EN
+  'toggle-lang-menu': () => window.GZ_I18N && window.GZ_I18N.toggleLangMenu(),
+  'set-lang': (el) => window.GZ_I18N && window.GZ_I18N.setLanguage(el.dataset.lang),
 
   // Tạo đơn
   'paste-order-link': () => pasteClipboardInto('link-input'),

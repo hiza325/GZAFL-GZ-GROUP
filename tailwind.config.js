@@ -14,12 +14,18 @@ module.exports = {
   content: [
     './index.html',
     './script.js',
+    './i18n.js',
     './support.js',
     './admin.js',
     './components/**/*.html'
   ],
   theme: {
-    extend: {}
+    extend: {
+      fontFamily: {
+        // Dùng cùng bộ font với style.css để tiếng Việt hiển thị đúng ở mọi độ đậm.
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif']
+      }
+    }
   },
   plugins: []
 };

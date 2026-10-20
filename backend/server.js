@@ -84,8 +84,8 @@ const CSP_DIRECTIVES = [
   "frame-ancestors 'none'",
   "form-action 'self'",
   "script-src 'self' https://unpkg.com",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
   "img-src 'self' data: blob:",
   "connect-src 'self'",
   "frame-src 'none'"
@@ -132,6 +132,7 @@ app.use(cookieParser());
    ========================================== */
 const PUBLIC_ROOT_FILES = new Set([
   '/index.html',
+  '/i18n.js',
   '/script.js',
   '/admin.js',
   '/support.js',
@@ -140,12 +141,17 @@ const PUBLIC_ROOT_FILES = new Set([
   '/logo.png',
   '/chatbot.png'
 ]);
+// Ảnh cờ dùng cho nút chuyển đổi ngôn ngữ
+const PUBLIC_ASSET_FILES = new Set([
+  '/assets/flags/vn.svg',
+  '/assets/flags/gb.svg'
+]);
 // Chỉ cho đúng một cấp file trong thư mục con; không '%', không '..'
 const PUBLIC_SUBDIR_FILE = /^\/(?:components|styles)\/[a-z0-9][a-z0-9._-]*$/;
 
 function isPublicAssetPath(rawPath) {
   const p = String(rawPath || '').toLowerCase();
-  return PUBLIC_ROOT_FILES.has(p) || PUBLIC_SUBDIR_FILE.test(p);
+  return PUBLIC_ROOT_FILES.has(p) || PUBLIC_ASSET_FILES.has(p) || PUBLIC_SUBDIR_FILE.test(p);
 }
 
 const publicStatic = express.static(ROOT, { dotfiles: 'deny', index: false, redirect: false });
