@@ -5,7 +5,8 @@
  *
  * Chuẩn này dùng được cho nhiều nhà cung cấp, kể cả các gói miễn phí:
  *   - Google Gemini : AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
- *                     AI_MODEL=gemini-flash-latest   (khoá có dạng AIza... hoặc AQ....)
+ *                     AI_MODEL=gemini-3.5-flash-lite   (hoặc gemini-3.5-flash để chất lượng cao hơn)
+ *                     (khoá có dạng AIza... hoặc AQ....)
  *   - Groq          : AI_BASE_URL=https://api.groq.com/openai/v1
  *                     AI_MODEL=llama-3.3-70b-versatile (khoá có dạng gsk_...)
  *   - OpenRouter    : AI_BASE_URL=https://openrouter.ai/api/v1
@@ -30,8 +31,10 @@ const PROVIDER_HINTS = [
     // Khoá Google có 2 dạng: "AIza..." (lâu nay) và "AQ...." (dạng mới của AI Studio)
     match: /^(AIza|AQ\.)/,
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    // "gemini-flash-latest" là bí danh luôn trỏ tới bản Flash mới nhất, không lo model bị bỏ
-    model: 'gemini-flash-latest'
+    // Gemini 3.5 Flash Lite: nhanh, phù hợp chatbot hỗ trợ.
+    // Đổi sang "gemini-3.5-flash" nếu cần câu trả lời chất lượng cao hơn.
+    // Các model Gemini 2.0/2.5 cũ đã ngừng phục vụ với khoá mới.
+    model: 'gemini-3.5-flash-lite'
   },
   {
     name: 'Groq',

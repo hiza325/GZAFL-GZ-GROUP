@@ -413,14 +413,14 @@ Muốn trợ lý trả lời linh hoạt hơn, thêm khoá API miễn phí (Goog
 ```bash
 AI_API_KEY=AIza...        # hoặc khoá dạng mới AQ....
 AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-AI_MODEL=gemini-flash-latest
+AI_MODEL=gemini-3.5-flash-lite   # nhanh; đổi sang gemini-3.5-flash nếu cần chất lượng cao hơn
 ```
 
 Khởi động lại rồi kiểm tra:
 
 ```bash
 curl http://127.0.0.1:3000/api/support/status
-# {"ai":true,"provider":"Google Gemini","model":"gemini-flash-latest","suggestions":7}
+# {"ai":true,"provider":"Google Gemini","model":"gemini-3.5-flash-lite","maxTokens":2048,"dailyLimit":800,"usedToday":0}
 ```
 
 Lưu ý khi vận hành:
