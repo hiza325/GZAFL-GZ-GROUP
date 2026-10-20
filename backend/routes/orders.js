@@ -40,7 +40,7 @@ router.post('/', orderRateLimit, async (req, res, next) => {
     // Parse URL thật + kiểm tra tên miền: chặn javascript:, data:... và tên miền giả mạo
     const parsed = parseOrderLink(raw);
     if (!parsed) {
-      return res.status(400).json({ error: 'Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok hoặc Lazada.' });
+      return res.status(400).json({ error: 'Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok hoặc Tiki.' });
     }
     const link = parsed.url;
     const platform = parsed.platform;

@@ -1,15 +1,15 @@
 # Tích hợp chuyển đổi link hoàn tiền (Affiliate)
 
-> Tài liệu này mô tả **cách làm** để khi người dùng dán link Shopee/TikTok/Lazada,
+> Tài liệu này mô tả **cách làm** để khi người dùng dán link Shopee/TikTok/Tiki,
 > hệ thống trả về một **link mua hàng có ghi nhận hoa hồng** thay vì link gốc.
 >
 > **Trạng thái hiện tại:** phần khung đã **triển khai xong** (`backend/lib/affiliate.js`,
 > link rút gọn `/r/<mã đơn>`, đơn hàng lưu `original_link` / `affiliate_link` / `sub_id`,
 > giao diện trả link hoàn tiền kèm nút Copy và Mua ngay).
 >
-> Đang chạy ở nhà cung cấp `mock` — chạy được toàn bộ luồng nhưng **chưa tạo hoa hồng thật**.
-> Việc còn lại là đăng ký tài khoản affiliate, điền khóa API và chọn
-> `AFFILIATE_PROVIDER=accesstrade` (hoặc `shopee`). Xem mục 7 để biết việc cần làm.
+> **Trạng thái hiện tại:** TikTok Shop đã được duyệt và đang dùng API thật.
+> Shopee và Tiki đang chờ duyệt campaign nên tạm dùng link nội bộ `/r/<mã đơn>`;
+> app vẫn tạo đơn bình thường, không bị lỗi.
 
 ---
 
@@ -118,7 +118,7 @@ https://shopee.vn/product/111
 **Provider `accesstrade`** (REST) — ✅ đã đối chiếu tài liệu chính thức và cài đặt:
 
 - Cần: `ACCESSTRADE_API_KEY`, và campaign ID riêng cho từng sàn:
-  `ACCESSTRADE_CAMPAIGN_SHOPEE`, `ACCESSTRADE_CAMPAIGN_TIKTOK`, `ACCESSTRADE_CAMPAIGN_LAZADA`
+  `ACCESSTRADE_CAMPAIGN_SHOPEE`, `ACCESSTRADE_CAMPAIGN_TIKTOK`, `ACCESSTRADE_CAMPAIGN_TIKI`
   (`ACCESSTRADE_CAMPAIGN_ID` là mặc định chung nếu một sàn chưa có biến riêng)
 - `POST https://api.accesstrade.vn/v1/product_link/create`, header `Authorization: token <API_KEY>`
 - Body: `campaign_id` (**chuỗi**, không phải Number), `urls: [url]`, `url_enc: true`, `sub1`, `sub2`
@@ -136,7 +136,7 @@ https://shopee.vn/product/111
   ⚠️ Đối chiếu lại thứ tự chuỗi ký trong tài liệu chính thức khi đã có tài khoản — **không đoán**.
 - Mutation sinh link: `generateShortLink`
 - ⚠️ Phải được duyệt làm affiliate **và** được cấp quyền gọi API (duyệt riêng)
-- ⚠️ Chỉ phủ **Shopee** — không có TikTok/Lazada. Xem **phụ lục A** trước khi chọn hướng này.
+- ⚠️ Chỉ phủ **Shopee** — không có TikTok/Tiki. Xem **phụ lục A** trước khi chọn hướng này.
 
 **Biến môi trường** (thêm vào README):
 
@@ -146,7 +146,7 @@ https://shopee.vn/product/111
 | `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật (ví dụ `TikTok Shop`); sàn khác tạm dùng link thử nghiệm |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id`, tránh trùng với hệ thống khác |
 | `ACCESSTRADE_API_KEY` | — | Token do AccessTrade cấp |
-| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_LAZADA` | — | Campaign ID riêng từng sàn (giữ dạng chuỗi) |
+| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` | — | Campaign ID riêng từng sàn (giữ dạng chuỗi) |
 | `ACCESSTRADE_CAMPAIGN_ID` | — | Tuỳ chọn: campaign mặc định chung |
 | `ACCESSTRADE_SHORT_DOMAIN` | — | Tuỳ chọn: domain rút gọn riêng của bạn |
 | `SHOPEE_AFFILIATE_APP_ID` / `_SECRET` | — | Do Shopee cấp |
@@ -373,7 +373,7 @@ Nhiều người đăng ký Open Platform rồi tưởng mình đã có API đ�
 |---|---|---|
 | Quan hệ | Bạn là affiliate của Shopee | Bạn là publisher của AccessTrade; AccessTrade mới là affiliate của Shopee |
 | Hoa hồng nhận được | Cao hơn — Shopee trả thẳng | Thấp hơn — mạng giữ một phần |
-| Phủ sàn | Chỉ **Shopee** | Shopee + Lazada + TikTok Shop + nhiều sàn khác |
+| Phủ sàn | Chỉ **Shopee** | Shopee + Tiki + TikTok Shop + nhiều sàn khác |
 | Số tích hợp phải làm | Mỗi sàn một bộ API riêng | **Một** tích hợp dùng cho tất cả |
 | Xác thực | GraphQL + chữ ký SHA256 (tự viết, dễ sai) | REST + token (đơn giản hơn) |
 | Nhận chuyển đổi | **Truy vấn báo cáo định kỳ** (cron) | **Postback** đẩy về (realtime) |
@@ -382,7 +382,7 @@ Nhiều người đăng ký Open Platform rồi tưởng mình đã có API đ�
 
 ### 7.3. Vấn đề lớn nhất với **app này cụ thể**
 
-Giao diện hiện tại đang quảng cáo **3 sàn: Shopee, TikTok, Lazada** (`components/create-order.html`).
+Giao diện hiện tại đang quảng cáo **3 sàn: Shopee, TikTok, Tiki** (`components/create-order.html`).
 
 API Shopee chỉ phủ Shopee. Nếu đi hướng trực tiếp, muốn đủ 3 sàn bạn phải xin **3 chương trình độc lập**, mỗi cái một bộ API, một quy trình duyệt, một định dạng báo cáo chuyển đổi khác nhau — và mỗi cái đều có thể từ chối bạn.
 
@@ -416,7 +416,7 @@ Toàn bộ các cách đang có trên thực tế, xếp theo mức độ tự �
 |---|---|---|---|---|
 | 1 | Tạo link tay trên dashboard Shopee Affiliate | ❌ Làm tay từng link | Được duyệt làm affiliate | Chỉ Shopee |
 | 2 | **Shopee Affiliate Open API** (`generateShortLink`) | ✅ Hoàn toàn | Duyệt affiliate **+** App ID & Secret | Chỉ Shopee |
-| 3 | **API mạng trung gian** (AccessTrade / Adpia / Ecomobi / MAS) | ✅ Hoàn toàn | Tài khoản publisher + API key + campaign id | Shopee, Lazada, TikTok, nhiều sàn khác |
+| 3 | **API mạng trung gian** (AccessTrade / Adpia / Ecomobi / MAS) | ✅ Hoàn toàn | Tài khoản publisher + API key + campaign id | Shopee, Tiki, TikTok, nhiều sàn khác |
 | 4 | Tạo link hàng loạt trên dashboard mạng trung gian | ⚠️ Bán tự động (nhập tay, xuất file) | Tài khoản publisher | Nhiều sàn |
 | 5 | Extension / bookmarklet của mạng | ❌ Làm tay từng link | Cài extension vào trình duyệt | Nhiều sàn |
 | 6 | Bọc link riêng `/r/<mã>` rồi chuyển tiếp | — | — | **Không tự tạo hoa hồng** — chỉ là lớp vỏ, xem 8.5 |
@@ -432,7 +432,7 @@ Toàn bộ các cách đang có trên thực tế, xếp theo mức độ tự �
 | Mạng | Trang | Ghi chú |
 |---|---|---|
 | **AccessTrade** | `accesstrade.vn` | Lớn nhất VN. Có nhiều nhánh publisher (Affiliate, Mobile, KOC, D2C). Có postback. |
-| **Adpia** | `adpia.vn` | Có nhánh affiliate publisher riêng, hỗ trợ cả Lazada/TikTok |
+| **Adpia** | `adpia.vn` | Có nhánh affiliate publisher riêng, hỗ trợ cả Tiki/TikTok |
 | **Ecomobi** | `ecomobi.com` | Mục **API Overview** dành riêng cho publisher, có "tạo nhiều tracking link cho campaign" — đúng thứ cần |
 | **MAS** (trước là Masoffer) | `mas.vn` | Trang dựng bằng JS, cần mở bằng trình duyệt để xem đầy đủ |
 | ~~VoiBan~~ | `voiban.vn` | **Không truy cập được** khi kiểm tra — nhiều khả năng đã ngừng hoạt động |
@@ -476,7 +476,7 @@ Cách 6 ở bảng trên — trả về `/r/<mã>` rồi server 302 sang link af
 | Giai đoạn | Làm gì | Vì sao |
 |---|---|---|
 | **1. Ngay bây giờ** | Provider `mock` + bọc link `/r/<mã>` + sửa giao diện trả link kèm nút Copy | Hoàn thiện toàn bộ luồng, **không cần chờ ai duyệt** |
-| **2. Khi có tài khoản** | Cắm **một** mạng trung gian (AccessTrade hoặc Ecomobi) cho cả 3 sàn | Một tích hợp phủ hết Shopee + TikTok + Lazada |
+| **2. Khi có tài khoản** | Cắm **một** mạng trung gian (AccessTrade hoặc Ecomobi) cho cả 3 sàn | Một tích hợp phủ hết Shopee + TikTok + Tiki |
 | **3. Khi Shopee đủ lớn** | Tách Shopee ra gọi thẳng Open API | Ăn phần hoa hồng mà mạng đang cắt |
 
 Nhờ kiến trúc provider đa hình ở mục 3.2, cả 3 giai đoạn chỉ là **đổi một dòng `.env`** — không phải viết lại gì.

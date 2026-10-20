@@ -13,7 +13,7 @@
  * Chọn nhà cung cấp bằng biến môi trường AFFILIATE_PROVIDER:
  *   mock         (mặc định) — chạy thử được toàn bộ luồng, KHÔNG tạo hoa hồng thật
  *   accesstrade             — cần ACCESSTRADE_API_KEY và campaign ID của từng sàn
- *                             (ACCESSTRADE_CAMPAIGN_SHOPEE / _TIKTOK / _LAZADA,
+ *                             (ACCESSTRADE_CAMPAIGN_SHOPEE / _TIKTOK / _TIKI,
  *                              hoặc ACCESSTRADE_CAMPAIGN_ID làm mặc định chung)
  *   shopee                  — cần SHOPEE_AFFILIATE_APP_ID + SHOPEE_AFFILIATE_SECRET
  *
@@ -89,7 +89,7 @@ function convertMock({ code, baseUrl, subId }) {
    - Mỗi sàn là một campaign riêng. Cấu hình:
        ACCESSTRADE_CAMPAIGN_SHOPEE
        ACCESSTRADE_CAMPAIGN_TIKTOK
-       ACCESSTRADE_CAMPAIGN_LAZADA
+       ACCESSTRADE_CAMPAIGN_TIKI
      hoặc ACCESSTRADE_CAMPAIGN_ID làm mặc định chung.
    - Ta gắn 2 mã vào link:
        sub1 = gzafl-u<id>  : biết hoa hồng thuộc về ai
@@ -101,7 +101,7 @@ function convertMock({ code, baseUrl, subId }) {
 const CAMPAIGN_ENV_BY_PLATFORM = {
   Shopee: 'ACCESSTRADE_CAMPAIGN_SHOPEE',
   'TikTok Shop': 'ACCESSTRADE_CAMPAIGN_TIKTOK',
-  Lazada: 'ACCESSTRADE_CAMPAIGN_LAZADA'
+  Tiki: 'ACCESSTRADE_CAMPAIGN_TIKI'
 };
 
 function campaignIdFor(platform) {

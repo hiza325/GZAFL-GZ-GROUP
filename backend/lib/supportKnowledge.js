@@ -61,12 +61,12 @@ const TOPICS = [
     title: 'Tạo đơn hoàn tiền & lấy link',
     keywords: [
       'tao don', 'link hoan tien', 'lay link', 'dan link', 'chuyen doi link',
-      'mua hang', 'cach mua', 'shopee', 'tiktok', 'lazada', 'tao link', 'kiem tra hoa hong'
+      'mua hang', 'cach mua', 'shopee', 'tiktok', 'tiki', 'tao link', 'kiem tra hoa hong'
     ],
     answer: [
       'Cách tạo đơn hoàn tiền:',
       '1. Vào mục "Tạo đơn hàng" (hoặc dán link ngay ở trang chủ rồi bấm "Chuyển đổi link").',
-      '2. Dán link sản phẩm Shopee / TikTok Shop / Lazada vào ô nhập link — mỗi lần chỉ 1 link.',
+      '2. Dán link sản phẩm Shopee / TikTok Shop / Tiki vào ô nhập link — mỗi lần chỉ 1 link.',
       '3. Bấm "Tạo link & kiểm tra hoa hồng" để nhận link hoàn tiền của bạn (dạng .../r/MÃ_ĐƠN).',
       '4. Bấm "Mua ngay" (hoặc copy link dán vào trình duyệt) rồi mua hàng trong đúng phiên đó.',
       'Quan trọng: mua đúng sản phẩm trong link, không đổi thiết bị/trình duyệt và không xoá cookie giữa chừng, nếu không đơn sẽ không được ghi nhận.'
@@ -95,7 +95,7 @@ const TOPICS = [
     ],
     answer: [
       'Đơn thường không được ghi nhận hoa hồng khi:',
-      '- Bạn không mua qua link hoàn tiền (mở link Shopee/TikTok/Lazada trực tiếp).',
+      '- Bạn không mua qua link hoàn tiền (mở link Shopee/TikTok/Tiki trực tiếp).',
       '- Mua ở thiết bị/trình duyệt khác, hoặc dùng chế độ ẩn danh.',
       '- Xoá cookie hoặc mở link rồi mua sau quá lâu trong một phiên khác.',
       '- Đơn bị huỷ/hoàn trả, hoặc áp thêm mã giảm giá không thuộc sàn.',
