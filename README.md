@@ -143,6 +143,7 @@ styles/Inter-LICENSE.txt   # Giấy phép SIL Open Font License của Inter
 script.js                  # Toàn bộ logic frontend (gọi API)
 i18n.js                    # Bộ dịch VI/EN cho trang chủ + đăng nhập (lưu lựa chọn vào localStorage)
 theme.js                   # Chuyển đổi giao diện sáng/tối (nạp trong <head>, lưu vào localStorage)
+lucide.min.js              # Thư viện icon tự host (không tải từ unpkg/CDN)
 admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
 support.js                 # Logic khung trợ lý hỗ trợ (chatbot) ở góc phải-dưới
 assets/flags/              # Cờ SVG (Việt Nam, Vương quốc Anh) cho nút chuyển ngôn ngữ
@@ -547,7 +548,7 @@ Cách đặt lịch và phục hồi: xem [docs/deployment.md](docs/deployment.m
 - Frontend **không thể sửa** dữ liệu đơn hàng/ví/điểm — tất cả kiểm tra ở server.
 - Mọi truy vấn theo `user_id` lấy từ token, người dùng chỉ thấy dữ liệu của mình.
 - API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
-- Chỉ **danh sách file giao diện đã biết** (index.html, script.js, admin.js, support.js, CSS, ảnh logo, components/, styles/) được phục vụ qua HTTP. Mọi đường dẫn khác trả `404`, kể cả khi bị mã hoá kiểu `/%62ackend/data/...` — không thể tải `backend/`, `data/`, `node_modules/` hay `package.json`.
+- Chỉ **danh sách file giao diện đã biết** (index.html, script.js, admin.js, support.js, lucide.min.js, CSS, ảnh logo, components/, styles/) được phục vụ qua HTTP. Mọi đường dẫn khác trả `404`, kể cả khi bị mã hoá kiểu `/%62ackend/data/...` — không thể tải `backend/`, `data/`, `node_modules/` hay `package.json`.
 - Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
 - Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản. Bước yêu cầu gửi mã xác thực cũng vậy.
 - **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email / đăng nhập tách biệt nhau).

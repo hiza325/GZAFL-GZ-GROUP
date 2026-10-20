@@ -71,6 +71,78 @@ function setText(id, text) {
   if (el) el.innerText = text;
 }
 
+/* ==========================================
+   TIỆN ÍCH MODAL: khoá cuộn nền + quản lý focus
+
+   - Khi mở modal: khoá cuộn trang nền, ghi nhớ phần tử đang focus, chuyển
+     focus vào field đầu tiên.
+   - Giữ phím Tab/Shift+Tab luẩn quẩn trong modal đang mở.
+   - Khi đóng: trả focus về nút đã mở modal.
+   ========================================== */
+const modalStack = [];
+
+function modalFocusables(modal) {
+  if (!modal) return [];
+  return Array.from(modal.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
+    'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter(function (el) {
+    return el.getClientRects().length > 0;
+  });
+}
+
+function lockModal(modal) {
+  if (!modal || modalStack.indexOf(modal) !== -1) return;
+
+  // Ghi nhớ phần tử đang focus để trả lại sau khi đóng
+  const active = document.activeElement;
+  if (active && active !== document.body && !modal.contains(active)) {
+    modal._returnFocus = active;
+  }
+
+  modalStack.push(modal);
+  document.body.classList.add('modal-open');
+}
+
+function unlockModal(modal) {
+  const index = modalStack.indexOf(modal);
+  if (index !== -1) modalStack.splice(index, 1);
+  if (!modalStack.length) document.body.classList.remove('modal-open');
+
+  const target = modal && modal._returnFocus;
+  if (modal) modal._returnFocus = null;
+  if (target && document.contains(target)) target.focus({ preventScroll: true });
+}
+
+// Đưa focus vào field/selector ưu tiên, hoặc phần tử đầu tiên có thể focus
+function focusInModal(modal, selector) {
+  if (!modal) return;
+  const preferred = selector ? modal.querySelector(selector) : null;
+  const target = preferred || modalFocusables(modal)[0];
+  if (target) target.focus({ preventScroll: true });
+}
+
+// Giữ Tab/Shift+Tab trong modal trên cùng của chồng modal
+document.addEventListener('keydown', function (event) {
+  if (event.key !== 'Tab' || !modalStack.length) return;
+
+  const modal = modalStack[modalStack.length - 1];
+  const items = modalFocusables(modal);
+  if (!items.length) return;
+
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && (active === first || !modal.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || !modal.contains(active))) {
+    event.preventDefault();
+    first.focus();
+  }
+});
+
 // Định dạng tiền Việt Nam
 function formatCurrency(amount) {
   const n = Number(amount) || 0;
@@ -369,11 +441,15 @@ window.openAuthModal = function(loginMode = true) {
   if (!modal || !content) return;
 
   modal.classList.remove('hidden');
+  lockModal(modal);
 
   setTimeout(() => {
     modal.classList.remove('opacity-0');
     content.classList.remove('scale-95');
   }, 10);
+
+  // Đưa focus vào ô đầu tiên đang hiển thị (đăng ký: tên, đăng nhập: tài khoản)
+  focusInModal(modal, isLoginMode ? '#auth-username' : '#auth-name');
 };
 
 window.closeAuthModal = function() {
@@ -391,6 +467,7 @@ window.closeAuthModal = function() {
     const errorBox = document.getElementById('auth-error');
     if (errorBox) errorBox.classList.add('hidden');
     resetAuthPanels();
+    unlockModal(modal);
   }, 300);
 };
 
@@ -487,6 +564,15 @@ function updateAuthUI() {
       }
     }
   }
+
+  // Cùng một ô mật khẩu dùng cho 2 chế độ: đăng nhập (điền mật khẩu đã lưu)
+  // và đăng ký (gợi ý mật khẩu mới) — đổi autocomplete để password manager
+  // không điền nhầm.
+  const passwordEl = document.getElementById('auth-password');
+  if (passwordEl) {
+    passwordEl.setAttribute('autocomplete', isLoginMode ? 'current-password' : 'new-password');
+  }
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -2512,6 +2598,7 @@ window.openWithdrawModal = async function() {
   setWithdrawMode(savedBank.accNum ? 'account' : savedBank.qrUrl ? 'qr' : 'account');
 
   modal.classList.remove('hidden');
+  lockModal(modal);
 
   // Luôn mở ở đầu hộp thoại (khi màn hình thấp, hộp thoại sẽ cuộn bên trong)
   content.scrollTop = 0;
@@ -2520,6 +2607,8 @@ window.openWithdrawModal = async function() {
     modal.classList.remove('opacity-0');
     content.classList.remove('scale-95');
   }, 10);
+
+  focusInModal(modal, withdrawMode === 'qr' ? '[data-action="pick-withdraw-qr"]' : '#withdraw-acc-number');
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
@@ -2579,7 +2668,10 @@ window.closeWithdrawModal = function() {
   modal.classList.add('opacity-0');
   content.classList.add('scale-95');
 
-  setTimeout(() => modal.classList.add('hidden'), 300);
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    unlockModal(modal);
+  }, 300);
 };
 
 window.submitWithdraw = async function() {
@@ -2804,11 +2896,14 @@ window.openGuideModal = async function() {
   if (!modal || !content || !body) return;
 
   modal.classList.remove('hidden');
+  lockModal(modal);
 
   setTimeout(() => {
     modal.classList.remove('opacity-0');
     content.classList.remove('scale-95');
   }, 10);
+
+  focusInModal(modal, '[data-action="close-guide"]');
 
   if (body.dataset.loaded === '1') return;
 
@@ -2834,7 +2929,10 @@ window.closeGuideModal = function() {
   modal.classList.add('opacity-0');
   content.classList.add('scale-95');
 
-  setTimeout(() => modal.classList.add('hidden'), 300);
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    unlockModal(modal);
+  }, 300);
 };
 
 /* ==========================================

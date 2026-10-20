@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
 const express = require('express');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const { rateLimit } = require('./lib/rateLimit');
 
@@ -71,7 +72,7 @@ app.disable('x-powered-by');
 /* ==========================================
    Header bảo mật (áp cho mọi response)
 
-   Script chỉ được nạp từ chính website hoặc unpkg (thư viện lucide).
+   Script chỉ được nạp từ chính website (lucide đã được tự host).
    KHÔNG còn 'unsafe-inline': toàn bộ onclick/onsubmit trong HTML đã được
    chuyển sang data-action + bộ điều phối ở cuối script.js, nên CSP chặn được
    cả script nội tuyến do kẻ tấn công chèn vào (XSS).
@@ -83,7 +84,7 @@ const CSP_DIRECTIVES = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' https://unpkg.com",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob:",
@@ -118,6 +119,11 @@ if (TRUST_PROXY) {
   );
 }
 
+// Nén gzip/deflate cho response text/JSON/JS/CSS lớn hơn 1 KB.
+// Nếu chạy sau Nginx/Caddy, có thể để proxy nén thay; nén ở đây vẫn an toàn
+// (proxy thấy Content-Encoding và không nén lần hai).
+app.use(compression({ threshold: 1024 }));
+
 app.use(express.json({ limit: '6mb' })); // đủ cho avatar base64 tối đa 2MB
 app.use(cookieParser());
 
@@ -135,6 +141,7 @@ const PUBLIC_ROOT_FILES = new Set([
   '/theme.js',
   '/i18n.js',
   '/script.js',
+  '/lucide.min.js',
   '/admin.js',
   '/support.js',
   '/style.css',
@@ -155,7 +162,25 @@ function isPublicAssetPath(rawPath) {
   return PUBLIC_ROOT_FILES.has(p) || PUBLIC_ASSET_FILES.has(p) || PUBLIC_SUBDIR_FILE.test(p);
 }
 
-const publicStatic = express.static(ROOT, { dotfiles: 'deny', index: false, redirect: false });
+// Cache tĩnh: CSS/JS chưa có tên kèm hash nên chỉ cache 5 phút (sau đó
+// trình duyệt revalidate bằng ETag); font/ảnh ít đổi nên cache 7 ngày.
+// HTML luôn revalidate để bản mới được nhận ngay sau khi deploy.
+function staticCacheHeaders(res, filePath) {
+  if (/\.(?:woff2?|svg|png|jpe?g|gif|webp|ico)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, must-revalidate');
+  } else if (/\.(?:css|js)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}
+
+const publicStatic = express.static(ROOT, {
+  dotfiles: 'deny',
+  index: false,
+  redirect: false,
+  setHeaders: staticCacheHeaders
+});
 
 /* ==========================================
    Ảnh trong /uploads
@@ -297,7 +322,10 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
 // Frontend tĩnh (xem danh sách cho phép ở trên)
-app.get(['/', '/index.html'], (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
+app.get(['/', '/index.html'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(ROOT, 'index.html'));
+});
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (!isPublicAssetPath(req.path)) return next();

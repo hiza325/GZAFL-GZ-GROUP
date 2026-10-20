@@ -26,10 +26,11 @@ body {
   box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.1);
 }
 
-/* Nút chính: gradient đỏ thương hiệu (dùng chung toàn bộ web) */
+/* Nút chính: gradient đỏ thương hiệu (dùng chung toàn bộ web).
+   Các sắc đỏ được chọn đủ đậm để chữ trắng đạt WCAG AA (>= 4.5:1). */
 .btn-primary {
-  background-color: #f04d4d;
-  background-image: linear-gradient(135deg, #f66666 0%, #f04d4d 48%, #d93838 100%);
+  background-color: #d93838;
+  background-image: linear-gradient(135deg, #d93838 0%, #d13333 48%, #bf2a2a 100%);
   box-shadow: 0 10px 20px -12px rgba(240, 77, 77, 0.95);
   transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
 }
@@ -42,6 +43,21 @@ body {
 
 .btn-primary:active {
   transform: translateY(0) scale(0.99);
+}
+
+/* Tương phản màu thương hiệu:
+   - Nền đỏ dùng cho nút/badge có chữ trắng: #d93838 cho tỉ lệ ~4.6:1.
+   - Chữ đỏ trên nền sáng: dùng sắc đậm #c92a2a (~5.5:1 trên trắng). */
+.bg-\[\#f04d4d\] {
+  background-color: #d93838;
+}
+.text-\[\#f04d4d\],
+.hover\:text-\[\#f04d4d\]:hover {
+  color: #c92a2a;
+}
+/* Nhãn Shopee màu cam: bản gốc #ee4d2d chỉ đạt 3.66:1 trên nền trắng. */
+.text-\[\#ee4d2d\] {
+  color: #c2410c;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -175,6 +191,20 @@ main h2.tracking-tight::before {
   padding-bottom: 16px;
 }
 #withdraw-modal-content {
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Khoá cuộn trang nền khi có modal đang mở (script.js thêm class này) */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Modal đăng nhập: giới hạn chiều cao + cuộn bên trong để không bị cắt
+   trên màn hình thấp hoặc khi bàn phím điện thoại mở. */
+#auth-modal-content {
   max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
@@ -663,6 +693,10 @@ body.sidebar-open {
 
 /* Logo Shopee màu cam: làm sáng hơn cho đủ tương phản trên nền tối */
 :where(html.dark) .text-\[\#ee4d2d\] { color: #ff8a6b; }
+
+/* Chữ đỏ thương hiệu trên nền tối: dùng sắc sáng hơn để đạt WCAG AA */
+:where(html.dark) .text-\[\#f04d4d\],
+:where(html.dark) .hover\:text-\[\#f04d4d\]:hover { color: #ff8a8a; }
 
 /* Mục ngôn ngữ đang chọn trong menu VI / EN */
 :where(html.dark) #lang-menu [aria-selected='true'] { background-color: #1e293b; }

@@ -30,6 +30,7 @@
       'nav.guide': 'Hướng dẫn',
       'nav.hello': 'Xin chào!',
       'nav.login': 'Đăng nhập',
+      'nav.loginAria': 'Xin chào! Đăng nhập',
 
       'hero.badge': 'Nền tảng Affiliate uy tín tại Việt Nam',
       'hero.title.line1': 'Chuyển đổi link mua sắm',
@@ -192,6 +193,7 @@
       'nav.guide': 'Guide',
       'nav.hello': 'Hello!',
       'nav.login': 'Sign in',
+      'nav.loginAria': 'Hello! Sign in',
 
       'hero.badge': 'A trusted affiliate platform in Vietnam',
       'hero.title.line1': 'Convert shopping links',
@@ -417,7 +419,9 @@
     }
     if (label) label.textContent = SHORT_LABELS[currentLang];
     if (toggle) {
-      toggle.setAttribute('aria-label', t('lang.switch'));
+      // Gộp nhãn nhìn thấy ("VI"/"EN") vào aria-label để trình đọc màn hình
+      // đọc đúng và đạt quy tắc label-content-name-mismatch.
+      toggle.setAttribute('aria-label', SHORT_LABELS[currentLang] + ' – ' + t('lang.switch'));
       toggle.setAttribute('aria-expanded', isLangMenuOpen() ? 'true' : 'false');
     }
 

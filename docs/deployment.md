@@ -137,6 +137,13 @@ server {
 
     client_max_body_size 8m;   # giao diện có tải ảnh đại diện
 
+    # Nén bổ sung ở proxy (Node đã nén gzip cho JS/CSS/JSON > 1 KB;
+    # Nginx sẽ không nén lần hai response đã có Content-Encoding).
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;

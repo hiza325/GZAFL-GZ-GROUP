@@ -41,7 +41,7 @@
 
       <!-- Chuyển đổi ngôn ngữ VI / EN -->
       <div id="lang-switcher" class="relative">
-        <button type="button" id="lang-toggle" data-action="toggle-lang-menu" aria-label="Chọn ngôn ngữ" aria-haspopup="listbox" aria-expanded="false" class="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 pl-2 pr-2.5 sm:pr-3 py-2 rounded-full hover:shadow-md transition">
+        <button type="button" id="lang-toggle" data-action="toggle-lang-menu" aria-label="VI – Chọn ngôn ngữ" aria-haspopup="listbox" aria-expanded="false" class="flex items-center gap-1.5 sm:gap-2 bg-white border border-slate-200 pl-2 pr-2.5 sm:pr-3 py-2 rounded-full hover:shadow-md transition">
           <img id="lang-flag" src="assets/flags/vn.svg" alt="Tiếng Việt" class="w-5 h-3.5 rounded-sm object-cover">
           <span id="lang-label" class="text-xs font-bold text-slate-700">VI</span>
           <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 hidden sm:block"></i>
@@ -60,7 +60,7 @@
         </div>
       </div>
 
-      <button data-action="open-auth" aria-label="Đăng nhập" data-i18n-aria-label="nav.login" title="Đăng nhập" data-i18n-title="nav.login" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-1.5 sm:pr-5 py-1.5 rounded-full hover:shadow-md transition group whitespace-nowrap">
+      <button data-action="open-auth" aria-label="Xin chào! Đăng nhập" data-i18n-aria-label="nav.loginAria" title="Đăng nhập" data-i18n-title="nav.login" class="flex items-center gap-3 bg-white border border-slate-200 pl-1.5 pr-1.5 sm:pr-5 py-1.5 rounded-full hover:shadow-md transition group whitespace-nowrap">
         <div class="w-9 h-9 bg-[#18253f] group-hover:bg-[#233559] text-white rounded-full flex items-center justify-center font-bold text-sm transition">
           <i data-lucide="user" class="w-4 h-4"></i>
         </div>
@@ -161,14 +161,14 @@
         <form id="auth-form" data-submit-action="auth-submit">
           <!-- Nhập Tên -->
           <div id="auth-name-group" class="mb-4 hidden">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.name.label">Tên hiển thị</label>
-            <input type="text" id="auth-name" placeholder="Nguyễn Văn A" data-i18n-placeholder="auth.name.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="auth-name" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.name.label">Tên hiển thị</label>
+            <input type="text" id="auth-name" autocomplete="name" placeholder="Nguyễn Văn A" data-i18n-placeholder="auth.name.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Nhập Email / SĐT -->
           <div class="mb-4">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.username.label">Email hoặc Số điện thoại</label>
-            <input type="text" id="auth-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="auth-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.username.label">Email hoặc Số điện thoại</label>
+            <input type="text" id="auth-username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
             <p class="text-[11px] text-slate-400 mt-1.5" data-i18n="auth.username.hint">Dùng để đăng nhập.</p>
           </div>
 
@@ -181,14 +181,14 @@
 
           <!-- Nhập Mật khẩu -->
           <div class="mb-6">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.password.label">Mật khẩu</label>
-            <input type="password" id="auth-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="auth-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.password.label">Mật khẩu</label>
+            <input type="password" id="auth-password" autocomplete="current-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Xác nhận mật khẩu (chỉ hiện khi đăng ký) -->
           <div id="auth-confirm-group" class="mb-6 hidden">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.confirm.label">Xác nhận mật khẩu</label>
-            <input type="password" id="auth-confirm-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <label for="auth-confirm-password" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.confirm.label">Xác nhận mật khẩu</label>
+            <input type="password" id="auth-confirm-password" autocomplete="new-password" placeholder="••••••••" data-i18n-placeholder="auth.password.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <!-- Nút Submit -->
@@ -232,7 +232,7 @@
 
           <div class="mb-5">
             <label for="forgot-username" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" data-i18n="auth.username.label">Email hoặc Số điện thoại</label>
-            <input type="text" id="forgot-username" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
+            <input type="text" id="forgot-username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ví dụ: email@gmail.com hoặc 0987..." data-i18n-placeholder="auth.username.placeholder" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 placeholder-slate-400 focus:outline-none focus:border-red-400 focus:bg-white transition-all">
           </div>
 
           <button type="button" id="forgot-submit-btn" data-action="forgot-submit" class="w-full bg-[#18253f] hover:bg-[#233559] text-white font-bold py-3.5 rounded-xl shadow-md transition-all transform active:scale-[0.98]" data-i18n="auth.forgot.submit">
