@@ -144,11 +144,14 @@ function normalizeHistory(input) {
 /** Trạng thái trợ lý (dùng để kiểm tra nhanh khi cấu hình .env). */
 router.get('/status', (req, res) => {
   const info = ai.describe();
+  const cfg = ai.config();
   const left = aiQuotaLeft();
   res.json({
     ai: info.configured,
     provider: info.configured ? info.provider : null,
     model: info.configured ? info.model : null,
+    maxTokens: info.configured ? cfg.maxTokens : null,
+    timeoutMs: info.configured ? cfg.timeoutMs : null,
     dailyLimit: AI_DAILY_LIMIT,
     usedToday: AI_DAILY_LIMIT > 0 ? AI_DAILY_LIMIT - left : 0,
     remainingToday: AI_DAILY_LIMIT > 0 ? left : null,

@@ -90,7 +90,7 @@ npm run watch:css
 | `AI_API_KEY` | – | Khoá API cho **trợ lý hỗ trợ (chatbot)**. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn trong `backend/lib/supportKnowledge.js`. Điền khoá là trợ lý trả lời bằng AI (xem mục [Trợ lý hỗ trợ (chatbot)](#trợ-lý-hỗ-trợ-chatbot)) |
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API và tên model (chuẩn OpenAI). Chỉ cần khi muốn chỉ định rõ nhà cung cấp |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI (vẫn giữ khoá) mà không phải xoá cấu hình |
-| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `2048`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời (Gemini 2.5 dùng thêm token "suy nghĩ" trong trần này) |
 | `AI_DAILY_LIMIT` | `800` | Trần **tổng** số lượt gọi AI mỗi ngày (mọi IP cộng lại). Vượt trần thì trợ lý vẫn trả lời nhưng bằng kịch bản có sẵn. `0` = không giới hạn |
 
 > **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).

@@ -70,7 +70,7 @@ function config() {
     provider: hint ? hint.name : 'OpenAI',
     enabled: aiMode() !== 'off',
     timeoutMs: Number(process.env.AI_TIMEOUT_MS) || 25000,
-    maxTokens: Number(process.env.AI_MAX_TOKENS) || 600,
+    maxTokens: Number(process.env.AI_MAX_TOKENS) || 2048,
     temperature: Number(process.env.AI_TEMPERATURE) || 0.4
   };
 }
@@ -133,9 +133,16 @@ async function chat(messages) {
     }
 
     const data = await res.json();
-    const content = data && data.choices && data.choices[0] && data.choices[0].message
-      ? data.choices[0].message.content
-      : null;
+    const choice = data && data.choices && data.choices[0];
+
+    if (choice && choice.finish_reason === 'length') {
+      console.warn(
+        `AI bị cắt vì hết max_tokens=${cfg.maxTokens} (model ${cfg.model}). ` +
+          'Tăng AI_MAX_TOKENS trong .env nếu câu trả lời thường xuyên bị cụt.'
+      );
+    }
+
+    const content = choice && choice.message ? choice.message.content : null;
 
     if (!content) throw new Error('API không trả về nội dung trả lời.');
 

@@ -398,7 +398,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `AI_API_KEY` | – | Khoá API cho trợ lý hỗ trợ. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn (xem mục 8) |
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API + tên model (chuẩn OpenAI) |
 | `AI_ENABLED` | `true` | `off` để tạm tắt AI mà vẫn giữ khoá |
-| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `600`, `0.4` | Thời gian chờ, độ dài và độ "sáng tạo" của câu trả lời |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `2048`, `0.4` | Thời gian chờ, độ dài và độ "sáng tạo" của câu trả lời (Gemini 2.5 dùng thêm token "suy nghĩ" trong trần này) |
 | `AI_DAILY_LIMIT` | `800` | Trần tổng số lượt gọi AI mỗi ngày (mọi IP cộng lại); vượt trần thì trả lời bằng kịch bản có sẵn. `0` = không giới hạn. Bộ đếm lưu trong SQLite nên nhiều tiến trình dùng chung |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 
