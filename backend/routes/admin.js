@@ -89,6 +89,13 @@ function isMoney(value) {
   return Number.isInteger(value) && value >= 0 && value <= MAX_MONEY;
 }
 
+/** Lỗi có mã HTTP để ném ra từ bên trong transaction rồi trả về cho client. */
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 // Các cột tổng hợp dùng chung cho danh sách người dùng
 const USER_AGGREGATES = `
   (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) AS order_count,
@@ -608,11 +615,6 @@ router.get('/orders', (req, res) => {
 
 router.patch('/orders/:code', (req, res) => {
   const code = String(req.params.code || '').trim();
-  const before = db.prepare('SELECT * FROM orders WHERE code = ?').get(code);
-  if (!before) {
-    return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
-  }
-
   const body = req.body || {};
 
   if (body.status !== undefined && !ORDER_STATUSES.includes(String(body.status))) {
@@ -625,92 +627,110 @@ router.patch('/orders/:code', (req, res) => {
     return res.status(400).json({ error: 'Không có thông tin nào để cập nhật.' });
   }
 
-  const prevStatus = before.status;
-  const prevCommission = Number(before.commission) || 0;
-  const prevReversed = Number(before.commission_reversed) || 0;
-  const prevCredited = isCredited(before);
-  const nextStatus = body.status !== undefined ? String(body.status) : prevStatus;
-  const nextCredited = isCredited({ status: nextStatus });
-  let nextCommission = body.commission !== undefined ? Number(body.commission) : prevCommission;
-  let nextReversed = prevReversed;
-  let nextReversedAt = before.commission_reversed_at || null;
-  const now = new Date().toISOString();
+  // Đọc trạng thái cũ + ghi trạng thái mới trong CÙNG một transaction: khi chạy
+  // nhiều tiến trình, hai quản trị viên bấm cùng lúc không thể cùng tính khoản
+  // thu hồi dựa trên một trạng thái cũ rồi ghi đè lẫn nhau.
+  let after;
+  try {
+    after = db.transaction(() => {
+      const before = db.prepare('SELECT * FROM orders WHERE code = ?').get(code);
+      if (!before) throw httpError(404, 'Không tìm thấy đơn hàng.');
 
-  if (nextStatus === CANCELLED) {
-    // Huỷ/hoàn trả: chỉ ghi thu hồi nếu khoản này từng được admin duyệt và
-    // đã cộng vào ví. Đơn còn chờ duyệt thì chỉ cần đưa hoa hồng về 0.
-    if (prevCredited && prevCommission > 0) {
-      nextReversed = prevCommission;
-      nextReversedAt = now;
-    }
-    nextCommission = 0;
-  } else if (nextCredited) {
-    // Admin duyệt/chốt hoa hồng: khoản tiền mới được tính vào ví.
-    // Nếu đơn được khôi phục sau khi từng bị thu hồi, xoá khoản thu hồi cũ.
-    if (nextCommission > 0 && (prevStatus === CANCELLED || !prevCredited)) {
-      nextReversed = 0;
-      nextReversedAt = null;
-    }
-    if (prevCredited && nextCommission < prevCommission) {
-      nextReversed = prevCommission - nextCommission;
-      nextReversedAt = now;
-    }
-  } else {
-    // Đang xử lý / chờ đối soát / chờ admin duyệt: chưa cộng vào ví.
-    if (prevCredited && nextCommission < prevCommission) {
-      // Admin hạ hoa hồng của đơn đã cộng ví -> thu hồi phần chênh lệch.
-      nextReversed = prevCommission - nextCommission;
-      nextReversedAt = now;
-    } else if (nextCommission > 0 && prevStatus === CANCELLED) {
-      // Đơn được khôi phục về hàng chờ: khoản thu hồi cũ không còn hiệu lực.
-      nextReversed = 0;
-      nextReversedAt = null;
-    }
-  }
+      const prevStatus = before.status;
+      const prevCommission = Number(before.commission) || 0;
+      const prevReversed = Number(before.commission_reversed) || 0;
+      const prevCredited = isCredited(before);
+      const nextStatus = body.status !== undefined ? String(body.status) : prevStatus;
+      const nextCredited = isCredited({ status: nextStatus });
+      let nextCommission = body.commission !== undefined ? Number(body.commission) : prevCommission;
+      let nextReversed = prevReversed;
+      let nextReversedAt = before.commission_reversed_at || null;
+      const now = new Date().toISOString();
 
-  const updates = [];
-  const values = [];
-  const set = (column, value) => {
-    updates.push(`${column} = ?`);
-    values.push(value);
-  };
+      if (nextStatus === CANCELLED) {
+        // Huỷ/hoàn trả: chỉ ghi thu hồi nếu khoản này từng được admin duyệt và
+        // đã cộng vào ví. Đơn còn chờ duyệt thì chỉ cần đưa hoa hồng về 0.
+        if (prevCredited && prevCommission > 0) {
+          nextReversed = prevCommission;
+          nextReversedAt = now;
+        }
+        nextCommission = 0;
+      } else if (nextCredited) {
+        // Admin duyệt/chốt hoa hồng: khoản tiền mới được tính vào ví.
+        // Nếu đơn được khôi phục sau khi từng bị thu hồi, xoá khoản thu hồi cũ.
+        if (nextCommission > 0 && (prevStatus === CANCELLED || !prevCredited)) {
+          nextReversed = 0;
+          nextReversedAt = null;
+        }
+        if (prevCredited && nextCommission < prevCommission) {
+          nextReversed = prevCommission - nextCommission;
+          nextReversedAt = now;
+        }
+      } else {
+        // Đang xử lý / chờ đối soát / chờ admin duyệt: chưa cộng vào ví.
+        if (prevCredited && nextCommission < prevCommission) {
+          // Admin hạ hoa hồng của đơn đã cộng ví -> thu hồi phần chênh lệch.
+          nextReversed = prevCommission - nextCommission;
+          nextReversedAt = now;
+        } else if (nextCommission > 0 && prevStatus === CANCELLED) {
+          // Đơn được khôi phục về hàng chờ: khoản thu hồi cũ không còn hiệu lực.
+          nextReversed = 0;
+          nextReversedAt = null;
+        }
+      }
 
-  if (body.status !== undefined) set('status', nextStatus);
-  set('commission', nextCommission);
-  if (nextReversed !== prevReversed) set('commission_reversed', nextReversed);
-  if (nextReversedAt !== (before.commission_reversed_at || null)) set('commission_reversed_at', nextReversedAt);
+      const updates = [];
+      const values = [];
+      const set = (column, value) => {
+        updates.push(`${column} = ?`);
+        values.push(value);
+      };
 
-  db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
+      if (body.status !== undefined) set('status', nextStatus);
+      set('commission', nextCommission);
+      if (nextReversed !== prevReversed) set('commission_reversed', nextReversed);
+      if (nextReversedAt !== (before.commission_reversed_at || null)) set('commission_reversed_at', nextReversedAt);
 
-  const after = findOrderByCode(code);
+      db.prepare(`UPDATE orders SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
 
-  // Báo cho người dùng biết đơn của họ vừa thay đổi
-  const statusChanged = after.status !== before.status;
-  const commissionChanged = Number(after.commission) !== Number(before.commission);
-  const reversedChanged = Number(after.commission_reversed) !== prevReversed;
+      const updated = findOrderByCode(code);
 
-  if (statusChanged || commissionChanged || reversedChanged) {
-    const parts = [];
-    if (statusChanged) parts.push(`trạng thái: ${after.status}`);
-    if (commissionChanged) parts.push(`hoa hồng: ${formatMoney(after.commission)}`);
-    if (reversedChanged && after.commission_reversed > 0) {
-      parts.push(`thu hồi: ${formatMoney(after.commission_reversed)}`);
-    }
-    const approvedNow = !isCredited(before) && isCredited(after) && Number(after.commission) > 0;
-    notify(before.user_id, {
-      title: approvedNow ? `Hoa hồng đơn ${code} đã được duyệt` : `Đơn ${code} đã được cập nhật`,
-      body: approvedNow
-        ? `Quản trị viên đã duyệt ${formatMoney(after.commission)} hoa hồng cho đơn ${code}. Khoản tiền đã được cộng vào ví.`
-        : `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
-      icon: 'file-text'
+      // Báo cho người dùng biết đơn của họ vừa thay đổi
+      const statusChanged = updated.status !== before.status;
+      const commissionChanged = Number(updated.commission) !== Number(before.commission);
+      const reversedChanged = Number(updated.commission_reversed) !== prevReversed;
+
+      if (statusChanged || commissionChanged || reversedChanged) {
+        const parts = [];
+        if (statusChanged) parts.push(`trạng thái: ${updated.status}`);
+        if (commissionChanged) parts.push(`hoa hồng: ${formatMoney(updated.commission)}`);
+        if (reversedChanged && updated.commission_reversed > 0) {
+          parts.push(`thu hồi: ${formatMoney(updated.commission_reversed)}`);
+        }
+        const approvedNow = !isCredited(before) && isCredited(updated) && Number(updated.commission) > 0;
+        notify(before.user_id, {
+          title: approvedNow ? `Hoa hồng đơn ${code} đã được duyệt` : `Đơn ${code} đã được cập nhật`,
+          body: approvedNow
+            ? `Quản trị viên đã duyệt ${formatMoney(updated.commission)} hoa hồng cho đơn ${code}. Khoản tiền đã được cộng vào ví.`
+            : `Quản trị viên vừa cập nhật ${parts.join(', ')}.`,
+          icon: 'file-text'
+        });
+      }
+
+      const changes = [];
+      if (statusChanged) changes.push(`trạng thái ${before.status} → ${updated.status}`);
+      if (commissionChanged) {
+        changes.push(`hoa hồng ${formatMoney(before.commission)} → ${formatMoney(updated.commission)}`);
+      }
+      if (reversedChanged) changes.push(`thu hồi ${formatMoney(updated.commission_reversed)}`);
+      if (changes.length) logAudit(req, 'Cập nhật đơn hàng', 'order', code, changes.join('; '));
+
+      return updated;
     });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
   }
-
-  const changes = [];
-  if (statusChanged) changes.push(`trạng thái ${before.status} → ${after.status}`);
-  if (commissionChanged) changes.push(`hoa hồng ${formatMoney(before.commission)} → ${formatMoney(after.commission)}`);
-  if (reversedChanged) changes.push(`thu hồi ${formatMoney(after.commission_reversed)}`);
-  if (changes.length) logAudit(req, 'Cập nhật đơn hàng', 'order', code, changes.join('; '));
 
   return res.json({ order: toAdminOrder(after) });
 });
@@ -772,85 +792,102 @@ router.get('/withdrawals', (req, res) => {
 
 router.patch('/withdrawals/:code', (req, res) => {
   const code = String(req.params.code || '').trim();
-  const row = db.prepare('SELECT * FROM withdrawals WHERE code = ?').get(code);
-  if (!row) return res.status(404).json({ error: 'Không tìm thấy lệnh rút tiền.' });
-
   const body = req.body || {};
-  const updates = [];
-  const values = [];
 
-  let nextStatus = row.status;
-  let nextAmount = Number(row.amount) || 0;
+  // Đọc + kiểm tra số dư + ghi trong CÙNG một transaction: khi chạy nhiều tiến
+  // trình, hai quản trị viên chi hai lệnh rút cùng lúc không thể cùng lọt qua
+  // bước kiểm tra "còn đủ tiền" rồi chi quá số dư.
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      const row = db.prepare('SELECT * FROM withdrawals WHERE code = ?').get(code);
+      if (!row) throw httpError(404, 'Không tìm thấy lệnh rút tiền.');
 
-  if (body.status !== undefined) {
-    const status = String(body.status);
-    if (!WITHDRAWAL_STATUSES.includes(status)) {
-      return res.status(400).json({ error: 'Trạng thái lệnh rút không hợp lệ.' });
-    }
-    nextStatus = status;
-    updates.push('status = ?');
-    values.push(status);
+      const updates = [];
+      const values = [];
+
+      let nextStatus = row.status;
+      let nextAmount = Number(row.amount) || 0;
+
+      if (body.status !== undefined) {
+        const status = String(body.status);
+        if (!WITHDRAWAL_STATUSES.includes(status)) {
+          throw httpError(400, 'Trạng thái lệnh rút không hợp lệ.');
+        }
+        nextStatus = status;
+        updates.push('status = ?');
+        values.push(status);
+      }
+
+      if (body.amount !== undefined) {
+        const amount = Number(body.amount);
+        if (!isMoney(amount)) throw httpError(400, 'Số tiền không hợp lệ.');
+        nextAmount = amount;
+        updates.push('amount = ?');
+        values.push(amount);
+      }
+
+      if (!updates.length) {
+        throw httpError(400, 'Không có thông tin nào để cập nhật.');
+      }
+
+      // Không cho chi nhiều hơn số dư khả dụng (không tính chính lệnh này).
+      // Áp dụng cho MỌI thay đổi (kể cả chỉ sửa số tiền của lệnh đang chờ), tránh âm số dư.
+      if (nextStatus !== CANCELLED) {
+        if (nextStatus === 'Đã thanh toán' && nextAmount <= 0) {
+          throw httpError(400, 'Vui lòng nhập số tiền thực chi trả trước khi đánh dấu đã thanh toán.');
+        }
+        const payable = payableForWithdrawal(row);
+        if (nextAmount > payable) {
+          throw httpError(
+            400,
+            `Số tiền vượt quá số dư khả dụng của người dùng (${formatMoney(payable)}).`
+          );
+        }
+      }
+
+      db.prepare(`UPDATE withdrawals SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
+
+      // Báo cho người dùng biết lệnh rút của họ vừa thay đổi
+      const amountChanged = nextAmount !== (Number(row.amount) || 0);
+      if (nextStatus !== row.status || amountChanged) {
+        let title = `Lệnh rút ${code} đã được cập nhật`;
+        let body = 'Quản trị viên vừa cập nhật lệnh rút tiền của bạn.';
+
+        if (nextStatus === 'Đã thanh toán') {
+          title = `Lệnh rút ${code} đã được thanh toán`;
+          body = `${formatMoney(nextAmount)} đã được chuyển tới ${row.bank} - ${row.acc_num}.`;
+        } else if (nextStatus === CANCELLED) {
+          title = `Lệnh rút ${code} đã bị huỷ`;
+          body = `Số tiền ${formatMoney(Number(row.amount) || 0)} đã được trả lại vào số dư khả dụng của bạn.`;
+        }
+
+        notify(row.user_id, { title, body, icon: 'banknote' });
+      }
+
+      const wdChanges = [];
+      if (nextStatus !== row.status) wdChanges.push(`trạng thái ${row.status} → ${nextStatus}`);
+      if (amountChanged) {
+        wdChanges.push(`số tiền ${formatMoney(Number(row.amount) || 0)} → ${formatMoney(nextAmount)}`);
+      }
+      if (wdChanges.length) {
+        logAudit(
+          req,
+          'Cập nhật lệnh rút',
+          'withdrawal',
+          code,
+          `${row.user_id ? 'người dùng #' + row.user_id + ' — ' : ''}${wdChanges.join('; ')}`
+        );
+      }
+
+      return findWithdrawalByCode(code);
+    });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
   }
 
-  if (body.amount !== undefined) {
-    const amount = Number(body.amount);
-    if (!isMoney(amount)) return res.status(400).json({ error: 'Số tiền không hợp lệ.' });
-    nextAmount = amount;
-    updates.push('amount = ?');
-    values.push(amount);
-  }
-
-  if (!updates.length) {
-    return res.status(400).json({ error: 'Không có thông tin nào để cập nhật.' });
-  }
-
-  // Không cho chi nhiều hơn số dư khả dụng (không tính chính lệnh này).
-  // Áp dụng cho MỌI thay đổi (kể cả chỉ sửa số tiền của lệnh đang chờ), tránh âm số dư.
-  if (nextStatus !== CANCELLED) {
-    if (nextStatus === 'Đã thanh toán' && nextAmount <= 0) {
-      return res.status(400).json({ error: 'Vui lòng nhập số tiền thực chi trả trước khi đánh dấu đã thanh toán.' });
-    }
-    const payable = payableForWithdrawal(row);
-    if (nextAmount > payable) {
-      return res.status(400).json({
-        error: `Số tiền vượt quá số dư khả dụng của người dùng (${formatMoney(payable)}).`
-      });
-    }
-  }
-
-  db.prepare(`UPDATE withdrawals SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
-
-  // Báo cho người dùng biết lệnh rút của họ vừa thay đổi
-  const amountChanged = nextAmount !== (Number(row.amount) || 0);
-  if (nextStatus !== row.status || amountChanged) {
-    let title = `Lệnh rút ${code} đã được cập nhật`;
-    let body = 'Quản trị viên vừa cập nhật lệnh rút tiền của bạn.';
-
-    if (nextStatus === 'Đã thanh toán') {
-      title = `Lệnh rút ${code} đã được thanh toán`;
-      body = `${formatMoney(nextAmount)} đã được chuyển tới ${row.bank} - ${row.acc_num}.`;
-    } else if (nextStatus === CANCELLED) {
-      title = `Lệnh rút ${code} đã bị huỷ`;
-      body = `Số tiền ${formatMoney(Number(row.amount) || 0)} đã được trả lại vào số dư khả dụng của bạn.`;
-    }
-
-    notify(row.user_id, { title, body, icon: 'banknote' });
-  }
-
-  const wdChanges = [];
-  if (nextStatus !== row.status) wdChanges.push(`trạng thái ${row.status} → ${nextStatus}`);
-  if (amountChanged) wdChanges.push(`số tiền ${formatMoney(Number(row.amount) || 0)} → ${formatMoney(nextAmount)}`);
-  if (wdChanges.length) {
-    logAudit(
-      req,
-      'Cập nhật lệnh rút',
-      'withdrawal',
-      code,
-      `${row.user_id ? 'người dùng #' + row.user_id + ' — ' : ''}${wdChanges.join('; ')}`
-    );
-  }
-
-  return res.json({ withdrawal: toAdminWithdrawal(findWithdrawalByCode(code)) });
+  return res.json({ withdrawal: toAdminWithdrawal(updated) });
 });
 
 /* ==========================================
@@ -920,43 +957,58 @@ router.get('/password-resets', (req, res) => {
 // Đặt lại mật khẩu: sinh mật khẩu tạm, trả về đúng một lần cho quản trị viên
 router.post('/password-resets/:id/reset', (req, res) => {
   const id = Number(req.params.id);
-  const request = db.prepare('SELECT * FROM password_resets WHERE id = ?').get(id);
-  if (!request) return res.status(404).json({ error: 'Không tìm thấy yêu cầu.' });
-  if (request.status !== RESET_PENDING) {
-    return res.status(409).json({ error: 'Yêu cầu này đã được xử lý trước đó.' });
-  }
 
-  const user = findUserById(request.user_id);
-  if (!user) return res.status(404).json({ error: 'Tài khoản của yêu cầu này không còn tồn tại.' });
-
+  // Băm mật khẩu TRƯỚC transaction (bcrypt tốn ~60ms, không nên giữ khoá ghi).
   const tempPassword = generateTempPassword();
   const hash = bcrypt.hashSync(tempPassword, 10);
-  const now = new Date().toISOString();
   const tempPasswordExpiresAt = new Date(
     Date.now() + TEMP_PASSWORD_TTL_HOURS * 60 * 60 * 1000
   ).toISOString();
 
-  // token_version + 1: mọi phiên đăng nhập cũ của tài khoản bị vô hiệu hoá.
-  // temp_password_expires_at: mật khẩu tạm hết hạn sau TEMP_PASSWORD_TTL_HOURS giờ.
-  db.prepare(
-    `UPDATE users
-        SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = ?
-      WHERE id = ?`
-  ).run(hash, tempPasswordExpiresAt, user.id);
-  db.prepare(
-    'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
-  ).run('Đã xử lý', now, req.user.id, id);
+  // Cập nhật mật khẩu + đánh dấu yêu cầu đã xử lý trong cùng transaction:
+  // nếu một bước lỗi thì không còn cảnh "mật khẩu đã đổi nhưng yêu cầu vẫn chờ".
+  let user;
+  try {
+    user = db.transaction(() => {
+      const request = db.prepare('SELECT * FROM password_resets WHERE id = ?').get(id);
+      if (!request) throw httpError(404, 'Không tìm thấy yêu cầu.');
+      if (request.status !== RESET_PENDING) {
+        throw httpError(409, 'Yêu cầu này đã được xử lý trước đó.');
+      }
 
-  notify(user.id, {
-    title: 'Mật khẩu đã được đặt lại',
-    body: `Quản trị viên vừa cấp mật khẩu tạm cho tài khoản của bạn. Mật khẩu này chỉ dùng được đến ${new Date(
-      tempPasswordExpiresAt
-    ).toLocaleString('vi-VN')}. Hãy đổi mật khẩu mới ngay sau khi đăng nhập.`,
-    icon: 'key-round'
-  });
+      const row = findUserById(request.user_id);
+      if (!row) throw httpError(404, 'Tài khoản của yêu cầu này không còn tồn tại.');
 
-  // KHÔNG ghi mật khẩu tạm vào nhật ký, chỉ ghi việc đã đặt lại cho ai.
-  logAudit(req, 'Đặt lại mật khẩu', 'user', user.username || user.id, `yêu cầu #${id}`);
+      const now = new Date().toISOString();
+
+      // token_version + 1: mọi phiên đăng nhập cũ của tài khoản bị vô hiệu hoá.
+      // temp_password_expires_at: mật khẩu tạm hết hạn sau TEMP_PASSWORD_TTL_HOURS giờ.
+      db.prepare(
+        `UPDATE users
+            SET password_hash = ?, token_version = token_version + 1, temp_password_expires_at = ?
+          WHERE id = ?`
+      ).run(hash, tempPasswordExpiresAt, row.id);
+      db.prepare(
+        'UPDATE password_resets SET status = ?, resolved_at = ?, resolved_by = ? WHERE id = ?'
+      ).run('Đã xử lý', now, req.user.id, id);
+
+      notify(row.id, {
+        title: 'Mật khẩu đã được đặt lại',
+        body: `Quản trị viên vừa cấp mật khẩu tạm cho tài khoản của bạn. Mật khẩu này chỉ dùng được đến ${new Date(
+          tempPasswordExpiresAt
+        ).toLocaleString('vi-VN')}. Hãy đổi mật khẩu mới ngay sau khi đăng nhập.`,
+        icon: 'key-round'
+      });
+
+      // KHÔNG ghi mật khẩu tạm vào nhật ký, chỉ ghi việc đã đặt lại cho ai.
+      logAudit(req, 'Đặt lại mật khẩu', 'user', row.username || row.id, `yêu cầu #${id}`);
+
+      return row;
+    });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
 
   return res.json({
     ok: true,

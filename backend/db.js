@@ -326,4 +326,49 @@ try {
   console.warn(`CẢNH BÁO: chưa tạo được chỉ mục chống trùng giao dịch (${err.message}).`);
 }
 
+/**
+ * Chạy một loạt thao tác trong MỘT transaction ghi.
+ *
+ * Vì sao cần: nhiều thao tác tiền bạc gồm "đọc -> kiểm tra -> ghi" (ví dụ tạo lệnh
+ * rút: kiểm tra số dư rồi mới ghi). Trong một tiến trình thì Node chạy tuần tự nên
+ * không chen ngang được, nhưng khi chạy nhiều tiến trình (PM2 cluster, nhiều
+ * instance) hai request có thể cùng đọc một số dư rồi cùng ghi -> rút trùng.
+ *
+ * `BEGIN IMMEDIATE` giành quyền ghi ngay từ đầu nên các tiến trình khác phải chờ
+ * (tối đa `busy_timeout`), nhờ vậy khối lệnh bên trong thấy dữ liệu mới nhất.
+ *
+ * Lưu ý:
+ *  - Hàm `fn` phải ĐỒNG BỘ (node:sqlite là API đồng bộ). Không dùng async/await;
+ *    nếu trả về Promise, transaction sẽ ném lỗi để tránh commit sớm.
+ *  - Gọi lồng nhau được: transaction trong cùng sẽ chỉ chạy `fn` (SQLite không
+ *    hỗ trợ lồng transaction), transaction ngoài cùng mới COMMIT/ROLLBACK.
+ */
+let transactionDepth = 0;
+
+function transaction(fn) {
+  if (transactionDepth > 0) return fn();
+
+  db.exec('BEGIN IMMEDIATE');
+  transactionDepth += 1;
+  try {
+    const result = fn();
+    if (result && typeof result.then === 'function') {
+      throw new Error('transaction(): hàm bên trong phải đồng bộ, không dùng async/await.');
+    }
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Không ROLLBACK được transaction:', rollbackErr.message);
+    }
+    throw err;
+  } finally {
+    transactionDepth -= 1;
+  }
+}
+
+db.transaction = transaction;
+
 module.exports = db;

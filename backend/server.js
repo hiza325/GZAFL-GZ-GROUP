@@ -41,6 +41,29 @@ if (IS_PRODUCTION) {
   console.warn('CẢNH BÁO: Đang dùng JWT_SECRET mặc định. Chỉ dùng cho môi trường phát triển.');
 }
 
+// ------------------------------------------------------------------
+// Không cho chạy production khi email CHƯA được xác thực.
+//
+// Đăng ký luôn bắt buộc nhập email (để nhận mã khôi phục mật khẩu). Nếu chưa
+// cấu hình gửi thư (hoặc đặt EMAIL_OTP=off), không ai kiểm chứng được địa chỉ:
+// người ta có thể đăng ký bằng email của người khác, giữ chỗ khiến người thật
+// không đăng ký được, và email đó còn bị coi là kênh khôi phục mật khẩu.
+//
+// Muốn chạy production mà chưa có SMTP: đặt ALLOW_UNVERIFIED_EMAIL=1 (chấp nhận
+// rủi ro), hoặc cấu hình SMTP_HOST + MAIL_FROM để bật xác thực email.
+// ------------------------------------------------------------------
+if (IS_PRODUCTION) {
+  const otp = require('./lib/otp');
+  if (!otp.otpEnabled() && !otp.allowUnverifiedEmail()) {
+    console.error('LỖI: production đang TẮT xác thực email nhưng đăng ký vẫn bắt buộc email.');
+    console.error('      Nếu chưa cấu hình SMTP, người dùng có thể đăng ký bằng email của người khác.');
+    console.error('      Cách sửa: điền SMTP_HOST + SMTP_USER + SMTP_PASS + MAIL_FROM trong backend/.env');
+    console.error('                (và đặt EMAIL_OTP=auto), hoặc đặt EMAIL_OTP=on.');
+    console.error('      Chỉ khi thật sự chưa có SMTP: đặt ALLOW_UNVERIFIED_EMAIL=1 để chấp nhận rủi ro.');
+    process.exit(1);
+  }
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 
 /* ==========================================
@@ -433,10 +456,10 @@ server.listen(PORT, () => {
     console.log('                          Muốn dùng AI: điền AI_* trong backend/.env rồi khởi động lại.');
   }
 
-  if (!otp.otpEnabled() && otp.otpMode() === 'auto' && process.env.NODE_ENV === 'production') {
+  if (!otp.otpEnabled() && otp.allowUnverifiedEmail() && process.env.NODE_ENV === 'production') {
     console.log('');
-    console.log('  LƯU Ý: chưa cấu hình SMTP nên bước xác thực email khi đăng ký đang TẮT.');
-    console.log('         Muốn bật, điền SMTP_* và MAIL_FROM trong backend/.env rồi khởi động lại.');
+    console.log('  CẢNH BÁO: ALLOW_UNVERIFIED_EMAIL=1 - production đang chạy mà CHƯA xác thực email.');
+    console.log('            Ai cũng có thể đăng ký bằng email của người khác. Hãy cấu hình SMTP sớm nhất có thể.');
   }
   if (otp.otpEnabled() && otp.otpMode() === 'on' && !otp.deliveryAvailable()) {
     console.log('');

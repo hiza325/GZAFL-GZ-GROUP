@@ -224,17 +224,35 @@ function isTruthy(value) {
   const otpMode = (envText('EMAIL_OTP') || 'auto').toLowerCase();
   const loginMode = (envText('LOGIN_OTP') || 'auto').toLowerCase();
   const hasSmtp = Boolean(envText('SMTP_HOST') && (envText('MAIL_FROM') || envText('SMTP_USER')));
+  const allowUnverified = isTruthy(envText('ALLOW_UNVERIFIED_EMAIL'));
 
+  // Đăng ký luôn bắt buộc email. Không xác thực được email nghĩa là ai cũng có thể
+  // đăng ký bằng địa chỉ của người khác -> mặc định coi là LỖI chặn deploy.
   if (!hasSmtp) {
     if (otpMode === 'on' || loginMode === 'on') {
       fail('EMAIL_OTP/LOGIN_OTP=on nhưng chưa cấu hình SMTP — sẽ không ai đăng ký/đăng nhập được.');
+    } else if (!allowUnverified) {
+      fail(
+        'Chưa cấu hình SMTP nên email đăng ký sẽ KHÔNG được xác thực (ai cũng có thể dùng email người khác). ' +
+          'Điền SMTP_* + MAIL_FROM, hoặc đặt ALLOW_UNVERIFIED_EMAIL=1 nếu chấp nhận rủi ro.'
+      );
     } else {
-      warn('Chưa cấu hình SMTP: ở production bước xác thực email sẽ tự tắt (đăng nhập chỉ bằng mật khẩu).');
+      warn('ALLOW_UNVERIFIED_EMAIL=1: đăng ký không xác thực email — chỉ dùng tạm khi chưa có SMTP.');
     }
     return;
   }
 
   pass(`SMTP: ${envText('SMTP_HOST')}:${envText('SMTP_PORT') || '587'}`);
+  if (otpMode === 'off') {
+    if (allowUnverified) {
+      warn('EMAIL_OTP=off: đăng ký không xác thực email (đã cho phép bằng ALLOW_UNVERIFIED_EMAIL=1).');
+    } else {
+      fail(
+        'EMAIL_OTP=off: đăng ký vẫn bắt buộc email nhưng không xác thực — ' +
+          'đặt EMAIL_OTP=auto/on (đã có SMTP), hoặc ALLOW_UNVERIFIED_EMAIL=1 nếu chấp nhận rủi ro.'
+      );
+    }
+  }
   if (!envText('MAIL_FROM')) {
     warn('Chưa đặt MAIL_FROM: đang dùng SMTP_USER làm người gửi, dễ vào Spam. Nên dùng địa chỉ thuộc tên miền của bạn.');
   }

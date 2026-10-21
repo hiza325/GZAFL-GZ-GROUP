@@ -258,6 +258,7 @@ Tài liệu: <https://support.accesstrade.global/system-integration/what-is-post
 2. Vào **Account Settings → Properties → Postback**, khai URL:
    `https://ten-mien-cua-ban/api/postback/accesstrade`
 3. Thêm một tham số có giá trị **cố định** đúng bằng `POSTBACK_SECRET` (AccessTrade gọi là *Action ID*), ví dụ tên tham số `secret`.
+   - Nếu mạng cho phép cấu hình **header tuỳ chỉnh**, hãy gửi `X-Postback-Secret: <POSTBACK_SECRET>` thay cho tham số trong URL. Chìa khoá sẽ không nằm trong access log của proxy/CDN. Khi có header, server **chỉ** xét header (header sai thì từ chối, không quay về đọc `secret` trong URL).
 4. Thêm các tham số dữ liệu: **Transaction ID**, **Product ID**, **Reward** (hoa hồng), **Conversion Status**, và các **sub id** (sub id luôn được gửi kèm tự động).
 
 Tên tham số do **người dùng tự đặt**, nên code không hard-code một tên duy nhất: nó dò lần lượt các tên thông dụng (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` hoặc mã đơn `GZ…`. Nếu tên của bạn khác hẳn, ép lại bằng biến môi trường:

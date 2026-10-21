@@ -340,11 +340,16 @@ async function checkAuth() {
     const data = await api('/auth/me');
     user = data.user || null;
   } catch (err) {
-    user = null;
-    // Tài khoản đang bị admin tạm giữ: không mở dashboard, hiện lý do ở màn đăng nhập.
-    if (err && err.status === 423) {
+    const status = err && err.status;
+    if (status === 423) {
+      // Tài khoản đang bị admin tạm giữ: không mở dashboard, hiện lý do ở màn đăng nhập.
       securityHoldMessage = err.message || 'Tài khoản đang tạm giữ để quản trị viên xem xét.';
+    } else if (status !== 401 && currentUser) {
+      // Lỗi mạng / 429 / 5xx KHÔNG có nghĩa là phiên đã hết hạn.
+      // Giữ nguyên dashboard đang mở thay vì đẩy người dùng ra màn đăng nhập.
+      return;
     }
+    user = null;
   }
   currentUser = user;
 

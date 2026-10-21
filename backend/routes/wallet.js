@@ -18,6 +18,13 @@ function computeBalance(userId) {
   return computeUserMoney(userId);
 }
 
+/** Lỗi có mã HTTP để ném ra từ bên trong transaction rồi trả về cho client. */
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 router.get('/', (req, res) => {
   const userId = req.user.id;
 
@@ -94,72 +101,85 @@ router.post('/withdrawals', (req, res) => {
     return res.status(400).json({ error: 'Tên chủ tài khoản quá dài (tối đa 60 ký tự).' });
   }
 
-  // Mỗi người chỉ được có 1 lệnh chờ xử lý, tránh bấm gửi liên tục
-  const pending = db
-    .prepare("SELECT code FROM withdrawals WHERE user_id = ? AND status = 'Đang xử lý'")
-    .get(req.user.id);
-  if (pending) {
-    return res.status(409).json({
-      error: `Bạn đang có lệnh rút ${pending.code} chờ xử lý. Vui lòng đợi quản trị viên xử lý xong rồi gửi lệnh mới.`
+  // Kiểm tra + ghi nằm trong CÙNG một transaction: khi chạy nhiều tiến trình,
+  // hai yêu cầu đồng thời không thể cùng đọc "chưa có lệnh chờ" rồi cùng tạo lệnh.
+  let created;
+  try {
+    created = db.transaction(() => {
+      // Mỗi người chỉ được có 1 lệnh chờ xử lý, tránh bấm gửi liên tục
+      const pending = db
+        .prepare("SELECT code FROM withdrawals WHERE user_id = ? AND status = 'Đang xử lý'")
+        .get(req.user.id);
+      if (pending) {
+        throw httpError(
+          409,
+          `Bạn đang có lệnh rút ${pending.code} chờ xử lý. Vui lòng đợi quản trị viên xử lý xong rồi gửi lệnh mới.`
+        );
+      }
+
+      // Không có đủ tiền thì không cho gửi yêu cầu (trước đây số dư 0đ vẫn gửi được)
+      const money = computeBalance(req.user.id);
+      if (money.balance < WITHDRAWAL_MIN) {
+        const debtText = money.debt > 0 ? ` Bạn đang cần hoàn lại: ${formatMoney(money.debt)}.` : '';
+        throw httpError(
+          400,
+          `Số dư khả dụng tối thiểu để rút là ${formatMoney(WITHDRAWAL_MIN)}. ` +
+            `Số dư hiện tại của bạn: ${formatMoney(money.balance)}.` +
+            debtText
+        );
+      }
+
+      let code = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const candidate = generateWithdrawalCode();
+        if (!db.prepare('SELECT 1 AS x FROM withdrawals WHERE code = ?').get(candidate)) {
+          code = candidate;
+          break;
+        }
+      }
+      if (!code) throw httpError(500, 'Không tạo được mã giao dịch.');
+
+      // Ghi nhận luôn số tiền = toàn bộ số dư khả dụng tại thời điểm gửi.
+      // Nhờ vậy số tiền này được giữ chỗ ngay, không thể rút trùng.
+      const amount = money.balance;
+
+      const info = db
+        .prepare(
+          `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, qr_url, amount, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', ?)`
+        )
+        .run(req.user.id, code, bank, accNum, accName, qrUrl, amount, new Date().toISOString());
+
+      // Chỉ lưu làm thông tin nhận tiền mặc định khi người dùng nhập số tài khoản.
+      // Chọn cách "ảnh QR" thì giữ nguyên thông tin ngân hàng đã lưu trước đó (không xoá).
+      if (mode === 'account') {
+        db.prepare('UPDATE users SET bank_bank = ?, bank_acc_num = ?, bank_acc_name = ? WHERE id = ?').run(
+          bank,
+          accNum,
+          accName,
+          req.user.id
+        );
+      }
+
+      // Nội dung thông báo: nhập số tài khoản thì ghi rõ, dùng ảnh QR thì ghi là qua ảnh QR
+      const target = accNum
+        ? `${bank} - ${accNum}`
+        : `qua ảnh QR nhận tiền${bank ? ' (' + bank + ')' : ''}`;
+
+      notify(req.user.id, {
+        title: `Đã gửi yêu cầu rút ${code}`,
+        body: `Số tiền ${formatMoney(amount)} về ${target}. Quản trị viên sẽ xử lý trong thời gian sớm nhất.`,
+        icon: 'banknote'
+      });
+
+      return { info, amount };
     });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
   }
 
-  // Không có đủ tiền thì không cho gửi yêu cầu (trước đây số dư 0đ vẫn gửi được)
-  const money = computeBalance(req.user.id);
-  if (money.balance < WITHDRAWAL_MIN) {
-    const debtText = money.debt > 0 ? ` Bạn đang cần hoàn lại: ${formatMoney(money.debt)}.` : '';
-    return res.status(400).json({
-      error:
-        `Số dư khả dụng tối thiểu để rút là ${formatMoney(WITHDRAWAL_MIN)}. ` +
-        `Số dư hiện tại của bạn: ${formatMoney(money.balance)}.` +
-        debtText
-    });
-  }
-
-  let code = null;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const candidate = generateWithdrawalCode();
-    if (!db.prepare('SELECT 1 AS x FROM withdrawals WHERE code = ?').get(candidate)) {
-      code = candidate;
-      break;
-    }
-  }
-  if (!code) return res.status(500).json({ error: 'Không tạo được mã giao dịch.' });
-
-  // Ghi nhận luôn số tiền = toàn bộ số dư khả dụng tại thời điểm gửi.
-  // Nhờ vậy số tiền này được giữ chỗ ngay, không thể rút trùng.
-  const amount = money.balance;
-
-  const info = db
-    .prepare(
-      `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, qr_url, amount, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', ?)`
-    )
-    .run(req.user.id, code, bank, accNum, accName, qrUrl, amount, new Date().toISOString());
-
-  // Chỉ lưu làm thông tin nhận tiền mặc định khi người dùng nhập số tài khoản.
-  // Chọn cách "ảnh QR" thì giữ nguyên thông tin ngân hàng đã lưu trước đó (không xoá).
-  if (mode === 'account') {
-    db.prepare('UPDATE users SET bank_bank = ?, bank_acc_num = ?, bank_acc_name = ? WHERE id = ?').run(
-      bank,
-      accNum,
-      accName,
-      req.user.id
-    );
-  }
-
-  // Nội dung thông báo: nhập số tài khoản thì ghi rõ, dùng ảnh QR thì ghi là qua ảnh QR
-  const target = accNum
-    ? `${bank} - ${accNum}`
-    : `qua ảnh QR nhận tiền${bank ? ' (' + bank + ')' : ''}`;
-
-  notify(req.user.id, {
-    title: `Đã gửi yêu cầu rút ${code}`,
-    body: `Số tiền ${formatMoney(amount)} về ${target}. Quản trị viên sẽ xử lý trong thời gian sớm nhất.`,
-    icon: 'banknote'
-  });
-
-  const row = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(Number(info.lastInsertRowid));
+  const row = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(Number(created.info.lastInsertRowid));
   const userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
 
   return res.status(201).json({

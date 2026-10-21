@@ -109,7 +109,7 @@ const TOPICS = [
     title: 'Hoa hồng bị thu hồi / số dư âm',
     keywords: [
       'thu hoi', 'hoa hong bi thu hoi', 'hoa hong bi huy', 'hoan tra', 'tra hang',
-      'so du am', 'bi tru', 'no', 'can hoan lai', 'clawback'
+      'so du am', 'am so du', 'so du bi am', 'am tien', 'bi tru', 'no', 'can hoan lai', 'clawback'
     ],
     answer: [
       'Khi đơn bị huỷ/hoàn trả sau khi đã ghi hoa hồng, hệ thống ghi nhận thu hồi khoản hoa hồng đó.',
@@ -152,7 +152,8 @@ const TOPICS = [
     title: 'Lệnh rút bị huỷ / nhập sai thông tin',
     keywords: [
       'sai so tai khoan', 'sai thong tin', 'nhap sai', 'rut that bai',
-      'lenh rut bi huy', 'bi huy rut', 'khong nhan duoc tien', 'chua nhan duoc tien'
+      'lenh rut', 'lenh rut bi huy', 'bi huy rut', 'huy lenh', 'bi huy',
+      'khong nhan duoc tien', 'chua nhan duoc tien'
     ],
     answer: [
       'Khi bạn gửi lệnh rút, số dư đó được giữ lại cho lệnh. Nếu lệnh bị "Đã huỷ", số tiền được trả lại vào số dư khả dụng nên bạn có thể gửi lệnh rút mới.',
@@ -251,6 +252,57 @@ function normalize(text) {
 }
 
 /**
+ * Từ để hỏi / từ nối: xuất hiện ở hầu hết câu hỏi nên không giúp phân biệt chủ đề.
+ * Cho trọng số thấp để câu như "Khi nào tôi rút được tiền?" không bị xếp nhầm vào
+ * chủ đề "thời gian ghi nhận hoa hồng" chỉ vì có chữ "khi nào".
+ */
+const QUESTION_PHRASES = new Set([
+  'khi nao', 'bao lau', 'bao nhieu', 'bao nhieu ngay', 'the nao', 'nhu the nao',
+  'lam sao', 'lam the nao', 'co khong', 'duoc khong', 'la gi', 'toi', 'cua toi',
+  'minh', 'cua minh', 'vay', 'thi'
+]);
+
+/**
+ * Chuẩn bị trọng số từ khoá MỘT lần lúc nạp module:
+ *  - từ khoá càng nhiều chữ càng cụ thể ("anh qr" > "qr");
+ *  - từ khoá xuất hiện ở nhiều chủ đề càng ít giá trị phân biệt ("rut" có ở 3 chủ đề).
+ *
+ * Nhờ vậy "Rút tiền bằng ảnh QR thế nào?" khớp đúng chủ đề QR thay vì chủ đề rút
+ * tiền chung, và "Lệnh rút của tôi bị huỷ" khớp đúng chủ đề lệnh rút bị huỷ.
+ */
+const WEIGHTED_TOPICS = (() => {
+  // Bước 1: chuẩn hoá từ khoá của từng chủ đề
+  const perTopic = TOPICS.map((topic) => {
+    const keywords = new Map(); // từ khoá đã chuẩn hoá -> số chữ
+    for (const keyword of topic.keywords) {
+      const text = normalize(keyword);
+      if (!text) continue;
+      keywords.set(text, text.split(' ').length);
+    }
+    return { topic, keywords };
+  });
+
+  // Bước 2: đếm số chủ đề "liên quan" tới mỗi từ khoá. Từ khoá ngắn nằm trong từ
+  // khoá dài của chủ đề khác (ví dụ "rut" nằm trong "rut tien", "lenh rut") là từ
+  // chung chung, không đủ để chọn chủ đề.
+  const relatedTopics = (text) =>
+    perTopic.filter((entry) => [...entry.keywords.keys()].some((other) => other.includes(text))).length;
+
+  // Bước 3: gán trọng số
+  return perTopic.map(({ topic, keywords }) => ({
+    topic,
+    keywords: [...keywords].map(([text, words]) => {
+      const seenIn = Math.max(1, relatedTopics(text));
+      return {
+        text,
+        // Từ để hỏi chỉ còn 1/4 trọng số; từ khoá riêng của một chủ đề được nhân đôi.
+        weight: (QUESTION_PHRASES.has(text) ? 0.25 : 1) * words * (1 + 1 / seenIn)
+      };
+    })
+  }));
+})();
+
+/**
  * Tìm chủ đề khớp nhất với câu hỏi (dùng khi KHÔNG có AI, hoặc khi AI lỗi).
  * Trả về chuỗi trả lời, hoặc null nếu không khớp chủ đề nào.
  */
@@ -259,13 +311,21 @@ function faqAnswer(text) {
   if (!question) return null;
 
   let best = null;
-  for (const topic of TOPICS) {
+  for (const entry of WEIGHTED_TOPICS) {
     let score = 0;
-    for (const keyword of topic.keywords) {
-      const k = normalize(keyword);
-      if (k && question.includes(k)) score += k.split(' ').length; // từ khoá càng dài càng cụ thể
+    let strongest = 0;
+    for (const keyword of entry.keywords) {
+      if (!question.includes(keyword.text)) continue;
+      score += keyword.weight;
+      strongest = Math.max(strongest, keyword.weight);
     }
-    if (score > 0 && (!best || score > best.score)) best = { topic, score };
+    if (score <= 0) continue;
+
+    // Điểm cao thắng; hoà điểm thì chủ đề có từ khoá cụ thể hơn thắng.
+    const tied = best && Math.abs(score - best.score) < 1e-9;
+    if (!best || score > best.score + 1e-9 || (tied && strongest > best.strongest)) {
+      best = { topic: entry.topic, score, strongest };
+    }
   }
 
   return best ? best.topic.answer : null;

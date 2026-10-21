@@ -46,27 +46,37 @@ router.post('/redeem', (req, res) => {
     return res.status(404).json({ error: 'Mã giới thiệu không tồn tại. Vui lòng kiểm tra lại.' });
   }
 
-  // Mỗi tài khoản chỉ được nhập mã giới thiệu MỘT lần (tránh nhập hàng loạt mã để farm điểm)
-  const used = db.prepare('SELECT 1 AS x FROM referrals WHERE user_id = ?').get(req.user.id);
-  if (used) {
-    return res.status(409).json({ error: 'Mỗi tài khoản chỉ nhập được mã giới thiệu một lần.' });
+  // Kiểm tra "đã nhập chưa" + ghi lịch sử + cộng điểm trong CÙNG một transaction:
+  // khi chạy nhiều tiến trình, hai request đồng thời không thể cùng lọt qua bước
+  // kiểm tra rồi cộng điểm hai lần.
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      // Mỗi tài khoản chỉ được nhập mã giới thiệu MỘT lần (tránh nhập hàng loạt mã để farm điểm)
+      const used = db.prepare('SELECT 1 AS x FROM referrals WHERE user_id = ?').get(req.user.id);
+      if (used) throw Object.assign(new Error('Mỗi tài khoản chỉ nhập được mã giới thiệu một lần.'), { status: 409 });
+
+      db.prepare('INSERT INTO referrals (user_id, code, points, created_at) VALUES (?, ?, ?, ?)').run(
+        req.user.id,
+        code,
+        REWARD_POINTS,
+        new Date().toISOString()
+      );
+      db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(REWARD_POINTS, req.user.id);
+
+      notify(req.user.id, {
+        title: 'Nhập mã giới thiệu thành công',
+        body: `Bạn vừa nhận được ${REWARD_POINTS} điểm từ mã ${code}.`,
+        icon: 'user-plus'
+      });
+
+      return db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+    });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
   }
 
-  db.prepare('INSERT INTO referrals (user_id, code, points, created_at) VALUES (?, ?, ?, ?)').run(
-    req.user.id,
-    code,
-    REWARD_POINTS,
-    new Date().toISOString()
-  );
-  db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(REWARD_POINTS, req.user.id);
-
-  notify(req.user.id, {
-    title: 'Nhập mã giới thiệu thành công',
-    body: `Bạn vừa nhận được ${REWARD_POINTS} điểm từ mã ${code}.`,
-    icon: 'user-plus'
-  });
-
-  const updated = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
   return res.json({
     message: `Nhập mã thành công! Bạn vừa nhận được ${REWARD_POINTS} điểm.`,
     points: updated.points,

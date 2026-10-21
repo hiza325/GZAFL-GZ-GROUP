@@ -103,7 +103,8 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 | `ACCESSTRADE_SHORT_DOMAIN` | – | Tuỳ chọn: domain rút gọn riêng đã đăng ký với AccessTrade |
 | `POSTBACK_SECRET` | – | Chìa khoá xác thực báo cáo chuyển đổi (postback). **Bỏ trống thì mọi postback bị từ chối** (xem mục [Nhận hoa hồng về](#nhận-hoa-hồng-về--đối-soát-postback)) |
 | `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB` |
-| `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email** |
+| `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email**. Ở production, xác thực email **bắt buộc bật** (xem `ALLOW_UNVERIFIED_EMAIL`) |
+| `ALLOW_UNVERIFIED_EMAIL` | – | Chỉ đặt `1` khi thật sự chưa có SMTP: cho phép production khởi động dù email đăng ký **không được xác thực** (chấp nhận rủi ro người khác dùng email của bạn) |
 | `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
 | `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ bên dưới thì tạo cảnh báo cho admin. **Không tự khóa tài khoản** |
 | `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm số lần đăng nhập sai (phút) |
@@ -165,7 +166,7 @@ docs/                      # Tài liệu kỹ thuật
 
 backend/
   server.js                # Khởi tạo Express: API + link rút gọn /r/<mã đơn> + phục vụ frontend tĩnh
-  db.js                    # Kết nối SQLite + tạo bảng + tự nâng cấp cột khi có bản mới
+  db.js                    # Kết nối SQLite + tạo bảng + tự nâng cấp cột khi có bản mới + `db.transaction()`
   package.json
   .env.example             # Mẫu cấu hình - sao chép thành .env rồi điền
   scripts/
@@ -225,10 +226,19 @@ Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email ngư�
 | Tình huống | Kết quả |
 |---|---|
 | `development`, chưa cấu hình SMTP | Bước xác thực **vẫn bật**, nhưng thư chỉ được **in ra console** của server; mã cũng trả về ở trường `devCode` nên hiện luôn trong ô vàng "mã thử nghiệm" ngay trên giao diện để bạn thử |
-| `production`, chưa cấu hình SMTP | Bước xác thực **tự tắt** kèm cảnh báo lúc khởi động, để không chặn mất việc đăng ký |
+| `production`, chưa cấu hình SMTP | Server **từ chối khởi động** (xem giải thích bên dưới) |
 | Đã điền `SMTP_*` + `MAIL_FROM` | Gửi thư thật |
 
 Muốn tự quyết định thì đặt `EMAIL_OTP=on` (luôn bật) hoặc `EMAIL_OTP=off` (luôn tắt).
+
+> **Vì sao production bắt buộc phải xác thực email?** Đăng ký luôn bắt buộc nhập email
+> (để nhận mã khôi phục mật khẩu). Nếu không ai kiểm chứng được địa chỉ đó thì người ta
+> có thể đăng ký bằng **email của người khác**, giữ chỗ khiến người thật không đăng ký
+> được, và email đó còn bị coi là kênh khôi phục mật khẩu của tài khoản.
+>
+> Nếu thật sự chưa cấu hình được SMTP và đã chấp nhận rủi ro, đặt
+> `ALLOW_UNVERIFIED_EMAIL=1` để server vẫn khởi động (kèm cảnh báo trong log).
+> `npm run check:deploy` cũng báo **lỗi** cho cấu hình này.
 
 Riêng bước xác thực **khi đăng nhập** có công tắc riêng là `LOGIN_OTP`:
 
@@ -438,6 +448,8 @@ GET /api/postback/accesstrade    ← khai URL này trong dashboard của mạng
 Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js`):
 
 1. **Xác thực** `POSTBACK_SECRET` (băm SHA-256 rồi so sánh bằng `timingSafeEqual`). Sai → `403` và **vẫn ghi vào nhật ký**. Chưa cấu hình secret → `503` (không nhận dữ liệu không rõ nguồn).
+   - Cách an toàn nhất: gửi chìa khoá trong header `X-Postback-Secret` (không nằm trong URL nên không lọt vào access log của proxy/CDN). Nếu header có mặt thì chỉ xét header.
+   - Cách phổ biến: thêm tham số `secret=<POSTBACK_SECRET>` vào URL khai với mạng (đổi tên bằng `POSTBACK_PARAM_SECRET`). Khi đó nên cấu hình proxy không ghi query string vào access log và định kỳ đổi khoá.
 2. **Ghi tham số nhận được** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại. `POSTBACK_SECRET` và các tham số nhạy cảm (`token`, `signature`…) được **che** trước khi lưu và trước khi hiển thị ở trang quản trị.
 3. **Chống trùng** theo `payload_hash`: mạng gửi lại y hệt thì chỉ tăng số lần nhận, **không cộng tiền lần hai**.
 4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.

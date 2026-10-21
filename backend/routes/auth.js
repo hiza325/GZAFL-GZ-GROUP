@@ -20,8 +20,14 @@ const securityAlerts = require('../lib/securityAlerts');
 
 const router = express.Router();
 
-// Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
-router.use(rateLimit({ windowMs: 60 * 1000, max: 30, name: 'auth' }));
+// Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint có xử lý MẬT KHẨU.
+//
+// Chỉ gắn cho từng route cần thiết, KHÔNG dùng router.use() cho cả router:
+//   - GET /auth/me chỉ đọc phiên hiện tại. Nếu tính vào hạn mức 30/phút/IP thì
+//     nhiều người dùng chung một IP (WiFi công cộng, văn phòng, CGNAT của nhà mạng)
+//     sẽ bị 429, và giao diện coi 429 như "chưa đăng nhập" -> bị đăng xuất oan.
+//   - POST /auth/logout cũng không cần giới hạn: gọi nhiều lần không gây hại.
+const authRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30, name: 'auth' });
 
 // Chống dò mật khẩu PHÂN TÁN (nhiều IP cùng nhắm một tài khoản):
 // KHÔNG tự khóa tài khoản. Hệ thống ghi nhận các lần đăng nhập sai và gửi
@@ -187,7 +193,7 @@ router.post('/register/otp', otpRateLimit, async (req, res) => {
 });
 
 // Bước 2: kiểm tra mã rồi tạo tài khoản
-router.post('/register', async (req, res) => {
+router.post('/register', authRateLimit, async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
   const name = String((req.body && req.body.name) || '').trim();
@@ -279,7 +285,7 @@ router.post('/register', async (req, res) => {
    làm tốn thư trong hộp của người khác.
    ========================================== */
 
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimit, async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
 
@@ -569,7 +575,7 @@ router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {
   return res.json({ ok: true, message: 'Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.' });
 });
 
-router.post('/forgot-password', (req, res) => {
+router.post('/forgot-password', authRateLimit, (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const note = String((req.body && req.body.note) || '').trim().slice(0, 300);
 

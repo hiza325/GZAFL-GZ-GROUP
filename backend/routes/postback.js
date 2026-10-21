@@ -6,6 +6,8 @@
  * Đây là API KHÔNG dùng cookie phiên — nó dành cho MÁY GỌI của mạng, không phải người dùng.
  * URL khai với mạng (AccessTrade: Account Settings -> Properties -> Postback):
  *      https://ten-mien-cua-ban/api/postback/accesstrade
+ * Chìa khoá gửi kèm bằng tham số (mặc định `secret=...`) HOẶC header
+ * `X-Postback-Secret: <POSTBACK_SECRET>` — header không bị ghi vào access log.
  *
  * Quy tắc trả lời:
  *  - Luôn trả 200 nhanh khi đã ghi nhận (kể cả lần gọi trùng), tránh mạng gửi lại liên tục.
@@ -60,7 +62,8 @@ function handle(req, res) {
   const provider = String(req.params.provider || '').toLowerCase();
   const meta = { provider, ip: clientIp(req) };
 
-  const check = postback.verifySecret(params);
+  // Chìa khoá có thể gửi bằng header (an toàn hơn) hoặc trong query string.
+  const check = postback.verifySecret(params, req.get('x-postback-secret'));
   if (!check.configured) {
     console.warn('Postback bị bỏ qua: chưa đặt POSTBACK_SECRET trong backend/.env.');
     return res.status(503).json({

@@ -64,6 +64,23 @@ function otpEnabled() {
 }
 
 /**
+ * Chấp nhận chạy khi CHƯA xác thực được email?
+ *
+ * Mặc định KHÔNG. Lý do: đăng ký luôn bắt buộc nhập email (để nhận mã khôi phục
+ * mật khẩu), nhưng khi chưa cấu hình được việc gửi thư thì không ai kiểm chứng
+ * địa chỉ đó. Người dùng có thể đăng ký bằng email của người khác, giữ chỗ và
+ * làm người thật không đăng ký được; sau này email đó còn bị coi là kênh khôi
+ * phục mật khẩu của tài khoản.
+ *
+ * Chỉ bật ALLOW_UNVERIFIED_EMAIL=1 khi thật sự chưa cấu hình được SMTP và đã
+ * chấp nhận rủi ro trên (ví dụ đang chạy thử nội bộ).
+ */
+function allowUnverifiedEmail() {
+  const raw = String(process.env.ALLOW_UNVERIFIED_EMAIL || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+/**
  * Có gửi được thư không (thật hoặc giả lập ở môi trường phát triển)?
  * Dùng để báo lỗi rõ ràng NGAY từ đầu, thay vì để người dùng chờ vô vọng.
  */
@@ -387,6 +404,7 @@ module.exports = {
   OtpError,
   otpEnabled,
   otpMode,
+  allowUnverifiedEmail,
   deliveryAvailable,
   loginOtpEnabled,
   activeInfo,

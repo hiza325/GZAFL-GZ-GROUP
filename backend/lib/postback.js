@@ -28,6 +28,7 @@ const db = require('../db');
 const { CANCELLED, AWAITING_RECONCILE, PENDING_APPROVAL } = require('./constants');
 const { redactParams } = require('./redact');
 const { isCredited } = require('./money');
+const { parseMoney } = require('./parse-money');
 
 const PROVIDER = String(process.env.AFFILIATE_PROVIDER || 'mock').toLowerCase();
 
@@ -97,11 +98,10 @@ function normalizeStatus(raw) {
   return 'pending';
 }
 
-/** Đổi "225.0" / "1,250" / "225" thành số nguyên đồng. */
-function parseMoney(value) {
-  const n = parseFloat(String(value == null ? '' : value).replace(/[^0-9.\-]/g, ''));
-  return Number.isFinite(n) ? Math.round(n) : 0;
-}
+/**
+ * Đổi số tiền do mạng gửi sang số nguyên đồng.
+ * Chi tiết quy tắc đọc dấu "." / ",": xem lib/parse-money.js
+ */
 
 /** Tìm mã người dùng (dạng "gzafl-u7") trong các tham số. */
 function findSubId(params) {
@@ -124,15 +124,24 @@ function userIdFromSubId(subId) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-/** Kiểm tra "chìa khoá" mà mạng gửi kèm có đúng `POSTBACK_SECRET` không. */
-function verifySecret(params) {
+/** Kiểm tra "chìa khoá" mà mạng gửi kèm có đúng `POSTBACK_SECRET` không.
+ *
+ * Ưu tiên header `X-Postback-Secret` vì nó KHÔNG nằm trong URL — không bị ghi vào
+ * access log của proxy/CDN hay log của mạng. Vẫn nhận tham số trong query string
+ * (mặc định tên `secret`, đổi bằng `POSTBACK_PARAM_SECRET`) vì phần lớn mạng chỉ
+ * cho khai một URL cố định. Nếu có header thì chỉ xét header: header sai mà query
+ * đúng vẫn bị từ chối, tránh việc cấu hình nửa vời âm thầm quay về URL.
+ */
+function verifySecret(params, headerSecret) {
   const expected = String(process.env.POSTBACK_SECRET || '').trim();
   if (!expected) return { configured: false, ok: false };
-  const given = pick(params, 'secret');
+
+  const fromHeader = String(headerSecret == null ? '' : headerSecret).trim();
+  const given = fromHeader || pick(params, 'secret');
   // Băm trước khi so sánh để hai chuỗi luôn cùng độ dài (timingSafeEqual yêu cầu vậy)
   const a = crypto.createHash('sha256').update(expected).digest();
   const b = crypto.createHash('sha256').update(String(given)).digest();
-  return { configured: true, ok: crypto.timingSafeEqual(a, b) };
+  return { configured: true, ok: crypto.timingSafeEqual(a, b), source: fromHeader ? 'header' : 'query' };
 }
 
 /** Chuẩn hoá tham số thô thành dữ liệu dùng được (chưa đụng tới database). */
@@ -267,49 +276,54 @@ function receive(params, meta = {}) {
   const now = new Date().toISOString();
   const payloadHash = hashPayload(parsed);
 
-  const existing = db.prepare('SELECT * FROM postback_logs WHERE payload_hash = ?').get(payloadHash);
-  if (existing) {
-    // Mạng gửi lại y hệt (thường vì lần trước không nhận được 200): chỉ đếm, không cộng tiền lần hai
-    db.prepare('UPDATE postback_logs SET dup_count = dup_count + 1, last_received_at = ? WHERE id = ?').run(
-      now,
-      existing.id
-    );
-    return {
-      status: 200,
-      body: { ok: true, duplicate: true, logId: existing.id, orderCode: existing.order_code || null }
-    };
-  }
+  // Ghi log + cập nhật đơn trong CÙNG một transaction: nếu bước sau lỗi thì
+  // không còn bản ghi log "nửa vời"; nếu chạy nhiều tiến trình thì hai lần gọi
+  // trùng không thể cùng lọt qua bước kiểm tra payload_hash.
+  return db.transaction(() => {
+    const existing = db.prepare('SELECT * FROM postback_logs WHERE payload_hash = ?').get(payloadHash);
+    if (existing) {
+      // Mạng gửi lại y hệt (thường vì lần trước không nhận được 200): chỉ đếm, không cộng tiền lần hai
+      db.prepare('UPDATE postback_logs SET dup_count = dup_count + 1, last_received_at = ? WHERE id = ?').run(
+        now,
+        existing.id
+      );
+      return {
+        status: 200,
+        body: { ok: true, duplicate: true, logId: existing.id, orderCode: existing.order_code || null }
+      };
+    }
 
-  const userId = userIdFromSubId(parsed.subId);
-  const user = userId ? db.prepare('SELECT id, name, username FROM users WHERE id = ?').get(userId) : null;
+    const userId = userIdFromSubId(parsed.subId);
+    const user = userId ? db.prepare('SELECT id, name, username FROM users WHERE id = ?').get(userId) : null;
 
-  const info = db
-    .prepare(
-      `INSERT INTO postback_logs
-         (provider, payload_hash, received_at, last_received_at, ip, query,
-          transaction_id, product_id, conversion_id, reward, network_status, sub_id, user_id, order_code, action, note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, '')`
-    )
-    .run(
-      parsed.provider,
-      payloadHash,
-      now,
-      now,
-      String(meta.ip || '').slice(0, 60),
-      rawQuery(params),
-      parsed.transactionId,
-      parsed.productId,
-      parsed.conversionId,
-      parsed.reward,
-      parsed.networkStatus,
-      parsed.subId,
-      user ? user.id : null,
-      'Chưa khớp đơn'
-    );
+    const info = db
+      .prepare(
+        `INSERT INTO postback_logs
+           (provider, payload_hash, received_at, last_received_at, ip, query,
+            transaction_id, product_id, conversion_id, reward, network_status, sub_id, user_id, order_code, action, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, '')`
+      )
+      .run(
+        parsed.provider,
+        payloadHash,
+        now,
+        now,
+        String(meta.ip || '').slice(0, 60),
+        rawQuery(params),
+        parsed.transactionId,
+        parsed.productId,
+        parsed.conversionId,
+        parsed.reward,
+        parsed.networkStatus,
+        parsed.subId,
+        user ? user.id : null,
+        'Chưa khớp đơn'
+      );
 
-  const logId = Number(info.lastInsertRowid);
-  const result = applyToOrder(logId, parsed, user);
-  return { status: 200, body: { ok: true, logId, ...result } };
+    const logId = Number(info.lastInsertRowid);
+    const result = applyToOrder(logId, parsed, user);
+    return { status: 200, body: { ok: true, logId, ...result } };
+  });
 }
 
 /**
@@ -519,32 +533,37 @@ function receiveRejected(params, meta = {}, reason = '') {
 
 /** Xử lý lại một log cũ (dùng khi postback về trước lúc đơn được tạo). */
 function reapply(logId) {
-  const log = db.prepare('SELECT * FROM postback_logs WHERE id = ?').get(logId);
-  if (!log) return { ok: false, error: 'Không tìm thấy log.' };
+  // Đọc log + áp vào đơn trong cùng transaction để không ghi dở dang khi lỗi.
+  return db.transaction(() => {
+    const log = db.prepare('SELECT * FROM postback_logs WHERE id = ?').get(logId);
+    if (!log) return { ok: false, error: 'Không tìm thấy log.' };
 
-  // Log bị từ chối (sai chìa khoá / lỗi xử lý) KHÔNG được xử lý lại thành đơn hợp lệ:
-  // nó chưa từng được xác thực nguồn gửi.
-  if (log.action === 'Từ chối') {
-    return { ok: false, error: 'Bản ghi này đã bị từ chối (sai chìa khoá), không thể xử lý lại.' };
-  }
+    // Log bị từ chối (sai chìa khoá / lỗi xử lý) KHÔNG được xử lý lại thành đơn hợp lệ:
+    // nó chưa từng được xác thực nguồn gửi.
+    if (log.action === 'Từ chối') {
+      return { ok: false, error: 'Bản ghi này đã bị từ chối (sai chìa khoá), không thể xử lý lại.' };
+    }
 
-  const user = log.user_id ? db.prepare('SELECT id, name, username FROM users WHERE id = ?').get(log.user_id) : null;
-  const parsed = {
-    provider: log.provider,
-    transactionId: log.transaction_id,
-    productId: log.product_id,
-    conversionId: log.conversion_id,
-    reward: Number(log.reward) || 0,
-    networkStatus: log.network_status,
-    subId: log.sub_id,
-    values: [log.sub_id].filter(Boolean)
-  };
+    const user = log.user_id
+      ? db.prepare('SELECT id, name, username FROM users WHERE id = ?').get(log.user_id)
+      : null;
+    const parsed = {
+      provider: log.provider,
+      transactionId: log.transaction_id,
+      productId: log.product_id,
+      conversionId: log.conversion_id,
+      reward: Number(log.reward) || 0,
+      networkStatus: log.network_status,
+      subId: log.sub_id,
+      values: [log.sub_id].filter(Boolean)
+    };
 
-  // Thử lại cả mã đơn ghi trong log cũ (nếu lúc đó đọc được)
-  if (log.order_code) parsed.values.push(log.order_code);
+    // Thử lại cả mã đơn ghi trong log cũ (nếu lúc đó đọc được)
+    if (log.order_code) parsed.values.push(log.order_code);
 
-  const result = applyToOrder(log.id, parsed, user);
-  return { ok: true, ...result };
+    const result = applyToOrder(log.id, parsed, user);
+    return { ok: true, ...result };
+  });
 }
 
 /** Thông tin cho log lúc khởi động + API trạng thái. */

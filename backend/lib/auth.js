@@ -8,8 +8,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'gzafl-dev-secret-change-me';
 const COOKIE_NAME = 'gz_token';
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
 
+// Mỗi loại JWT mang một "purpose" riêng để không thể dùng lẫn:
+// phiếu đăng nhập 2FA (5 phút) KHÔNG được dùng thay cookie phiên.
+const SESSION_PURPOSE = 'session';
+
 function signToken(user) {
-  return jwt.sign({ uid: user.id, tv: Number(user.token_version) || 1 }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(
+    { uid: user.id, tv: Number(user.token_version) || 1, purpose: SESSION_PURPOSE },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
 }
 
 function setAuthCookie(res, user) {
@@ -62,6 +70,10 @@ function loadUser(req) {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    // Chỉ chấp nhận token phiên. Phiếu đăng nhập 2FA (purpose 'login2fa')
+    // cũng ký bằng JWT_SECRET nên phải chặn tường minh ở đây.
+    if (payload.purpose !== SESSION_PURPOSE) return null;
+
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.uid);
     if (!row) return null;
 

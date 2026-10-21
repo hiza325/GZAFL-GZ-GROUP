@@ -154,7 +154,7 @@ function createUser({ username, email, name, role = 'user' }) {
   db.close();
 
   const uid = Number(info.lastInsertRowid);
-  const token = jwt.sign({ uid, tv: 1 }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ uid, tv: 1, purpose: 'session' }, JWT_SECRET, { expiresIn: '7d' });
   return { uid, cookie: `gz_token=${token}` };
 }
 
@@ -376,6 +376,44 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(meAfter.data.user, null);
   });
 
+  await t.test('phiếu đăng nhập 2FA không dùng được như cookie phiên', async () => {
+    const victim = createUser({
+      username: 'ticket@test.local',
+      email: 'ticket@test.local',
+      name: 'Người bị lộ phiếu'
+    });
+
+    // Phiếu bước 1 của đăng nhập 2 lớp: cùng JWT_SECRET nhưng purpose khác.
+    const ticket = jwt.sign({ uid: victim.uid, tv: 1, purpose: 'login2fa' }, JWT_SECRET, { expiresIn: '5m' });
+    const ticketCookie = `gz_token=${ticket}`;
+
+    const me = await json('/api/auth/me', { cookie: ticketCookie });
+    assert.equal(me.res.status, 200);
+    assert.equal(me.data.user, null, 'phiếu 2FA không được nạp thành phiên đăng nhập');
+
+    const protectedRes = await json('/api/profile', {
+      method: 'PUT',
+      cookie: ticketCookie,
+      body: { name: 'Chiếm tài khoản' }
+    });
+    assert.equal(protectedRes.res.status, 401);
+
+    // Token không có purpose (định dạng cũ) cũng bị từ chối.
+    const legacy = jwt.sign({ uid: victim.uid, tv: 1 }, JWT_SECRET, { expiresIn: '7d' });
+    const legacyMe = await json('/api/auth/me', { cookie: `gz_token=${legacy}` });
+    assert.equal(legacyMe.data.user, null);
+  });
+
+  await t.test('GET /auth/me không bị giới hạn theo IP (không đăng xuất oan)', async () => {
+    // Nhiều người dùng chung một IP (WiFi công cộng, văn phòng, CGNAT) từng bị 429
+    // và giao diện coi đó là "chưa đăng nhập".
+    for (let i = 0; i < 40; i++) {
+      const me = await json('/api/auth/me', { cookie: user.cookie });
+      assert.equal(me.res.status, 200, `lần gọi thứ ${i + 1} không được trả 429`);
+      assert.ok(me.data.user, 'vẫn phải nhận ra phiên đăng nhập');
+    }
+  });
+
   await t.test('mật khẩu tạm hết hạn không đăng nhập được', async () => {
     createUser({
       username: 'temp@test.local',
@@ -581,6 +619,55 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(good.data.matched, true);
   });
 
+  await t.test('postback: nhận chìa khoá qua header (không nằm trong URL)', async () => {
+    const good = await json(
+      `/api/postback/mock?transaction_id=TX-HEADER-1&sub1=gzafl-u${user.uid}&status=pending&reward=1000`,
+      { headers: { 'X-Postback-Secret': POSTBACK_SECRET } }
+    );
+    assert.equal(good.res.status, 200);
+    assert.equal(good.data.ok, true);
+
+    // Header sai thì bị từ chối, kể cả khi URL có chìa khoá đúng:
+    // tránh cấu hình nửa vời (tưởng dùng header nhưng thực tế vẫn dựa vào URL).
+    const bad = await request(
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}&transaction_id=TX-HEADER-BAD`,
+      { headers: { 'X-Postback-Secret': 'sai-chia-khoa' } }
+    );
+    assert.equal(bad.status, 403);
+  });
+
+  await t.test('postback: đọc đúng số tiền định dạng Việt Nam', async () => {
+    const spender = createUser({
+      username: 'money@test.local',
+      email: 'money@test.local',
+      name: 'Người dùng số tiền'
+    });
+
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: spender.cookie,
+      body: { link: 'https://shopee.vn/p/money-format-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+
+    const send = (reward) =>
+      json(
+        `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+          `&transaction_id=${encodeURIComponent('TX-MONEY-' + Date.now() + '-' + reward)}` +
+          `&sub1=gzafl-u${spender.uid}&sub2=${encodeURIComponent(code)}` +
+          `&status=pending&reward=${encodeURIComponent(reward)}`
+      );
+
+    const vn = await send('1.250.000');
+    assert.equal(vn.res.status, 200);
+
+    const orders = await json('/api/orders', { cookie: spender.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.ok(order, 'Phải tìm thấy đơn vừa tạo');
+    assert.equal(order.networkCommission, 1250000, '"1.250.000" là 1.250.000 đồng, không phải 1 đồng');
+  });
+
   await t.test('postback: mạng duyệt đơn vào hàng chờ admin, admin duyệt mới cộng ví và thu hồi khi huỷ', async () => {
     const created = await json('/api/orders', {
       method: 'POST',
@@ -707,6 +794,41 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(clawback.data.source, 'faq');
     assert.match(clawback.data.reply, /thu hồi/);
     assert.match(clawback.data.reply, /số dư có thể âm/);
+  });
+
+  await t.test('chatbot FAQ chọn đúng chủ đề khi câu hỏi chồng từ khoá', async () => {
+    // "rút tiền" + "QR": phải trả lời về ảnh QR, không phải mức rút tối thiểu
+    const qr = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Rút tiền bằng ảnh QR thế nào?' }] }
+    });
+    assert.equal(qr.res.status, 200);
+    assert.match(qr.data.reply, /Ảnh QR/);
+    assert.doesNotMatch(qr.data.reply, /Mức rút tối thiểu/);
+
+    // Lệnh rút bị huỷ: phải nói về tiền được trả lại, không phải hướng dẫn rút chung
+    const cancelled = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Lệnh rút của tôi bị huỷ' }] }
+    });
+    assert.equal(cancelled.res.status, 200);
+    assert.match(cancelled.data.reply, /trả lại vào số dư/);
+
+    // "âm số dư" (đảo thứ tự chữ so với từ khoá "số dư âm") vẫn phải khớp chủ đề thu hồi
+    const negative = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Tôi bị âm số dư thì phải làm sao?' }] }
+    });
+    assert.equal(negative.res.status, 200);
+    assert.match(negative.data.reply, /thu hồi/);
+
+    // Câu ngoài phạm vi vẫn rơi về câu trả lời mặc định
+    const outside = await json('/api/support/chat', {
+      method: 'POST',
+      body: { messages: [{ role: 'user', content: 'Giá vàng hôm nay bao nhiêu?' }] }
+    });
+    assert.equal(outside.res.status, 200);
+    assert.match(outside.data.reply, /chưa chắc chắn/);
   });
 
   await t.test('chặn dò mật khẩu (rate limit dùng SQLite)', async () => {

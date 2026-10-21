@@ -51,9 +51,13 @@ AFFILIATE_PROVIDER=mock        # đổi khi có tài khoản affiliate thật
 ### Gửi email xác thực (OTP)
 
 Muốn bật bước **xác thực email khi đăng ký**, cho khách **tự đặt lại mật khẩu** và
-**xác thực khi đăng nhập**, điền thêm máy chủ gửi thư. Chưa điền cũng chạy bình thường —
-chỉ là bước xác thực tắt đi (và server in cảnh báo lúc khởi động, xem mục
-[5](#5-vận-hành-thường-ngày)).
+**xác thực khi đăng nhập**, điền thêm máy chủ gửi thư.
+
+> ⚠️ **Production bắt buộc xác thực email.** Đăng ký luôn bắt buộc nhập email (để nhận
+> mã khôi phục mật khẩu), nên nếu không xác thực được thì ai cũng có thể đăng ký bằng
+> email của người khác. Vì vậy khi `NODE_ENV=production` mà xác thực email đang tắt,
+> server **từ chối khởi động** (xem mục [5](#5-vận-hành-thường-ngày)). Chỉ khi thật sự
+> chưa có SMTP và đã chấp nhận rủi ro, đặt `ALLOW_UNVERIFIED_EMAIL=1`.
 
 ```ini
 EMAIL_OTP=auto                      # auto | on | off (mặc định auto)
@@ -80,7 +84,8 @@ MAIL_FROM_NAME=GZ AFL
 
 > ⚠️ Đặt `EMAIL_OTP=on` mà **chưa** cấu hình SMTP thì **không ai đăng ký được**; đặt
 > `LOGIN_OTP=on` mà chưa cấu hình SMTP thì **không ai đăng nhập được**. Cứ để `auto`:
-> có SMTP là tự bật, không có thì tự tắt.
+> có SMTP là tự bật, không có thì server không khởi động ở production (trừ khi đặt
+> `ALLOW_UNVERIFIED_EMAIL=1`) — vì email đăng ký sẽ không được xác thực.
 
 > 💡 **Hạn mức gửi thư**: mỗi lần đăng nhập tốn 1 email. Gmail cá nhân ~500 thư/ngày, Brevo
 > miễn phí ~300/ngày. Nếu lượng truy cập lớn, chuyển sang dịch vụ gửi thư chuyên dụng hoặc
@@ -186,10 +191,16 @@ PUBLIC_BASE_URL=https://ten-mien-cua-ban.com
 - cookie phiên (đang bật `secure`) sẽ bị trình duyệt từ chối ⇒ **đăng nhập xong vẫn như chưa đăng nhập**;
 - link hoàn tiền tuyệt đối sẽ bị tạo với `http://` thay vì `https://`.
 
-> **Nhật ký truy cập và postback:** mạng affiliate gửi `POSTBACK_SECRET` trong query
-> string. Nếu Nginx ghi `$request` (format `combined` mặc định), khoá sẽ nằm trong
-> file access log. Hãy dùng log format chỉ ghi `$uri` (bỏ query) hoặc tắt access log
-> cho `location /api/postback/`. Nhật ký trong ứng dụng đã tự che tham số này.
+> **Nhật ký truy cập và postback:** mạng affiliate thường gửi `POSTBACK_SECRET` trong
+> query string. Nếu Nginx ghi `$request` (format `combined` mặc định), khoá sẽ nằm trong
+> file access log. Có 2 cách xử lý:
+>
+> 1. **Khuyến nghị:** gửi chìa khoá bằng header `X-Postback-Secret` thay vì query string
+>    (nếu mạng cho phép cấu hình header/custom request). Header không bị ghi vào access log.
+> 2. Nếu buộc phải để trong URL: dùng log format chỉ ghi `$uri` (bỏ query) hoặc tắt
+>    access log cho `location /api/postback/`, và định kỳ đổi `POSTBACK_SECRET`.
+>
+> Nhật ký trong ứng dụng (`postback_logs.query`) đã tự che tham số này.
 
 Xin chứng chỉ miễn phí bằng Let's Encrypt:
 
@@ -385,9 +396,11 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 **Khách không nhận được email chứa mã xác thực.**
 1. Xem bảng khởi động của server: dòng `Gửi thư` phải ghi `qua smtp...`. Nếu ghi
    `CHƯA cấu hình SMTP` thì `.env` chưa được đọc hoặc thiếu `SMTP_HOST`/`MAIL_FROM`.
-2. Nếu dòng `Xác thực email (OTP)` ghi `tắt` ⇒ đang là `EMAIL_OTP=auto` mà chưa có SMTP.
-   Dòng `Xác thực khi đăng nhập` ghi `tắt` cùng nguyên nhân: muốn bật thì phải gửi được
-   thư (hoặc đặt `LOGIN_OTP=on`, nhưng khi đó **không ai đăng nhập được** nếu chưa có SMTP).
+2. Nếu server **không khởi động** và báo `production đang TẮT xác thực email` ⇒ chưa cấu
+   hình SMTP (hoặc đang đặt `EMAIL_OTP=off`). Điền `SMTP_*` + `MAIL_FROM`, hoặc đặt
+   `EMAIL_OTP=auto`. Chỉ khi chấp nhận rủi ro mới dùng `ALLOW_UNVERIFIED_EMAIL=1`.
+   Dòng `Xác thực khi đăng nhập` ghi `tắt` cũng do chưa gửi được thư: muốn bật thì phải
+   gửi được thư (hoặc đặt `LOGIN_OTP=on`, nhưng khi đó **không ai đăng nhập được** nếu chưa có SMTP).
 3. Xem log server: lỗi gửi thư được in ra kèm lý do (`Invalid login`, `Connection timeout`...).
    - `Invalid login: 535` với Gmail ⇒ `SMTP_PASS` phải là **Mật khẩu ứng dụng**, không phải
      mật khẩu đăng nhập Gmail.
@@ -426,7 +439,8 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `UPLOAD_DIR` | `backend/uploads` | Thư mục ảnh đại diện + ảnh QR (đường dẫn tương đối tính từ `backend/`) |
 | `BACKUP_DIR` | `backend/backups` | Nơi lưu bản sao lưu (`npm run backup`) |
 | `BACKUP_KEEP_DAYS` | `14` | Số ngày giữ bản sao lưu trước khi tự xoá |
-| `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off` |
+| `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off`. Ở production, tắt xác thực email ⇒ server không khởi động |
+| `ALLOW_UNVERIFIED_EMAIL` | – | `1` = cho phép production chạy dù email đăng ký không được xác thực (chỉ dùng khi chưa có SMTP, chấp nhận rủi ro) |
 | `LOGIN_OTP` | `auto` | Bật xác thực khi đăng nhập: `auto` / `on` / `off` |
 | `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ để tạo cảnh báo cho admin; **không tự khóa tài khoản** |
 | `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm lần đăng nhập sai (phút) |
