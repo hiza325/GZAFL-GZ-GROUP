@@ -335,11 +335,16 @@ async function checkAuth() {
   const landingRoot = document.getElementById('landing-root');
 
   let user = null;
+  let securityHoldMessage = '';
   try {
     const data = await api('/auth/me');
     user = data.user || null;
   } catch (err) {
     user = null;
+    // Tài khoản đang bị admin tạm giữ: không mở dashboard, hiện lý do ở màn đăng nhập.
+    if (err && err.status === 423) {
+      securityHoldMessage = err.message || 'Tài khoản đang tạm giữ để quản trị viên xem xét.';
+    }
   }
   currentUser = user;
 
@@ -365,6 +370,10 @@ async function checkAuth() {
     appRoot.classList.add('hidden');
     landingRoot.classList.remove('hidden');
     await loadComponent('landing-root', 'components/landing.html');
+    if (securityHoldMessage) {
+      window.openAuthModal(true);
+      showAuthMessage(securityHoldMessage);
+    }
   }
 }
 

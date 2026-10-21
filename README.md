@@ -334,7 +334,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | POST | `/api/auth/login/otp` | Bước 2 của đăng nhập: `{ ticket, otp }` → đặt cookie phiên (giới hạn 40 lần / 15 phút) |
 | POST | `/api/auth/login/otp/resend` | Gửi lại mã đăng nhập `{ ticket }` (không cần nhập lại mật khẩu) |
 | POST | `/api/auth/logout` | Đăng xuất |
-| GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập) |
+| GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập; `423` kèm `code: 'security_hold'` nếu tài khoản đang bị tạm giữ) |
 | POST | `/api/auth/forgot-password/otp` | Quên mật khẩu bước 1: gửi mã xác thực `{ username }` |
 | POST | `/api/auth/forgot-password/confirm` | Quên mật khẩu bước 2: `{ username, otp, newPassword }` |
 | POST | `/api/auth/forgot-password` | Đường dự phòng: gửi yêu cầu cho quản trị viên `{ username, note }` |

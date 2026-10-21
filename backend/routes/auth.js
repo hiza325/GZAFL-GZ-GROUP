@@ -73,6 +73,19 @@ function handleOtpError(res, err) {
   return res.status(500).json({ error: 'Có lỗi xảy ra. Vui lòng thử lại sau.' });
 }
 
+// Tài khoản đang bị admin tạm giữ để xem xét cảnh báo bảo mật.
+// Trả 423 (Locked) kèm thời điểm hết hạn để frontend hiển thị đúng lý do.
+function sendSecurityHold(res, heldUntil) {
+  return res.status(423).json({
+    error:
+      'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
+      new Date(heldUntil).toLocaleString('vi-VN') +
+      '. Vui lòng liên hệ bộ phận hỗ trợ.',
+    code: 'security_hold',
+    heldUntil
+  });
+}
+
 /** Che bot dia chi email: nguyen.van.a@gmail.com -> ngu***@gmail.com */
 function maskEmail(email) {
   const value = String(email || '');
@@ -297,16 +310,7 @@ router.post('/login', async (req, res) => {
   // Admin có thể tạm giữ tài khoản (mặc định 24 giờ) để xem xét cảnh báo.
   // Chỉ kiểm tra SAU KHI mật khẩu đúng, nên người ngoài không dò được trạng thái này.
   const heldUntil = securityAlerts.activeHold(row);
-  if (heldUntil) {
-    return res.status(423).json({
-      error:
-        'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
-        new Date(heldUntil).toLocaleString('vi-VN') +
-        '. Vui lòng liên hệ bộ phận hỗ trợ.',
-      code: 'security_hold',
-      heldUntil
-    });
-  }
+  if (heldUntil) return sendSecurityHold(res, heldUntil);
 
   // Nếu tài khoản vừa có cảnh báo đăng nhập sai, yêu cầu thêm OTP ở lần đăng nhập
   // đúng mật khẩu tiếp theo. Đây là xác thực bổ sung, không phải khóa tài khoản.
@@ -383,16 +387,7 @@ router.post('/login/otp', loginOtpRateLimit, (req, res) => {
 
   // Admin có thể đã tạm giữ tài khoản trong lúc người dùng đang nhập mã.
   const heldUntil = securityAlerts.activeHold(row);
-  if (heldUntil) {
-    return res.status(423).json({
-      error:
-        'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
-        new Date(heldUntil).toLocaleString('vi-VN') +
-        '. Vui lòng liên hệ bộ phận hỗ trợ.',
-      code: 'security_hold',
-      heldUntil
-    });
-  }
+  if (heldUntil) return sendSecurityHold(res, heldUntil);
 
   securityAlerts.recordSuccess(row);
   setAuthCookie(res, row);
@@ -443,9 +438,13 @@ router.post('/logout', (req, res) => {
   return res.json({ ok: true });
 });
 
-// Trả về user hiện tại, hoặc null nếu chưa đăng nhập (không gây lỗi 401)
+// Trả về user hiện tại, hoặc null nếu chưa đăng nhập (không gây lỗi 401).
+// Tài khoản đang bị tạm giữ trả 423 để frontend đưa về màn đăng nhập kèm lý do,
+// thay vì vẫn mở dashboard rồi mọi API khác lỗi.
 router.get('/me', (req, res) => {
   const row = loadUser(req);
+  const heldUntil = securityAlerts.activeHold(row);
+  if (heldUntil) return sendSecurityHold(res, heldUntil);
   return res.json({ user: toUser(row) });
 });
 

@@ -128,6 +128,12 @@
       if (typeof window.logoutUser === 'function') window.logoutUser();
       return;
     }
+    // Tài khoản bị tạm giữ: đưa về màn đăng nhập kèm thời hạn thay vì để bảng đứng.
+    if (err && err.status === 423) {
+      showToast(err.message || 'Tài khoản đang tạm giữ để quản trị viên xem xét.', 'error');
+      if (typeof window.logoutUser === 'function') window.logoutUser();
+      return;
+    }
     showToast((err && err.message) || 'Có lỗi xảy ra.', 'error');
   }
 

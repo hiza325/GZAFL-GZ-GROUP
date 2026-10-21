@@ -498,6 +498,12 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     const heldSession = await json('/api/wallet', { cookie: target.cookie });
     assert.equal(heldSession.res.status, 423);
 
+    // /auth/me cũng phải trả 423 để frontend không mở dashboard cho tài khoản đang bị giữ.
+    const heldMe = await json('/api/auth/me', { cookie: target.cookie });
+    assert.equal(heldMe.res.status, 423);
+    assert.equal(heldMe.data.code, 'security_hold');
+    assert.ok(heldMe.data.heldUntil);
+
     // Admin bỏ tạm giữ -> đăng nhập lại được.
     const unlock = await json(`/api/admin/users/${target.uid}/security-hold`, {
       method: 'DELETE',
@@ -511,6 +517,9 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     });
     assert.equal(afterUnlock.res.status, 200);
     assert.equal((await json('/api/wallet', { cookie: target.cookie })).res.status, 200);
+    const meAfterUnlock = await json('/api/auth/me', { cookie: target.cookie });
+    assert.equal(meAfterUnlock.res.status, 200);
+    assert.equal(meAfterUnlock.data.user.username, 'security@test.local');
 
     // Admin đánh dấu cảnh báo đã xử lý.
     const resolved = await json(`/api/admin/security-alerts/${alert.id}/resolve`, {
