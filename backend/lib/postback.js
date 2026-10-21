@@ -103,6 +103,30 @@ function normalizeStatus(raw) {
  * Chi tiết quy tắc đọc dấu "." / ",": xem lib/parse-money.js
  */
 
+/** Mã đơn nội bộ luôn có dạng GZ + 6 chữ số (xem generateOrderCode). */
+const ORDER_CODE_RE = /^GZ\d{6}$/i;
+
+/**
+ * Tìm mã đơn nội bộ trong tham số.
+ *
+ * Chỉ nhận đúng định dạng mã đơn của hệ thống, không đem mọi giá trị (kể cả
+ * `secret`, token) đi truy vấn database. Nếu tên tham số chứa mã đơn khác
+ * thường, khai báo bằng `POSTBACK_PARAM_ORDER_CODE` trong .env.
+ */
+function findOrderCode(params) {
+  const declared = process.env.POSTBACK_PARAM_ORDER_CODE;
+  if (hasValue(declared)) {
+    const value = String(params[declared.trim()] || '').trim().toUpperCase();
+    if (ORDER_CODE_RE.test(value)) return value;
+  }
+
+  for (const value of allValues(params)) {
+    const code = String(value || '').trim().toUpperCase();
+    if (ORDER_CODE_RE.test(code)) return code;
+  }
+  return '';
+}
+
 /** Tìm mã người dùng (dạng "gzafl-u7") trong các tham số. */
 function findSubId(params) {
   const direct = pick(params, 'sub');
@@ -154,6 +178,7 @@ function normalize(params) {
     reward: Math.max(0, parseMoney(pick(params, 'reward'))),
     networkStatus: normalizeStatus(pick(params, 'status')),
     subId: findSubId(params),
+    orderCode: findOrderCode(params),
     values: allValues(params)
   };
 }
@@ -165,24 +190,27 @@ function normalize(params) {
 /**
  * Tìm đơn hàng tương ứng với một lần postback.
  * Trả về kèm CÁCH khớp để nhật ký nói rõ đâu là khớp chắc chắn, đâu là đoán:
- *   transaction — đơn đã từng gắn đúng mã giao dịch này (chắc chắn nhất)
- *   code        — mã đơn nằm trong tham số (chắc chắn)
+ *   code        — mã đơn nội bộ nằm trong tham số (chắc chắn nhất)
+ *   transaction — đơn đã từng gắn đúng mã giao dịch này
  *   fallback    — không có mã đơn, tạm lấy đơn mới nhất của người dùng (CẦN NGƯỜI KIỂM TRA)
+ *
+ * Ưu tiên mã đơn TRƯỚC mã giao dịch: mạng có thể gửi kèm đúng sub2 nhưng
+ * transaction_id lại trùng với đơn khác (gửi lại/ghép giao dịch sai). Nếu ưu tiên
+ * transaction_id, log sẽ bị áp nhầm sang đơn kia và làm sai cả hai đơn.
  */
 function findOrder(parsed, userId) {
+  // 1) Mã đơn nội bộ (GZ...) nằm trong tham số: khớp chính xác, không đoán
+  if (parsed.orderCode) {
+    const row = db.prepare('SELECT * FROM orders WHERE code = ?').get(parsed.orderCode);
+    if (row) return { order: row, how: 'code' };
+  }
+
+  // 2) Đơn đã từng gắn mã giao dịch này
   if (parsed.transactionId) {
     const byNetwork = db
       .prepare('SELECT * FROM orders WHERE network_order_id = ?')
       .get(parsed.transactionId);
     if (byNetwork) return { order: byNetwork, how: 'transaction' };
-  }
-
-  // Mã đơn nội bộ (GZ...) nằm trong tham số: khớp chính xác, không đoán
-  for (const value of parsed.values) {
-    const code = String(value || '').trim().toUpperCase();
-    if (code.length < 4 || code.length > 40) continue;
-    const row = db.prepare('SELECT * FROM orders WHERE code = ?').get(code);
-    if (row) return { order: row, how: 'code' };
   }
 
   if (userId) {
@@ -209,9 +237,10 @@ function totalsFor(order) {
   // Chỉ lấy log MỚI NHẤT của từng sản phẩm, nếu không thì một đơn bị huỷ vẫn còn
   // cộng dồn khoản approved cũ và không thể thu hồi hoa hồng.
   //
-  // item_key: ưu tiên product_id/conversion_id. Nếu mạng không gửi hai mã này thì
-  // gom theo transaction_id (mỗi giao dịch là một "món"), để bản ghi gửi lại chỉ
-  // thay thế bản cũ thay vì cộng dồn thành hai khoản.
+  // item_key: ưu tiên product_id/conversion_id. Khi mạng không gửi hai mã này thì
+  // gom theo transaction_id, rồi tới sub_id; cuối cùng là một "món" cho cả đơn.
+  // TUYỆT ĐỐI không dùng id của log làm khoá: mỗi lần mạng đổi thêm tham số (ts,
+  // thứ tự...) sẽ thành một "món" mới và bị cộng tiền hai lần.
   //
   // reward âm (mạng gửi số điều chỉnh) bị coi là 0: hoa hồng không bao giờ âm.
   const row = db
@@ -220,7 +249,7 @@ function totalsFor(order) {
          SELECT id, network_status,
                 CASE WHEN reward > 0 THEN reward ELSE 0 END AS reward,
                 COALESCE(NULLIF(product_id, ''), NULLIF(conversion_id, ''),
-                         NULLIF(transaction_id, ''), 'log:' || id) AS item_key
+                         NULLIF(transaction_id, ''), NULLIF(sub_id, ''), 'order') AS item_key
          FROM postback_logs
          WHERE order_code = ?
            AND action NOT IN ('Từ chối', 'Không ghi đè')
@@ -357,10 +386,18 @@ function applyToOrder(logId, parsed, user) {
   }
 
   // Khớp theo kiểu "đoán" thì phải nói rõ trong nhật ký để người kiểm tra lại
-  const matchNote =
+  let matchNote =
     found.how === 'fallback'
       ? 'Tham số không có mã đơn nên tạm gán vào đơn mới nhất của khách — nên kiểm tra lại.'
       : '';
+
+  // Không có product_id/conversion_id thì không thể phân biệt "sản phẩm thứ 2" với
+  // "mạng sửa kết quả cũ" — ghi rõ để admin biết vì sao tổng tiền có thể thiếu.
+  if (!parsed.productId && !parsed.conversionId) {
+    matchNote +=
+      (matchNote ? ' ' : '') +
+      'Mạng không gửi product_id/conversion_id nên chỉ ghi nhận một khoản cho giao dịch này; hãy khai báo Product ID trong postback để cộng đủ từng sản phẩm.';
+  }
 
   // Gắn mã giao dịch của mạng vào đơn (chống 2 đơn cùng nhận một giao dịch)
   if (parsed.transactionId && order.network_order_id !== parsed.transactionId) {
@@ -570,6 +607,7 @@ function reapply(logId) {
       reward: Number(log.reward) || 0,
       networkStatus: log.network_status,
       subId: log.sub_id,
+      orderCode: log.order_code || '',
       values: [log.sub_id].filter(Boolean)
     };
 

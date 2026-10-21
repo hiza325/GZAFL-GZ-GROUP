@@ -17,6 +17,7 @@ const { RESET_PENDING, RESET_RESOLVED } = require('../lib/constants');
 const { notify } = require('../lib/notify');
 const otp = require('../lib/otp');
 const securityAlerts = require('../lib/securityAlerts');
+const { asyncHandler } = require('../lib/async-handler');
 
 const router = express.Router();
 
@@ -117,7 +118,7 @@ function maskEmail(email) {
    ========================================== */
 
 // Bước 1: gửi mã xác thực về email
-router.post('/register/otp', otpRateLimit, async (req, res) => {
+router.post('/register/otp', otpRateLimit, asyncHandler(async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const name = String((req.body && req.body.name) || '').trim();
   const email = normalizeEmail((req.body && req.body.email) || '');
@@ -190,10 +191,10 @@ router.post('/register/otp', otpRateLimit, async (req, res) => {
   } catch (err) {
     return handleOtpError(res, err);
   }
-});
+}));
 
 // Bước 2: kiểm tra mã rồi tạo tài khoản
-router.post('/register', authRateLimit, async (req, res) => {
+router.post('/register', authRateLimit, asyncHandler(async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
   const name = String((req.body && req.body.name) || '').trim();
@@ -275,7 +276,7 @@ router.post('/register', authRateLimit, async (req, res) => {
   });
 
   return res.status(201).json({ user: toUser(row) });
-});
+}));
 
 /* ==========================================
    Đăng nhập
@@ -288,7 +289,7 @@ router.post('/register', authRateLimit, async (req, res) => {
    làm tốn thư trong hộp của người khác.
    ========================================== */
 
-router.post('/login', authRateLimit, async (req, res) => {
+router.post('/login', authRateLimit, asyncHandler(async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
 
@@ -369,7 +370,7 @@ router.post('/login', authRateLimit, async (req, res) => {
     // Chỉ có giá trị khi chưa cấu hình SMTP và đang ở môi trường phát triển
     devCode: sent ? sent.devCode : null
   });
-});
+}));
 
 // Bước 2 của đăng nhập: phiếu đăng nhập + mã xác thực -> cấp cookie phiên
 router.post('/login/otp', loginOtpRateLimit, (req, res) => {
@@ -404,7 +405,7 @@ router.post('/login/otp', loginOtpRateLimit, (req, res) => {
 });
 
 // Gửi lại mã đăng nhập: dùng phiếu đăng nhập nên không phải nhập lại mật khẩu
-router.post('/login/otp/resend', loginOtpRateLimit, async (req, res) => {
+router.post('/login/otp/resend', loginOtpRateLimit, asyncHandler(async (req, res) => {
   const ticket = String((req.body && req.body.ticket) || '').trim();
   if (!ticket) return res.status(400).json({ error: 'Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.' });
 
@@ -434,7 +435,7 @@ router.post('/login/otp/resend', loginOtpRateLimit, async (req, res) => {
   } catch (err) {
     return handleOtpError(res, err);
   }
-});
+}));
 
 router.post('/logout', (req, res) => {
   // Tăng token_version để token đã phát (kể cả token bị đánh cắp) mất hiệu lực ngay,
@@ -481,7 +482,7 @@ const RESET_OTP_MESSAGE =
   'Nếu tài khoản tồn tại và đã có email, mã xác thực đã được gửi tới email đó. Nhớ kiểm tra cả thư rác (Spam).';
 
 // Bước 1 của đường tự đặt lại: gửi mã về email
-router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
+router.post('/forgot-password/otp', otpRateLimit, asyncHandler(async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
 
   if (!username) return res.status(400).json({ error: 'Vui lòng nhập Email hoặc Số điện thoại.' });
@@ -529,7 +530,7 @@ router.post('/forgot-password/otp', otpRateLimit, async (req, res) => {
     resendInSeconds,
     devCode
   });
-});
+}));
 
 // Bước 2: mã đúng thì đổi mật khẩu luôn
 router.post('/forgot-password/confirm', otpRateLimit, (req, res) => {

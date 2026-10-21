@@ -243,7 +243,7 @@ AccessTrade --GET--> /api/postback/accesstrade?secret=...&transaction_id=...&rew
 
 Chi tiết đáng nhớ:
 
-- **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), nhưng mỗi sản phẩm chỉ lấy log **mới nhất** — nhờ vậy khi mạng đổi `pending` → `approved` → `rejected`, trạng thái cuối cùng mới quyết định tiền.
+- **Mạng gửi mỗi sản phẩm một lần gọi.** Một đơn 3 món = 3 lần postback cùng `transaction_id`. Tổng hoa hồng được **cộng dồn theo đơn** (`postback_logs.order_code`), nhưng mỗi sản phẩm chỉ lấy log **mới nhất** — nhờ vậy khi mạng đổi `pending` → `approved` → `rejected`, trạng thái cuối cùng mới quyết định tiền. Khoá nhận diện sản phẩm là `product_id` (hoặc `conversion_id`). **Phải khai báo Product ID trong postback**: nếu mạng không gửi, hệ thống không thể phân biệt "sản phẩm thứ 2" với "mạng sửa kết quả cũ" nên chỉ ghi nhận một khoản cho giao dịch (và ghi chú rõ trong nhật ký đối soát).
 - **Chống trùng bằng `payload_hash`** (băm tham số đã sắp xếp) chứ không chỉ theo `transaction_id` — nhờ vậy 3 lần gọi khác sản phẩm vẫn được tính đủ, mà lần gọi lại y hệt thì không cộng tiền hai lần.
 - **Tiền chưa được admin duyệt KHÔNG vào số dư.** Khi mạng còn `pending`, số tiền nằm ở `orders.network_commission`. Khi mạng báo `approved`, đơn chuyển sang **"Chờ admin duyệt"** và `orders.commission` chỉ là số **dự kiến**; quản trị viên duyệt đơn (chuyển `Hoàn thành`/`Đã thanh toán`) thì khoản đó mới được cộng vào ví. Không còn cơ chế tạm giữ theo số ngày.
 - **Đơn đã ở trạng thái "Đã thanh toán"** vẫn giữ nguyên trạng thái, nhưng nếu mạng báo huỷ/giảm hoa hồng thì ghi nhận **thu hồi** vào `orders.commission_reversed`; nếu khách đã rút, số dư âm là khoản nợ và tự trừ vào hoa hồng sau. Hệ thống không tự tăng tiền khi mạng báo thêm.
@@ -261,11 +261,12 @@ Tài liệu: <https://support.accesstrade.global/system-integration/what-is-post
    - Nếu mạng cho phép cấu hình **header tuỳ chỉnh**, hãy gửi `X-Postback-Secret: <POSTBACK_SECRET>` thay cho tham số trong URL. Chìa khoá sẽ không nằm trong access log của proxy/CDN. Khi có header, server **chỉ** xét header (header sai thì từ chối, không quay về đọc `secret` trong URL).
 4. Thêm các tham số dữ liệu: **Transaction ID**, **Product ID**, **Reward** (hoa hồng), **Conversion Status**, và các **sub id** (sub id luôn được gửi kèm tự động).
 
-Tên tham số do **người dùng tự đặt**, nên code không hard-code một tên duy nhất: nó dò lần lượt các tên thông dụng (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` hoặc mã đơn `GZ…`. Nếu tên của bạn khác hẳn, ép lại bằng biến môi trường:
+Tên tham số do **người dùng tự đặt**, nên code không hard-code một tên duy nhất: nó dò lần lượt các tên thông dụng (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và **chỉ nhận các giá trị đúng định dạng** `gzafl-u<id>` / mã đơn `GZ######` — không đem mọi giá trị (kể cả `secret`, token) đi truy vấn database. Mã đơn được ưu tiên khớp **trước** `transaction_id`. Nếu tên của bạn khác hẳn, ép lại bằng biến môi trường:
 
 ```
 POSTBACK_PARAM_SECRET / POSTBACK_PARAM_TRANSACTION / POSTBACK_PARAM_PRODUCT
 POSTBACK_PARAM_CONVERSION / POSTBACK_PARAM_REWARD / POSTBACK_PARAM_STATUS / POSTBACK_PARAM_SUB
+POSTBACK_PARAM_ORDER_CODE
 ```
 
 Xem toàn bộ tham số thô đã nhận ở **trang quản trị → tab Đối soát → nút "Thô"**.

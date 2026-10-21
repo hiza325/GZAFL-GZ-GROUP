@@ -12,6 +12,19 @@ const affiliate = require('../lib/affiliate');
 const router = express.Router();
 router.use(requireAuth);
 
+/**
+ * URL công khai dùng để dựng link hoàn tiền / URL postback.
+ *
+ * Production BẮT BUỘC đặt PUBLIC_BASE_URL (server.js từ chối khởi động nếu thiếu):
+ * Host header do client gửi nên không được tin — kẻ tấn công có thể khiến link
+ * hoàn tiền trỏ sang tên miền giả. Chỉ dùng Host của request khi chạy thử.
+ */
+function resolvePublicBaseUrl(req) {
+  const configured = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
 // Chống spam tạo đơn: 20 đơn / 10 phút cho mỗi tài khoản (mỗi đơn còn gọi API sàn).
 const orderRateLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -58,9 +71,9 @@ router.post('/', orderRateLimit, async (req, res, next) => {
     // sub_id là mấu chốt để biết hoa hồng phát sinh thuộc về ai (xem docs/affiliate-integration.md)
     const subId = affiliate.subIdFor(req.user.id);
     // Ưu tiên URL công khai cấu hình sẵn: sau reverse proxy, req.protocol có thể là
-    // http nên link mock sẽ sai scheme nếu không bật TRUST_PROXY.
-    const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
-    const baseUrl = publicBaseUrl || `${req.protocol}://${req.get('host')}`;
+    // http nên link mock sẽ sai scheme nếu không bật TRUST_PROXY. Ở production,
+    // server.js bắt buộc PUBLIC_BASE_URL nên không phụ thuộc Host header.
+    const baseUrl = resolvePublicBaseUrl(req);
 
     let conversion;
     try {

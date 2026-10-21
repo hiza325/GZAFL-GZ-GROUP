@@ -14,6 +14,7 @@
 
 const express = require('express');
 const db = require('../db');
+const { asyncHandler } = require('../lib/async-handler');
 const { rateLimit } = require('../lib/rateLimit');
 const ai = require('../lib/ai');
 const knowledge = require('../lib/supportKnowledge');
@@ -156,7 +157,7 @@ router.get('/status', (req, res) => {
 });
 
 /** Hỏi trợ lý. Body: { messages: [{ role: 'user'|'assistant', content }] } */
-router.post('/chat', chatRateLimit, async (req, res) => {
+router.post('/chat', chatRateLimit, asyncHandler(async (req, res) => {
   const history = normalizeHistory(req.body && req.body.messages);
   if (!history) return res.status(400).json({ error: 'Tin nhắn không hợp lệ.' });
 
@@ -189,6 +190,6 @@ router.post('/chat', chatRateLimit, async (req, res) => {
       notice: 'Trợ lý AI đang tạm bận nên mình trả lời bằng kiến thức có sẵn.'
     });
   }
-});
+}));
 
 module.exports = router;

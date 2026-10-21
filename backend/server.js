@@ -41,6 +41,25 @@ if (IS_PRODUCTION) {
   console.warn('CẢNH BÁO: Đang dùng JWT_SECRET mặc định. Chỉ dùng cho môi trường phát triển.');
 }
 
+// Production bắt buộc biết URL công khai: link hoàn tiền/postback không được dựng
+// từ Host header (client tự đặt được) — nếu không, kẻ tấn công có thể khiến link
+// trả về trỏ sang tên miền giả.
+if (IS_PRODUCTION) {
+  const raw = String(process.env.PUBLIC_BASE_URL || '').trim();
+  let valid = false;
+  try {
+    const url = new URL(raw);
+    valid = url.protocol === 'https:' || url.protocol === 'http:';
+  } catch (err) {
+    valid = false;
+  }
+  if (!valid) {
+    console.error('LỖI: production phải đặt PUBLIC_BASE_URL (ví dụ https://ten-mien-cua-ban.com).');
+    console.error('      Thiếu biến này, link hoàn tiền sẽ phải dựng từ Host header do client gửi — không an toàn.');
+    process.exit(1);
+  }
+}
+
 // ------------------------------------------------------------------
 // Không cho chạy production khi email CHƯA được xác thực.
 //

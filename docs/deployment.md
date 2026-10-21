@@ -433,7 +433,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SSL_KEY_PATH` | – | Khoá riêng TLS (chỉ dùng cho Cách B) |
 | `SSL_CERT_PATH` | – | Chứng chỉ TLS (chỉ dùng cho Cách B) |
 | `TRUST_PROXY` | – | `1` / `true` / danh sách IP — bật khi chạy sau reverse proxy |
-| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://ten-mien-cua-ban.com`; dùng cho link mock và hướng dẫn postback |
+| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://ten-mien-cua-ban.com`; dùng cho link hoàn tiền và hướng dẫn postback. **Bắt buộc khi `NODE_ENV=production`** (thiếu thì server không khởi động) |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `RATE_LIMIT_STORE` | `memory` | `memory` / `sqlite` — dùng `sqlite` khi chạy nhiều tiến trình/instance |
 | `UPLOAD_DIR` | `backend/uploads` | Thư mục ảnh đại diện + ảnh QR (đường dẫn tương đối tính từ `backend/`) |

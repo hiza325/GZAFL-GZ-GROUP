@@ -149,9 +149,9 @@ function isTruthy(value) {
 
   const base = envText('PUBLIC_BASE_URL').replace(/\/+$/, '');
   if (!base) {
-    warn(
-      'Chưa đặt PUBLIC_BASE_URL: link hoàn tiền mock và URL postback sẽ lấy theo request, ' +
-        'sau proxy có thể bị "http://". Nên đặt ví dụ https://ten-mien-cua-ban.com'
+    fail(
+      'Chưa đặt PUBLIC_BASE_URL: production bắt buộc biến này (server sẽ không khởi động). ' +
+        'Đặt ví dụ PUBLIC_BASE_URL=https://ten-mien-cua-ban.com'
     );
   } else if (!/^https:\/\//i.test(base)) {
     warn(`PUBLIC_BASE_URL không phải https:// (${base}). Link công khai có thể bị sai scheme.`);

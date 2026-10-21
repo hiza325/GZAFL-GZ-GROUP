@@ -89,7 +89,7 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 | `JWT_SECRET` | `gzafl-dev-secret-change-me` | Khóa ký token phiên — **bắt buộc đổi khi triển khai thật**. Ở `NODE_ENV=production` server **từ chối khởi động** nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự |
 | `SSL_KEY_PATH`, `SSL_CERT_PATH` | – | Điền vào để server tự chạy HTTPS (không cần nếu đã có Nginx/Caddy) |
 | `TRUST_PROXY` | – | Bật khi chạy sau reverse proxy (`1` / `true` / danh sách IP) — cần để cookie `secure` và link hoàn tiền dùng đúng `https` |
-| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://gzafl.example.com`. Dùng cho link mock và dòng hướng dẫn postback lúc khởi động; nên đặt khi chạy sau proxy |
+| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://gzafl.example.com`. Dùng cho link hoàn tiền và hướng dẫn postback. **Bắt buộc khi `NODE_ENV=production`** (thiếu thì server không khởi động) để không dựng link từ Host header do client gửi |
 | `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
 | `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
 | `WITHDRAWAL_MIN` | `1000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
@@ -102,7 +102,7 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 | `ACCESSTRADE_CAMPAIGN_ID` | – | Tuỳ chọn: campaign mặc định nếu sàn chưa có biến riêng |
 | `ACCESSTRADE_SHORT_DOMAIN` | – | Tuỳ chọn: domain rút gọn riêng đã đăng ký với AccessTrade |
 | `POSTBACK_SECRET` | – | Chìa khoá xác thực báo cáo chuyển đổi (postback). **Bỏ trống thì mọi postback bị từ chối** (xem mục [Nhận hoa hồng về](#nhận-hoa-hồng-về--đối-soát-postback)) |
-| `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB` |
+| `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB`, `_ORDER_CODE` |
 | `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email**. Ở production, xác thực email **bắt buộc bật** (xem `ALLOW_UNVERIFIED_EMAIL`) |
 | `ALLOW_UNVERIFIED_EMAIL` | – | Chỉ đặt `1` khi thật sự chưa có SMTP: cho phép production khởi động dù email đăng ký **không được xác thực** (chấp nhận rủi ro người khác dùng email của bạn) |
 | `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |

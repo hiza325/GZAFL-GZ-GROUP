@@ -755,6 +755,75 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.ok(order.networkCommission >= 0, 'Hoa hồng mạng không được là số âm');
   });
 
+  await t.test('postback: mã đơn trong payload thắng transaction_id của đơn khác', async () => {
+    const owner = createUser({ username: 'priority@test.local', email: 'priority@test.local', name: 'Ưu tiên mã đơn' });
+    const orderA = await json('/api/orders', {
+      method: 'POST',
+      cookie: owner.cookie,
+      body: { link: 'https://shopee.vn/p/priority-order-a' }
+    });
+    const orderB = await json('/api/orders', {
+      method: 'POST',
+      cookie: owner.cookie,
+      body: { link: 'https://shopee.vn/p/priority-order-b' }
+    });
+    assert.equal(orderA.res.status, 201);
+    assert.equal(orderB.res.status, 201);
+    const codeA = orderA.data.order.id;
+    const codeB = orderB.data.order.id;
+    const tx = 'TX-PRIORITY-' + Date.now();
+
+    // Đơn A nhận giao dịch TX
+    const first = await json(
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+        `&transaction_id=${encodeURIComponent(tx)}&product_id=PRIO` +
+        `&sub1=gzafl-u${owner.uid}&sub2=${encodeURIComponent(codeA)}` +
+        '&status=approved&reward=100000'
+    );
+    assert.equal(first.res.status, 200);
+
+    // Postback ghi rõ mã đơn B nhưng lại gửi kèm giao dịch TX đã thuộc đơn A
+    const second = await json(
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+        `&transaction_id=${encodeURIComponent(tx)}&product_id=PRIO` +
+        `&sub1=gzafl-u${owner.uid}&sub2=${encodeURIComponent(codeB)}` +
+        '&status=approved&reward=70000'
+    );
+    assert.equal(second.res.status, 200);
+
+    const orders = await json('/api/orders', { cookie: owner.cookie });
+    const a = (orders.data.orders || []).find((o) => o.id === codeA);
+    const b = (orders.data.orders || []).find((o) => o.id === codeB);
+    assert.equal(a.commission, 100000, 'Đơn A không được bị đổi số bởi postback của đơn B');
+    assert.equal(b.commission, 0, 'Đơn B không được nhận giao dịch đã thuộc đơn A');
+  });
+
+  await t.test('postback: thiếu mọi mã định danh thì không cộng dồn mỗi lần gọi', async () => {
+    const bare = createUser({ username: 'bare@test.local', email: 'bare@test.local', name: 'Không mã định danh' });
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: bare.cookie,
+      body: { link: 'https://shopee.vn/p/no-identity-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+
+    const send = (ts) =>
+      json(
+        `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+          `&ts=${ts}` +
+          `&sub1=gzafl-u${bare.uid}&sub2=${encodeURIComponent(code)}` +
+          '&status=approved&reward=100000'
+      );
+
+    await send('lan-1');
+    await send('lan-2');
+
+    const orders = await json('/api/orders', { cookie: bare.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(order.commission, 100000, 'Hai lần gọi thiếu mã định danh không được cộng thành 200.000');
+  });
+
   await t.test('postback: nhiều lần giảm hoa hồng thì cộng dồn khoản thu hồi', async () => {
     const claw = createUser({ username: 'claw@test.local', email: 'claw@test.local', name: 'Thu hồi nhiều lần' });
     const created = await json('/api/orders', {

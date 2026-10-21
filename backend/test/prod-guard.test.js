@@ -57,6 +57,7 @@ function productionEnv(port) {
     AI_API_KEY: '',
     AFFILIATE_PROVIDER: 'mock',
     POSTBACK_SECRET: 'test-postback-secret',
+    PUBLIC_BASE_URL: 'https://gzafl.test',
     COOKIE_SECURE: 'false',
     SECURITY_STEP_UP: 'off'
   };
@@ -94,6 +95,22 @@ test('production + xác thực email tắt: server từ chối khởi động', 
   assert.equal(code, 1, 'Phải thoát với mã lỗi 1');
   assert.match(output(), /production đang TẮT xác thực email/);
   assert.match(output(), /ALLOW_UNVERIFIED_EMAIL=1/);
+});
+
+test('production thiếu PUBLIC_BASE_URL: server từ chối khởi động', async () => {
+  fs.writeFileSync(ENV_FILE, '# file env rỗng cho test\n', 'utf8');
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+  const port = await freePort();
+  const env = productionEnv(port);
+  delete env.PUBLIC_BASE_URL;
+  const { child, output } = runServer({ ...env, ALLOW_UNVERIFIED_EMAIL: '1' });
+  const [code] = await Promise.race([once(child, 'exit'), new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Server không thoát sau 20 giây')), 20_000).unref();
+  })]);
+
+  assert.equal(code, 1, 'Phải thoát với mã lỗi 1');
+  assert.match(output(), /PUBLIC_BASE_URL/);
 });
 
 test('production + ALLOW_UNVERIFIED_EMAIL=1: server vẫn chạy (có cảnh báo)', async () => {

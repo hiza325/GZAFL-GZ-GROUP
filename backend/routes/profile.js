@@ -12,6 +12,7 @@ const { requireAuth, setAuthCookie } = require('../lib/auth');
 const { rateLimit } = require('../lib/rateLimit');
 const { UPLOAD_DIR } = require('../lib/uploads');
 const otp = require('../lib/otp');
+const { asyncHandler } = require('../lib/async-handler');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -132,7 +133,7 @@ router.put('/', (req, res) => {
 });
 
 // Bước 1 khi đổi email: gửi mã xác thực tới ĐỊA CHỈ MỚI (chưa lưu gì vào hồ sơ)
-router.post('/email/otp', emailOtpRateLimit, async (req, res) => {
+router.post('/email/otp', emailOtpRateLimit, asyncHandler(async (req, res) => {
   const email = normalizeEmail((req.body && req.body.email) || '');
 
   if (!isValidEmail(email)) {
@@ -174,7 +175,7 @@ router.post('/email/otp', emailOtpRateLimit, async (req, res) => {
     console.error('Lỗi gửi mã xác thực email mới:', err);
     return res.status(500).json({ error: 'Có lỗi xảy ra. Vui lòng thử lại sau.' });
   }
-});
+}));
 
 // Cập nhật avatar. Frontend gửi data URL base64; server ghi thành file trong uploads/
 // (không lưu base64 trong database để tránh phình dữ liệu).
