@@ -106,6 +106,7 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 | `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email**. Ở production, xác thực email **bắt buộc bật** (xem `ALLOW_UNVERIFIED_EMAIL`) |
 | `ALLOW_UNVERIFIED_EMAIL` | – | Chỉ đặt `1` khi thật sự chưa có SMTP: cho phép production khởi động dù email đăng ký **không được xác thực** (chấp nhận rủi ro người khác dùng email của bạn) |
 | `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
+| `DEV_OTP_CODE` | – | `1` = cho API trả mã OTP trong trường `devCode` (chỉ khi đang ở chế độ thử nghiệm, chưa có SMTP). Mặc định **tắt** để không lộ mã nếu quên `NODE_ENV=production` |
 | `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ bên dưới thì tạo cảnh báo cho admin. **Không tự khóa tài khoản** |
 | `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm số lần đăng nhập sai (phút) |
 | `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = chỉ cảnh báo, admin tự quyết định (khuyến nghị). `24` = tự tạm giữ tài khoản 24 giờ sau ngưỡng cảnh báo; admin vẫn bỏ tạm giữ được. Tối đa `168` |
@@ -225,7 +226,7 @@ Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email ngư�
 
 | Tình huống | Kết quả |
 |---|---|
-| `development`, chưa cấu hình SMTP | Bước xác thực **vẫn bật**, nhưng thư chỉ được **in ra console** của server; mã cũng trả về ở trường `devCode` nên hiện luôn trong ô vàng "mã thử nghiệm" ngay trên giao diện để bạn thử |
+| `development`, chưa cấu hình SMTP | Bước xác thực **vẫn bật**, nhưng thư chỉ được **in ra console** của server. Muốn mã hiện trong ô vàng "mã thử nghiệm" trên giao diện thì đặt thêm `DEV_OTP_CODE=1` (mặc định tắt để tránh lộ mã qua API) |
 | `production`, chưa cấu hình SMTP | Server **từ chối khởi động** (xem giải thích bên dưới) |
 | Đã điền `SMTP_*` + `MAIL_FROM` | Gửi thư thật |
 
@@ -340,7 +341,7 @@ Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nh�
 | GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không, câu hỏi gợi ý của trợ lý) |
 | POST | `/api/auth/register/otp` | Bước 1 khi đăng ký: gửi mã xác thực `{ username, name, email }` (giới hạn 10 lần / 15 phút) |
 | POST | `/api/auth/register` | Bước 2: tạo tài khoản `{ username, password, name, email, otp }` |
-| POST | `/api/auth/login` | Đăng nhập. Nếu bật xác thực khi đăng nhập thì trả về `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` thay vì đặt cookie |
+| POST | `/api/auth/login` | Đăng nhập. Nếu bật xác thực khi đăng nhập thì trả về `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` thay vì đặt cookie (`devCode` chỉ có khi bật `DEV_OTP_CODE=1`) |
 | POST | `/api/auth/login/otp` | Bước 2 của đăng nhập: `{ ticket, otp }` → đặt cookie phiên (giới hạn 40 lần / 15 phút) |
 | POST | `/api/auth/login/otp/resend` | Gửi lại mã đăng nhập `{ ticket }` (không cần nhập lại mật khẩu) |
 | POST | `/api/auth/logout` | Đăng xuất |

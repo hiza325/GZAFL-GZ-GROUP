@@ -151,7 +151,7 @@ function normalize(params) {
     transactionId: pick(params, 'transaction'),
     productId: pick(params, 'product'),
     conversionId: pick(params, 'conversion'),
-    reward: parseMoney(pick(params, 'reward')),
+    reward: Math.max(0, parseMoney(pick(params, 'reward'))),
     networkStatus: normalizeStatus(pick(params, 'status')),
     subId: findSubId(params),
     values: allValues(params)
@@ -201,9 +201,9 @@ function findOrder(parsed, userId) {
  * AccessTrade gửi mỗi sản phẩm một lần, nên phải cộng dồn theo đơn chứ không lấy từng lần.
  */
 function totalsFor(order) {
-  const tx = String(order.network_order_id || '');
-  // Khớp CHẶT theo mã giao dịch của đơn: khi đơn đã có mã giao dịch thì chỉ cộng các
-  // log của đúng giao dịch đó, không gộp thêm log "không có mã giao dịch" (dễ lẫn đơn khác).
+  // Gom theo ĐƠN (order_code) chứ không lọc thêm theo transaction_id: mạng có thể gửi
+  // sản phẩm đầu tiên kèm mã giao dịch, các sản phẩm sau chỉ kèm mã đơn (hoặc ngược
+  // lại). Lọc theo transaction_id sẽ bỏ sót những log đã gắn đúng đơn.
   //
   // Mỗi sản phẩm có thể được mạng báo nhiều lần (pending -> approved -> rejected).
   // Chỉ lấy log MỚI NHẤT của từng sản phẩm, nếu không thì một đơn bị huỷ vẫn còn
@@ -212,16 +212,18 @@ function totalsFor(order) {
   // item_key: ưu tiên product_id/conversion_id. Nếu mạng không gửi hai mã này thì
   // gom theo transaction_id (mỗi giao dịch là một "món"), để bản ghi gửi lại chỉ
   // thay thế bản cũ thay vì cộng dồn thành hai khoản.
+  //
+  // reward âm (mạng gửi số điều chỉnh) bị coi là 0: hoa hồng không bao giờ âm.
   const row = db
     .prepare(
       `WITH relevant AS (
-         SELECT id, network_status, reward,
+         SELECT id, network_status,
+                CASE WHEN reward > 0 THEN reward ELSE 0 END AS reward,
                 COALESCE(NULLIF(product_id, ''), NULLIF(conversion_id, ''),
                          NULLIF(transaction_id, ''), 'log:' || id) AS item_key
          FROM postback_logs
          WHERE order_code = ?
-           AND action != 'Từ chối'
-           AND ( (transaction_id = ? AND ? != '') OR (transaction_id = '' AND ? = '') )
+           AND action NOT IN ('Từ chối', 'Không ghi đè')
        ),
        latest AS (
          SELECT network_status, reward,
@@ -235,7 +237,7 @@ function totalsFor(order) {
        FROM latest
        WHERE rn = 1`
     )
-    .get(order.code, tx, tx, tx);
+    .get(order.code);
   return {
     approved: Number(row.approved) || 0,
     pending: Number(row.pending) || 0,
@@ -419,7 +421,9 @@ function applyToOrder(logId, parsed, user) {
       note = 'Mạng đang kiểm tra lại chuyển đổi — giữ nguyên hoa hồng admin đã duyệt.';
     } else if (approvedCommission < previousCommission) {
       commission = approvedCommission;
-      reversedCommission = previousCommission - approvedCommission;
+      // Cộng dồn: một đơn có thể bị giảm/thu hồi nhiều lần, mỗi lần chỉ chênh lệch
+      // so với mức đang ghi nhận. Ghi đè sẽ làm mất các khoản đã thu hồi trước đó.
+      reversedCommission = previousReversed + Math.max(0, previousCommission - approvedCommission);
       reversedAt = now;
       if (commission <= 0 && order.status !== 'Đã thanh toán') status = CANCELLED;
       note =

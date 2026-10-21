@@ -731,6 +731,65 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(order.networkCommission, 1250000, '"1.250.000" là 1.250.000 đồng, không phải 1 đồng');
   });
 
+  await t.test('postback: reward âm bị coi là 0, không đẩy hoa hồng xuống âm', async () => {
+    const neg = createUser({ username: 'neg@test.local', email: 'neg@test.local', name: 'Số tiền âm' });
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: neg.cookie,
+      body: { link: 'https://shopee.vn/p/negative-reward-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+
+    const sent = await json(
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+        `&transaction_id=${encodeURIComponent('TX-NEG-' + Date.now())}&product_id=NEG` +
+        `&sub1=gzafl-u${neg.uid}&sub2=${encodeURIComponent(code)}` +
+        '&status=approved&reward=-50000'
+    );
+    assert.equal(sent.res.status, 200);
+
+    const orders = await json('/api/orders', { cookie: neg.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(order.commission, 0);
+    assert.ok(order.networkCommission >= 0, 'Hoa hồng mạng không được là số âm');
+  });
+
+  await t.test('postback: nhiều lần giảm hoa hồng thì cộng dồn khoản thu hồi', async () => {
+    const claw = createUser({ username: 'claw@test.local', email: 'claw@test.local', name: 'Thu hồi nhiều lần' });
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: claw.cookie,
+      body: { link: 'https://shopee.vn/p/cumulative-clawback-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+
+    const baseQuery =
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+      `&transaction_id=${encodeURIComponent('TX-CLAW-' + Date.now())}&product_id=CLAW` +
+      `&sub1=gzafl-u${claw.uid}&sub2=${encodeURIComponent(code)}`;
+
+    const first = await json(baseQuery + '&status=approved&reward=100000');
+    assert.equal(first.data.status, 'Chờ admin duyệt');
+
+    const approved = await json('/api/admin/orders/' + encodeURIComponent(code), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { status: 'Hoàn thành', commission: 100000 }
+    });
+    assert.equal(approved.res.status, 200);
+
+    // Mạng báo giảm hai lần: 100.000 -> 80.000 -> 60.000. Tổng đã thu hồi phải là 40.000.
+    await json(baseQuery + '&status=approved&reward=80000');
+    await json(baseQuery + '&status=approved&reward=60000');
+
+    const orders = await json('/api/orders', { cookie: claw.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(order.commission, 60000);
+    assert.equal(order.reversedCommission, 40000, 'Phải cộng dồn cả hai lần thu hồi');
+  });
+
   await t.test('postback: mạng duyệt đơn vào hàng chờ admin, admin duyệt mới cộng ví và thu hồi khi huỷ', async () => {
     const created = await json('/api/orders', {
       method: 'POST',

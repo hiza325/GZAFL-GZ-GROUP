@@ -468,7 +468,7 @@
       }
     }
 
-    const statusEl = document.getElementById('adm-wd-status');
+    const statusEl = document.getElementById('adm-wd-modal-status');
     const amountEl = document.getElementById('adm-wd-amount');
     if (statusEl) statusEl.value = wd.status;
     if (amountEl) amountEl.value = String(wd.amount > 0 ? wd.amount : wd.payable);
@@ -486,7 +486,7 @@
     const wd = state.editing.withdrawal;
     if (!wd) return;
 
-    const statusEl = document.getElementById('adm-wd-status');
+    const statusEl = document.getElementById('adm-wd-modal-status');
     const amountEl = document.getElementById('adm-wd-amount');
     const status = statusEl ? statusEl.value : wd.status;
     const amount = normalizeNumberInput(amountEl ? amountEl.value : 0);

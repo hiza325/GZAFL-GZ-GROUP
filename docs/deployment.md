@@ -442,6 +442,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off`. Ở production, tắt xác thực email ⇒ server không khởi động |
 | `ALLOW_UNVERIFIED_EMAIL` | – | `1` = cho phép production chạy dù email đăng ký không được xác thực (chỉ dùng khi chưa có SMTP, chấp nhận rủi ro) |
 | `LOGIN_OTP` | `auto` | Bật xác thực khi đăng nhập: `auto` / `on` / `off` |
+| `DEV_OTP_CODE` | – | `1` = API trả mã OTP trong trường `devCode` khi chưa có SMTP (chỉ dùng khi thử nghiệm; mặc định tắt) |
 | `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ để tạo cảnh báo cho admin; **không tự khóa tài khoản** |
 | `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm lần đăng nhập sai (phút) |
 | `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = chỉ cảnh báo (khuyến nghị); `24` = tự tạm giữ 24h sau ngưỡng, admin vẫn bỏ được |

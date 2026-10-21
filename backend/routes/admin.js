@@ -651,7 +651,8 @@ router.patch('/orders/:code', (req, res) => {
         // Huỷ/hoàn trả: chỉ ghi thu hồi nếu khoản này từng được admin duyệt và
         // đã cộng vào ví. Đơn còn chờ duyệt thì chỉ cần đưa hoa hồng về 0.
         if (prevCredited && prevCommission > 0) {
-          nextReversed = prevCommission;
+          // Cộng dồn với các khoản đã thu hồi trước đó (đơn có thể bị giảm nhiều lần).
+          nextReversed = prevReversed + prevCommission;
           nextReversedAt = now;
         }
         nextCommission = 0;
@@ -663,14 +664,19 @@ router.patch('/orders/:code', (req, res) => {
           nextReversedAt = null;
         }
         if (prevCredited && nextCommission < prevCommission) {
-          nextReversed = prevCommission - nextCommission;
+          nextReversed = prevReversed + (prevCommission - nextCommission);
           nextReversedAt = now;
+        } else if (prevCredited && nextCommission > prevCommission && prevReversed > 0) {
+          // Admin khôi phục/nâng hoa hồng: phần đã thu hồi trước đó giảm tương ứng,
+          // tránh báo thu hồi nhiều hơn số tiền thực tế đã bị giảm.
+          nextReversed = Math.max(0, prevReversed - (nextCommission - prevCommission));
+          nextReversedAt = nextReversed > 0 ? now : null;
         }
       } else {
         // Đang xử lý / chờ đối soát / chờ admin duyệt: chưa cộng vào ví.
         if (prevCredited && nextCommission < prevCommission) {
           // Admin hạ hoa hồng của đơn đã cộng ví -> thu hồi phần chênh lệch.
-          nextReversed = prevCommission - nextCommission;
+          nextReversed = prevReversed + (prevCommission - nextCommission);
           nextReversedAt = now;
         } else if (nextCommission > 0 && prevStatus === CANCELLED) {
           // Đơn được khôi phục về hàng chờ: khoản thu hồi cũ không còn hiệu lực.

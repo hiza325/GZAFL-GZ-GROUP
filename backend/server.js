@@ -522,5 +522,13 @@ function shutdown(signal) {
   if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
 }
 
+// Lưới an toàn cuối cùng: Express 4 không tự bắt Promise bị reject trong handler async.
+// Các route đã có try/catch, nhưng một chỗ quên vẫn không được làm sập cả server đang
+// phục vụ người dùng — ghi log đầy đủ để còn tìm và sửa.
+process.on('unhandledRejection', (reason) => {
+  const detail = reason && reason.stack ? reason.stack : String(reason);
+  console.error('LỖI: Promise bị từ chối mà không được xử lý:\n' + detail);
+});
+
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));

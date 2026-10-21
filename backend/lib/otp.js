@@ -104,6 +104,19 @@ function loginOtpEnabled() {
 }
 
 /**
+ * Có trả mã OTP về API (trường `devCode`) không?
+ *
+ * Mặc định KHÔNG, kể cả khi đang chạy development. Chỉ bật khi đặt
+ * DEV_OTP_CODE=1 trong .env. Lý do: chỉ cần một lần quên đặt
+ * NODE_ENV=production là mã đăng nhập/đặt lại mật khẩu bị trả về cho bất kỳ
+ * ai biết địa chỉ email. Muốn xem mã khi thử máy thì đọc console của server.
+ */
+function devCodeEnabled() {
+  const raw = String(process.env.DEV_OTP_CODE || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'on';
+}
+
+/**
  * Thông tin mã đang có hiệu lực: còn bao nhiêu giây dùng được, và còn phải
  * chờ bao lâu mới được gửi mã mới. Trả null nếu chưa có hoặc đã hết hạn.
  */
@@ -198,32 +211,48 @@ function issue({ purpose, email, username = '' }) {
 
 /**
  * Kiểm tra mã. Đúng thì xoá mã và trả về true, sai thì ném OtpError.
+ *
+ * Toàn bộ "đọc -> so sánh -> tăng số lần sai/xoá mã" nằm trong MỘT transaction ghi.
+ * BEGIN IMMEDIATE của db.transaction khoá ghi ngay từ đầu, nên hai tiến trình
+ * không thể cùng đọc một mã rồi cùng xác thực: mã chỉ dùng được đúng một lần.
  */
 function verify({ purpose, email, code }) {
   const cleanCode = String(code || '').trim().replace(/\s/g, '');
   if (!cleanCode) throw new OtpError('Vui lòng nhập mã xác thực.');
 
-  const row = findRow(purpose, email);
-  if (!row) throw new OtpError('Mã xác thực không đúng hoặc đã hết hạn. Hãy yêu cầu mã mới.');
+  const outcome = db.transaction(() => {
+    const row = findRow(purpose, email);
+    if (!row) {
+      return { error: 'Mã xác thực không đúng hoặc đã hết hạn. Hãy yêu cầu mã mới.' };
+    }
 
-  if (Date.now() > toMs(row.expires_at)) {
-    clear(purpose, email);
-    throw new OtpError('Mã xác thực đã hết hạn. Hãy yêu cầu mã mới.');
-  }
+    if (Date.now() > toMs(row.expires_at)) {
+      db.prepare('DELETE FROM email_otps WHERE id = ?').run(row.id);
+      return { error: 'Mã xác thực đã hết hạn. Hãy yêu cầu mã mới.' };
+    }
 
-  if (row.attempts >= MAX_ATTEMPTS) {
-    throw new OtpError('Bạn đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.');
-  }
+    if (row.attempts >= MAX_ATTEMPTS) {
+      return { error: 'Bạn đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.' };
+    }
 
-  if (!bcrypt.compareSync(cleanCode, row.code_hash)) {
-    const attempts = row.attempts + 1;
-    db.prepare('UPDATE email_otps SET attempts = ? WHERE id = ?').run(attempts, row.id);
-    const left = MAX_ATTEMPTS - attempts;
-    if (left <= 0) throw new OtpError('Bạn đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.');
-    throw new OtpError(`Mã xác thực không đúng. Bạn còn ${left} lần thử.`);
-  }
+    if (!bcrypt.compareSync(cleanCode, row.code_hash)) {
+      const attempts = row.attempts + 1;
+      db.prepare('UPDATE email_otps SET attempts = ? WHERE id = ?').run(attempts, row.id);
+      const left = MAX_ATTEMPTS - attempts;
+      if (left <= 0) return { error: 'Bạn đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.' };
+      return { error: `Mã xác thực không đúng. Bạn còn ${left} lần thử.` };
+    }
 
-  clear(purpose, email);
+    // Xoá theo id và kiểm tra changes: nếu tiến trình khác vừa dùng mã này trước
+    // (chạy nhiều instance), changes = 0 -> không cho dùng lại.
+    const info = db.prepare('DELETE FROM email_otps WHERE id = ?').run(row.id);
+    if (!info.changes) {
+      return { error: 'Mã xác thực không đúng hoặc đã hết hạn. Hãy yêu cầu mã mới.' };
+    }
+    return { ok: true };
+  });
+
+  if (outcome.error) throw new OtpError(outcome.error);
   return true;
 }
 
@@ -381,7 +410,7 @@ async function issueAndSend({ purpose, email, username = '', name = '' }) {
   return {
     expiresInSeconds,
     resendInSeconds,
-    devCode: mailer.isDevDelivery() ? code : null
+    devCode: devCodeEnabled() && mailer.isDevDelivery() ? code : null
   };
 }
 
@@ -407,6 +436,7 @@ module.exports = {
   allowUnverifiedEmail,
   deliveryAvailable,
   loginOtpEnabled,
+  devCodeEnabled,
   activeInfo,
   issue,
   verify,
