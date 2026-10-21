@@ -260,7 +260,10 @@ router.post('/register', authRateLimit, async (req, res) => {
     if (/UNIQUE|constraint/i.test(String(err.message))) {
       return res.status(409).json({ error: 'Email, tên đăng nhập hoặc số điện thoại này đã được đăng ký.' });
     }
-    throw err;
+    // KHÔNG ném tiếp ra ngoài: đây là handler async, Express 4 không bắt Promise bị
+    // reject nên lỗi sẽ thành unhandled rejection (request treo, tiến trình có thể dừng).
+    console.error('Không tạo được tài khoản:', err.message);
+    return res.status(500).json({ error: 'Không tạo được tài khoản. Vui lòng thử lại sau.' });
   }
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(Number(info.lastInsertRowid));
