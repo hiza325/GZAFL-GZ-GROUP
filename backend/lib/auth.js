@@ -32,7 +32,15 @@ function setAuthCookie(res, user) {
 }
 
 function clearAuthCookie(res) {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  // Truyền cùng thuộc tính với lúc đặt cookie: trình duyệt khớp cookie theo
+  // tên + domain + path, nhưng giữ đồng bộ các cờ (secure/sameSite/httpOnly)
+  // giúp việc xoá chắc chắn qua proxy/TLS và tránh cấu hình lệch nhau.
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    secure: cookieSecure()
+  });
 }
 
 // ------------------------------------------------------------------

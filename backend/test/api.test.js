@@ -636,6 +636,69 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(bad.status, 403);
   });
 
+  await t.test('postback: gửi lại cùng payload nhưng đổi thứ tự tham số vẫn là trùng', async () => {
+    const dup = createUser({ username: 'dup@test.local', email: 'dup@test.local', name: 'Người gửi trùng' });
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: dup.cookie,
+      body: { link: 'https://shopee.vn/p/duplicate-order-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+    const tx = 'TX-DUP-' + Date.now();
+
+    const parts = [
+      `secret=${encodeURIComponent(POSTBACK_SECRET)}`,
+      `transaction_id=${encodeURIComponent(tx)}`,
+      `sub1=gzafl-u${dup.uid}`,
+      `sub2=${encodeURIComponent(code)}`,
+      'status=approved',
+      'reward=100000'
+    ];
+
+    const first = await json('/api/postback/mock?' + parts.join('&'));
+    assert.equal(first.res.status, 200);
+    assert.equal(first.data.duplicate, undefined);
+
+    // Cùng dữ liệu, mạng đổi thứ tự tham số (rất hay xảy ra khi họ gửi lại)
+    const second = await json('/api/postback/mock?' + [...parts].reverse().join('&'));
+    assert.equal(second.res.status, 200);
+    assert.equal(second.data.duplicate, true, 'Đổi thứ tự tham số vẫn phải coi là cùng một payload');
+
+    const orders = await json('/api/orders', { cookie: dup.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(order.networkCommission, 100000, 'Không được cộng dồn thành 200.000');
+  });
+
+  await t.test('postback: mạng không gửi product_id thì sửa kết quả vẫn không cộng dồn', async () => {
+    const noPid = createUser({ username: 'nopid@test.local', email: 'nopid@test.local', name: 'Thiếu product id' });
+    const created = await json('/api/orders', {
+      method: 'POST',
+      cookie: noPid.cookie,
+      body: { link: 'https://shopee.vn/p/no-product-id-test' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.order.id;
+
+    const base =
+      `/api/postback/mock?secret=${encodeURIComponent(POSTBACK_SECRET)}` +
+      `&transaction_id=${encodeURIComponent('TX-NOPID-' + Date.now())}` +
+      `&sub1=gzafl-u${noPid.uid}&sub2=${encodeURIComponent(code)}`;
+
+    const approved = await json(base + '&status=approved&reward=100000');
+    assert.equal(approved.data.status, 'Chờ admin duyệt');
+
+    // Mạng đổi sang từ chối: phải thay thế kết quả cũ, không giữ 100.000
+    const rejected = await json(base + '&status=rejected&reward=100000');
+    assert.equal(rejected.res.status, 200);
+    assert.equal(rejected.data.status, 'Đã huỷ');
+
+    const orders = await json('/api/orders', { cookie: noPid.cookie });
+    const order = (orders.data.orders || []).find((o) => o.id === code);
+    assert.equal(order.networkCommission, 0);
+    assert.equal(order.commission, 0);
+  });
+
   await t.test('postback: đọc đúng số tiền định dạng Việt Nam', async () => {
     const spender = createUser({
       username: 'money@test.local',

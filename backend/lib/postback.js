@@ -208,11 +208,16 @@ function totalsFor(order) {
   // Mỗi sản phẩm có thể được mạng báo nhiều lần (pending -> approved -> rejected).
   // Chỉ lấy log MỚI NHẤT của từng sản phẩm, nếu không thì một đơn bị huỷ vẫn còn
   // cộng dồn khoản approved cũ và không thể thu hồi hoa hồng.
+  //
+  // item_key: ưu tiên product_id/conversion_id. Nếu mạng không gửi hai mã này thì
+  // gom theo transaction_id (mỗi giao dịch là một "món"), để bản ghi gửi lại chỉ
+  // thay thế bản cũ thay vì cộng dồn thành hai khoản.
   const row = db
     .prepare(
       `WITH relevant AS (
          SELECT id, network_status, reward,
-                COALESCE(NULLIF(product_id, ''), NULLIF(conversion_id, ''), 'log:' || id) AS item_key
+                COALESCE(NULLIF(product_id, ''), NULLIF(conversion_id, ''),
+                         NULLIF(transaction_id, ''), 'log:' || id) AS item_key
          FROM postback_logs
          WHERE order_code = ?
            AND action != 'Từ chối'
@@ -250,9 +255,15 @@ function cashbackRate() {
 ========================================== */
 
 function hashPayload(parsed) {
-  // Tham số đã sắp xếp theo tên nên thứ tự mạng gửi không ảnh hưởng kết quả
+  // Sắp xếp cả object LẪN mảng `values`: mạng có thể gửi lại đúng một payload
+  // nhưng đổi thứ tự tham số trên query. Chỉ sắp xếp tên key là chưa đủ, vì
+  // `values` giữ nguyên thứ tự tham số -> hash khác -> bị coi là postback mới
+  // và cộng tiền lần hai.
   const sorted = {};
-  for (const key of Object.keys(parsed).sort()) sorted[key] = parsed[key];
+  for (const key of Object.keys(parsed).sort()) {
+    const value = parsed[key];
+    sorted[key] = Array.isArray(value) ? value.map((item) => String(item)).sort() : value;
+  }
   return crypto.createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
 }
 
