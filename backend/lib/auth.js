@@ -82,6 +82,20 @@ function requireAuth(req, res, next) {
   const row = loadUser(req);
   if (!row) return res.status(401).json({ error: 'Phiên đăng nhập đã hết hạn.' });
 
+  // Tài khoản đang bị admin tạm giữ để xem xét cảnh báo bảo mật:
+  // chặn cả phiên đã đăng nhập trước đó, không chỉ chặn đăng nhập mới.
+  const holdMs = row.security_hold_until ? Date.parse(row.security_hold_until) : NaN;
+  if (Number.isFinite(holdMs) && holdMs > Date.now()) {
+    return res.status(423).json({
+      error:
+        'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
+        new Date(holdMs).toLocaleString('vi-VN') +
+        '. Vui lòng liên hệ bộ phận hỗ trợ.',
+      code: 'security_hold',
+      heldUntil: new Date(holdMs).toISOString()
+    });
+  }
+
   req.user = row;
   next();
 }

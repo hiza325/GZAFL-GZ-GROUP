@@ -112,12 +112,19 @@ function toWithdrawal(row) {
    (kèm thông tin người dùng, không bao giờ trả password_hash)
 ========================================== */
 
+function isFuture(value) {
+  if (!value) return false;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) && ms > Date.now();
+}
+
 function toAdminUser(row) {
   if (!row) return null;
   const commission = Number(row.commission_total) || 0;
   const withdrawn = Number(row.withdrawn_total) || 0;
   const pendingApproval = Number(row.pending_approval_total) || 0;
   const balance = commission - withdrawn;
+  const holdUntil = isFuture(row.security_hold_until) ? row.security_hold_until : null;
   return {
     id: row.id,
     username: row.username,
@@ -138,7 +145,10 @@ function toAdminUser(row) {
     withdrawn,
     balance,
     debt: Math.max(0, -balance),
-    clawback: Number(row.clawback_total) || 0
+    clawback: Number(row.clawback_total) || 0,
+    // Tạm giữ do admin đặt để xem xét cảnh báo bảo mật (không phải khóa vĩnh viễn)
+    securityHoldUntil: holdUntil,
+    securityHeld: Boolean(holdUntil)
   };
 }
 
@@ -298,6 +308,48 @@ function toAdminPasswordReset(row) {
   };
 }
 
+/**
+ * Cảnh báo bảo mật cho trang quản trị (xem lib/securityAlerts.js).
+ * Không chứa mật khẩu, mã OTP hay token.
+ */
+function toAdminSecurityAlert(row) {
+  if (!row) return null;
+  const holdUntil = isFuture(row.security_hold_until) ? row.security_hold_until : null;
+  return {
+    id: row.id,
+    kind: row.kind || 'login_failures',
+    severity: row.severity || 'warning',
+    username: row.username || '',
+    userId: row.user_id || null,
+    user: row.user_id
+      ? {
+          id: row.user_id,
+          name: row.user_name || '(đã xoá)',
+          username: row.user_username || '',
+          email: row.user_email || '',
+          role: row.user_role || 'user'
+        }
+      : null,
+    ip: row.ip || '',
+    userAgent: row.user_agent || '',
+    detail: row.detail || '',
+    eventCount: Number(row.event_count) || 1,
+    status: row.status || 'new',
+    createdAt: row.created_at,
+    date: formatDateTime(row.created_at),
+    lastSeenAt: row.last_seen_at,
+    lastSeenDate: formatDateTime(row.last_seen_at),
+    lastSuccessAt: row.last_success_at || null,
+    lastSuccessDate: row.last_success_at ? formatDateTime(row.last_success_at) : '',
+    resolvedAt: row.resolved_at || null,
+    resolvedDate: row.resolved_at ? formatDateTime(row.resolved_at) : '',
+    resolvedBy: row.resolved_by || null,
+    resolutionNote: row.resolution_note || '',
+    securityHoldUntil: holdUntil,
+    securityHeld: Boolean(holdUntil)
+  };
+}
+
 module.exports = {
   toUser,
   toOrder,
@@ -309,5 +361,6 @@ module.exports = {
   toAdminReferral,
   toAdminPasswordReset,
   toAdminAudit,
-  toAdminPostback
+  toAdminPostback,
+  toAdminSecurityAlert
 };

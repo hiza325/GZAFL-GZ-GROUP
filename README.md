@@ -105,6 +105,11 @@ Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn
 | `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB` |
 | `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email** |
 | `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
+| `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ bên dưới thì tạo cảnh báo cho admin. **Không tự khóa tài khoản** |
+| `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm số lần đăng nhập sai (phút) |
+| `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = chỉ cảnh báo, admin tự quyết định (khuyến nghị). `24` = tự tạm giữ tài khoản 24 giờ sau ngưỡng cảnh báo; admin vẫn bỏ tạm giữ được. Tối đa `168` |
+| `SECURITY_STEP_UP` | `on` | Khi tài khoản có cảnh báo chưa xử lý, lần đăng nhập đúng mật khẩu tiếp theo phải nhập thêm OTP (nếu có email và gửi được thư). Đặt `off` để tắt |
+| `SECURITY_STEP_UP_HOURS` | `24` | Cảnh báo còn hiệu lực bao lâu thì vẫn yêu cầu OTP bổ sung |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Máy chủ gửi thư dùng cho mã xác thực. Bỏ trống `SMTP_SECURE` thì tự suy ra (`true` khi cổng `465`) |
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail thì dùng *Mật khẩu ứng dụng* 16 ký tự) |
 | `MAIL_FROM`, `MAIL_FROM_NAME` | theo `SMTP_USER`, tên `GZ AFL` | Địa chỉ và tên người gửi hiện trên thư |
@@ -235,6 +240,15 @@ Riêng bước xác thực **khi đăng nhập** có công tắc riêng là `LOG
 
 > **Lưu ý về hạn mức gửi thư**: mỗi lần đăng nhập tốn 1 email. Gmail cá nhân chỉ cho ~**500 thư/ngày** (Brevo miễn phí ~300/ngày). Nếu số lượt đăng nhập mỗi ngày lớn, hãy chuyển sang dịch vụ gửi thư chuyên dụng hoặc đặt `LOGIN_OTP=off`.
 
+### Cảnh báo bảo mật khi đăng nhập sai
+
+Hệ thống **không tự khóa vĩnh viễn tài khoản** khi có nhiều lần đăng nhập sai. Sau `SECURITY_ALERT_THRESHOLD` lần sai trong `SECURITY_ALERT_WINDOW_MINUTES` phút:
+
+- Tạo một **cảnh báo bảo mật** trong **Quản trị → Bảo mật** (có huy hiệu đỏ). Cảnh báo gộp các lần sai liên tiếp, ghi tên đăng nhập, IP gần nhất và thời điểm.
+- Nếu `SECURITY_STEP_UP=on` và tài khoản có email/gửi được thư, lần đăng nhập **đúng mật khẩu** tiếp theo sẽ yêu cầu thêm OTP. Đây là xác thực bổ sung, không phải khóa.
+- Admin có thể **Đã xử lý**, **Tạm giữ 24h**, hoặc **Bỏ tạm giữ**. Tạm giữ chặn cả đăng nhập mới và phiên đang mở; hết hạn tự mở.
+- Mặc định `SECURITY_AUTO_HOLD_HOURS=0`: chỉ cảnh báo. Nếu muốn hệ thống tự tạm giữ sau ngưỡng, đặt `24`; không áp dụng cho tài khoản admin.
+
 ### Cấu hình gửi thư
 
 Điền vào `backend/.env` — mẫu có sẵn trong `backend/.env.example`. Với Gmail: bật xác thực 2 lớp rồi tạo **Mật khẩu ứng dụng** 16 ký tự và dùng nó làm `SMTP_PASS`.
@@ -358,6 +372,11 @@ Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. N
 | GET | `/api/admin/users` | Danh sách người dùng (`q`, `limit`, `offset`) |
 | PATCH | `/api/admin/users/:id` | Đổi `{ role, points }` |
 | DELETE | `/api/admin/users/:id` | Xoá người dùng (xoá kèm đơn hàng/lệnh rút/lịch sử giới thiệu) |
+| GET | `/api/admin/security-alerts` | Cảnh báo bảo mật (`status` = `new`/`resolved`/`all`, `q`, `limit`, `offset`) |
+| POST | `/api/admin/security-alerts/:id/resolve` | Đánh dấu cảnh báo đã xử lý `{ note }` |
+| POST | `/api/admin/security-alerts/:id/hold` | Tạm giữ tài khoản gắn với cảnh báo `{ hours }` (mặc định 24) |
+| POST | `/api/admin/users/:id/security-hold` | Tạm giữ tài khoản trực tiếp `{ hours }` |
+| DELETE | `/api/admin/users/:id/security-hold` | Bỏ tạm giữ tài khoản |
 | GET | `/api/admin/orders` | Danh sách đơn hàng (`status`, `q`, `limit`, `offset`) |
 | PATCH | `/api/admin/orders/:code` | Đổi `{ status, commission }` |
 | GET | `/api/admin/withdrawals` | Danh sách lệnh rút tiền (`status`, `q`, `limit`, `offset`) |
@@ -440,7 +459,7 @@ Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp
 
 | Bảng | Nội dung |
 |---|---|
-| `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, thông tin nhận tiền |
+| `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, `security_hold_until` (admin tạm giữ), thông tin nhận tiền |
 | `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng (dự kiến khi chờ admin duyệt, chính thức khi đã duyệt), `commission_reversed` (hoa hồng đã thu hồi), `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
 | `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
 | `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
@@ -448,6 +467,8 @@ Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp
 | `password_resets` | Yêu cầu khôi phục mật khẩu gửi cho quản trị viên (đường dự phòng): người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
 | `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email` / `login`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
 | `postback_logs` | **Nhật ký báo cáo chuyển đổi** từ mạng affiliate: lưu **nguyên tham số thô** trước khi xử lý, mã giao dịch/sản phẩm, hoa hồng mạng báo, trạng thái bên mạng, `sub_id`, người dùng/đơn đã khớp, kết quả xử lý, số lần mạng gửi lại (`dup_count`), IP. Có khoá duy nhất trên `payload_hash` để chống xử lý trùng |
+| `login_failures` | Từng lần đăng nhập sai (tên đăng nhập, IP, thiết bị, thời điểm) — chỉ để đếm và tạo cảnh báo, **không dùng để khóa tài khoản**. Tự xoá sau 30 ngày |
+| `security_alerts` | Cảnh báo bảo mật gộp cho admin: tên đăng nhập, người dùng (nếu có), IP, số lần sai, trạng thái `new`/`resolved`, ghi chú xử lý, lần đăng nhập đúng gần nhất. Không dùng khoá ngoại để giữ lại cảnh báo khi xoá người dùng |
 
 `db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
 
@@ -477,13 +498,14 @@ Nếu khách **chưa có email trong tài khoản**, hoặc email sai, hoặc h�
 
 `quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
 
-Trang quản trị gồm 6 tab:
+Trang quản trị gồm 8 tab:
 
 | Tab | Việc làm được |
 |---|---|
 | **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (chỉ cộng ví khi admin duyệt); thấy rõ **chờ admin duyệt** / **đã cộng ví** / **đã thu hồi**; huỷ đơn sẽ ghi nhận thu hồi nếu trước đó đã cộng ví |
 | **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng**, **khoản nợ** và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
 | **Người dùng** | Xem điểm, số đơn, hoa hồng, **chờ duyệt**, đã rút, số dư/nợ; sửa vai trò và điểm thưởng; xoá người dùng |
+| **Bảo mật** | Xem cảnh báo đăng nhập sai (gộp số lần, IP, thời điểm); đánh dấu **Đã xử lý**; **Tạm giữ 24h** hoặc **Bỏ tạm giữ**. Hệ thống không tự khóa vĩnh viễn tài khoản |
 | **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
 | **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
 | **Đối soát** | Nhật ký mọi lần mạng affiliate báo chuyển đổi: lọc theo trạng thái mạng (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) và theo kết quả (`đã khớp đơn` / `chưa hoặc chỉ khớp tạm` / `bị từ chối`); xem **tham số thô** mạng gửi (nút **Thô**) và bấm **Xử lý lại** cho log về trước lúc đơn được tạo. Huy hiệu số trên tab là số lần postback **cần người xem lại** (chưa khớp được đơn, hoặc chỉ khớp tạm). Tiền của các lần gọi sai chìa khoá **không** được tính vào thống kê hoa hồng |

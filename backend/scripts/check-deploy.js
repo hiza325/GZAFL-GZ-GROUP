@@ -91,6 +91,41 @@ function isTruthy(value) {
 })();
 
 /* ==========================================
+   2b. Cảnh báo bảo mật / tạm giữ tài khoản
+   ========================================== */
+(function checkSecurityAlerts() {
+  const threshold = Number(envText('SECURITY_ALERT_THRESHOLD') || 10);
+  if (!Number.isInteger(threshold) || threshold < 1 || threshold > 1000) {
+    fail('SECURITY_ALERT_THRESHOLD phải là số nguyên từ 1 đến 1000.');
+  } else {
+    pass(`Cảnh báo sau ${threshold} lần đăng nhập sai`);
+  }
+
+  const windowMinutes = Number(envText('SECURITY_ALERT_WINDOW_MINUTES') || 15);
+  if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > 1440) {
+    fail('SECURITY_ALERT_WINDOW_MINUTES phải là số nguyên từ 1 đến 1440.');
+  } else {
+    pass(`Cửa sổ cảnh báo ${windowMinutes} phút`);
+  }
+
+  const autoHold = Number(envText('SECURITY_AUTO_HOLD_HOURS') || 0);
+  if (!Number.isInteger(autoHold) || autoHold < 0 || autoHold > 168) {
+    fail('SECURITY_AUTO_HOLD_HOURS phải là số nguyên từ 0 đến 168.');
+  } else if (autoHold === 0) {
+    pass('Không tự khóa tài khoản: chỉ cảnh báo admin xem xét');
+  } else {
+    warn(`SECURITY_AUTO_HOLD_HOURS=${autoHold}: hệ thống tự tạm giữ tài khoản sau ngưỡng cảnh báo.`);
+  }
+
+  const stepUp = (envText('SECURITY_STEP_UP') || 'on').toLowerCase();
+  if (stepUp === 'off' || stepUp === 'false' || stepUp === '0') {
+    warn('SECURITY_STEP_UP=off: không yêu cầu OTP bổ sung khi tài khoản có cảnh báo bảo mật.');
+  } else {
+    pass('Cảnh báo bảo mật sẽ yêu cầu OTP bổ sung ở lần đăng nhập tiếp theo (nếu gửi được thư)');
+  }
+})();
+
+/* ==========================================
    3. HTTPS / reverse proxy
    ========================================== */
 (function checkHttps() {

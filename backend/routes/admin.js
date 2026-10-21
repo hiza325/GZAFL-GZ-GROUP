@@ -15,6 +15,11 @@
  *  GET    /api/admin/postbacks           Nhật ký postback từ mạng affiliate (q, status, only, limit, offset)
  *  POST   /api/admin/postbacks/:id/reapply  Xử lý lại một log postback
  *  GET    /api/admin/audit-logs          Nhật ký thao tác của quản trị viên (limit, offset)
+ *  GET    /api/admin/security-alerts     Cảnh báo bảo mật (status, q, limit, offset)
+ *  POST   /api/admin/security-alerts/:id/resolve  Đánh dấu cảnh báo đã xử lý
+ *  POST   /api/admin/security-alerts/:id/hold     Tạm giữ tài khoản liên quan
+ *  POST   /api/admin/users/:id/security-hold      Tạm giữ tài khoản trực tiếp
+ *  DELETE /api/admin/users/:id/security-hold      Bỏ tạm giữ
  */
 
 const express = require('express');
@@ -29,7 +34,8 @@ const {
   toAdminReferral,
   toAdminPasswordReset,
   toAdminAudit,
-  toAdminPostback
+  toAdminPostback,
+  toAdminSecurityAlert
 } = require('../lib/serialize');
 const { formatMoney } = require('../lib/format');
 const {
@@ -48,6 +54,7 @@ const { UPLOAD_DIR } = require('../lib/uploads');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
 const { creditedCondition, reversedExpr, isCredited, computeUserMoney } = require('../lib/money');
+const securityAlerts = require('../lib/securityAlerts');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -202,6 +209,14 @@ router.get('/overview', (req, res) => {
     )
     .get();
 
+  const security = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0) AS open
+       FROM security_alerts`
+    )
+    .get();
+
   const totalCommission = Number(orders.commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
 
@@ -238,6 +253,10 @@ router.get('/overview', (req, res) => {
       total: Number(postbacks.total) || 0,
       unmatched: Number(postbacks.unmatched) || 0,
       pendingAmount: Number(postbacks.pending_amount) || 0
+    },
+    securityAlerts: {
+      total: Number(security.total) || 0,
+      open: Number(security.open) || 0
     },
     money: {
       totalCommission,
@@ -380,6 +399,164 @@ router.delete('/users/:id', (req, res) => {
   logAudit(req, 'Xoá người dùng', 'user', target.username || id, `${target.name || ''} (${target.role})`);
 
   return res.json({ ok: true, id });
+});
+
+/* ==========================================
+   Cảnh báo bảo mật
+
+   Hệ thống KHÔNG tự khóa tài khoản khi có nhiều lần đăng nhập sai.
+   Nó chỉ ghi cảnh báo để admin xem xét. Admin có thể:
+     - Đánh dấu cảnh báo đã xử lý.
+     - Tạm giữ tài khoản 24 giờ (hoặc số giờ tự chọn) nếu thấy đáng ngờ.
+     - Bỏ tạm giữ bất cứ lúc nào.
+========================================== */
+
+const SECURITY_ALERT_STATUSES = ['new', 'resolved', 'all'];
+
+function findSecurityAlertById(id) {
+  return db
+    .prepare(
+      `SELECT a.*, u.name AS user_name, u.username AS user_username,
+              u.email AS user_email, u.role AS user_role, u.security_hold_until
+         FROM security_alerts a
+         LEFT JOIN users u ON u.id = a.user_id
+        WHERE a.id = ?`
+    )
+    .get(id);
+}
+
+router.get('/security-alerts', (req, res) => {
+  const status = String(req.query.status || 'new').trim().toLowerCase();
+  const q = String(req.query.q || '').trim();
+  const { limit, offset } = readPaging(req.query);
+
+  if (!SECURITY_ALERT_STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Trạng thái cảnh báo không hợp lệ.' });
+  }
+
+  const conditions = [];
+  const params = [];
+  if (status !== 'all') {
+    conditions.push('a.status = ?');
+    params.push(status);
+  }
+  if (q) {
+    const like = '%' + q + '%';
+    conditions.push(
+      '(a.username LIKE ? OR a.ip LIKE ? OR a.detail LIKE ? OR u.name LIKE ? OR u.username LIKE ?)'
+    );
+    params.push(like, like, like, like, like);
+  }
+
+  const whereSql = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  const joinSql = 'FROM security_alerts a LEFT JOIN users u ON u.id = a.user_id';
+
+  const total = Number(db.prepare(`SELECT COUNT(*) AS c ${joinSql} ${whereSql}`).get(...params).c) || 0;
+  const stats = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END), 0) AS open
+         FROM security_alerts`
+    )
+    .get();
+
+  const rows = db
+    .prepare(
+      `SELECT a.*, u.name AS user_name, u.username AS user_username,
+              u.email AS user_email, u.role AS user_role, u.security_hold_until
+         ${joinSql}
+         ${whereSql}
+         ORDER BY CASE WHEN a.status = 'new' THEN 0 ELSE 1 END, a.last_seen_at DESC
+         LIMIT ? OFFSET ?`
+    )
+    .all(...params, limit, offset);
+
+  return res.json({
+    total,
+    limit,
+    offset,
+    stats: {
+      total: Number(stats.total) || 0,
+      open: Number(stats.open) || 0
+    },
+    alerts: rows.map(toAdminSecurityAlert)
+  });
+});
+
+router.post('/security-alerts/:id/resolve', (req, res) => {
+  const id = Number(req.params.id);
+  const alert = findSecurityAlertById(id);
+  if (!alert) return res.status(404).json({ error: 'Không tìm thấy cảnh báo.' });
+  if (alert.status === 'resolved') {
+    return res.status(409).json({ error: 'Cảnh báo này đã được xử lý trước đó.' });
+  }
+
+  const note = String((req.body && req.body.note) || '').trim();
+  securityAlerts.resolve(id, req.user.id, note);
+  logAudit(
+    req,
+    'Xử lý cảnh báo bảo mật',
+    'security-alert',
+    id,
+    note || `tài khoản ${alert.username || '#' + (alert.user_id || '?')}`
+  );
+
+  return res.json({ ok: true, alert: toAdminSecurityAlert(findSecurityAlertById(id)) });
+});
+
+// Tạm giữ một tài khoản (mặc định 24 giờ). Chỉ admin gọi được.
+function applySecurityHold(req, res, userId, hours) {
+  const id = Number(userId);
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+  if (target.id === req.user.id) {
+    return res.status(400).json({ error: 'Bạn không thể tự tạm giữ tài khoản của chính mình.' });
+  }
+  if (target.role === 'admin') {
+    return res.status(400).json({ error: 'Không tạm giữ tài khoản quản trị viên. Hãy đổi quyền trước nếu cần.' });
+  }
+
+  const heldUntil = securityAlerts.setHold(id, hours);
+  if (!heldUntil) return res.status(400).json({ error: 'Không đặt được tạm giữ cho tài khoản này.' });
+
+  logAudit(
+    req,
+    'Tạm giữ tài khoản',
+    'user',
+    target.username || id,
+    `đến ${new Date(heldUntil).toLocaleString('vi-VN')}`
+  );
+
+  return res.json({ ok: true, userId: id, heldUntil });
+}
+
+router.post('/security-alerts/:id/hold', (req, res) => {
+  const id = Number(req.params.id);
+  const alert = findSecurityAlertById(id);
+  if (!alert) return res.status(404).json({ error: 'Không tìm thấy cảnh báo.' });
+  if (!alert.user_id) {
+    return res.status(400).json({
+      error: 'Cảnh báo này không gắn với tài khoản nào (có thể tên đăng nhập không tồn tại), nên không thể tạm giữ.'
+    });
+  }
+  const hours = (req.body && req.body.hours) || 24;
+  return applySecurityHold(req, res, alert.user_id, hours);
+});
+
+router.post('/users/:id/security-hold', (req, res) => {
+  const hours = (req.body && req.body.hours) || 24;
+  return applySecurityHold(req, res, req.params.id, hours);
+});
+
+router.delete('/users/:id/security-hold', (req, res) => {
+  const id = Number(req.params.id);
+  const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'Không tìm thấy người dùng.' });
+
+  securityAlerts.clearHold(id);
+  logAudit(req, 'Bỏ tạm giữ tài khoản', 'user', target.username || id, '');
+
+  return res.json({ ok: true, userId: id });
 });
 
 /* ==========================================

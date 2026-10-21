@@ -10,7 +10,7 @@
   'use strict';
 
   const PAGE_SIZE = 50;
-  const TABS = ['orders', 'withdrawals', 'users', 'referrals', 'password-resets', 'postbacks', 'audit'];
+  const TABS = ['orders', 'withdrawals', 'users', 'security', 'referrals', 'password-resets', 'postbacks', 'audit'];
   const RESET_PENDING = 'Chờ xử lý';
 
   const state = {
@@ -18,6 +18,15 @@
     orders: { items: [], total: 0, q: '', status: '', offset: 0, loading: false },
     withdrawals: { items: [], total: 0, q: '', status: '', offset: 0, loading: false },
     users: { items: [], total: 0, q: '', offset: 0, loading: false },
+    security: {
+      items: [],
+      total: 0,
+      q: '',
+      status: 'new',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, open: 0 }
+    },
     referrals: { items: [], total: 0, offset: 0, loading: false },
     resets: { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false },
     postbacks: {
@@ -154,6 +163,17 @@
 
     renderResetBadge(data.passwordResets ? data.passwordResets.pending : 0);
     renderPostbackBadge(data.postbacks ? data.postbacks.unmatched : 0);
+    renderSecurityBadge(data.securityAlerts ? data.securityAlerts.open : 0);
+  }
+
+  // Huy hiệu đỏ trên tab "Bảo mật" khi còn cảnh báo chưa xử lý
+  function renderSecurityBadge(open) {
+    const badge = document.getElementById('adm-security-badge');
+    if (!badge) return;
+    const count = Number(open) || 0;
+    badge.innerText = String(count);
+    badge.classList.toggle('hidden', count === 0);
+    badge.classList.toggle('flex', count > 0);
   }
 
   // Huy hiệu đỏ trên tab "Khôi phục mật khẩu" khi còn yêu cầu chờ xử lý
@@ -540,7 +560,14 @@
             </div>
           </div>
         </td>
-        <td class="px-3 py-3">${roleBadge(u.role)}</td>
+        <td class="px-3 py-3">
+          ${roleBadge(u.role)}
+          ${
+            u.securityHeld
+              ? '<div class="mt-1"><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">Tạm giữ</span></div>'
+              : ''
+          }
+        </td>
         <td class="px-3 py-3 font-semibold text-slate-700">${u.points}</td>
         <td class="px-3 py-3 text-slate-600">${u.orderCount} <span class="text-xs text-slate-400">(${u.pendingCount} chờ)</span></td>
         <td class="px-3 py-3 font-semibold text-emerald-600">${formatCurrency(u.commission)}</td>
@@ -1140,6 +1167,195 @@
   }
 
   /* ==========================================
+     Cảnh báo bảo mật
+
+     Hệ thống chỉ cảnh báo khi có nhiều lần đăng nhập sai; KHÔNG tự khóa
+     vĩnh viễn tài khoản. Admin có thể đánh dấu đã xử lý, tạm giữ 24 giờ
+     hoặc bỏ tạm giữ.
+  ========================================== */
+
+  async function loadSecurityAlerts({ reset = false } = {}) {
+    const s = state.security;
+    if (s.loading) return;
+    if (reset) {
+      s.offset = 0;
+      s.items = [];
+    }
+    s.loading = true;
+
+    const params = new URLSearchParams({
+      status: s.status || 'new',
+      limit: String(PAGE_SIZE),
+      offset: String(s.offset)
+    });
+    if (s.q) params.set('q', s.q);
+
+    try {
+      const data = await api('/admin/security-alerts?' + params.toString());
+      s.total = data.total || 0;
+      s.items = reset ? data.alerts || [] : s.items.concat(data.alerts || []);
+      s.offset = s.items.length;
+      s.stats = data.stats || { total: 0, open: 0 };
+      renderSecurityAlerts();
+      renderSecurityBadge(s.stats.open);
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      s.loading = false;
+    }
+  }
+
+  function securitySeverityBadge(severity) {
+    return severity === 'critical'
+      ? '<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-50 text-rose-600 border-rose-100">Nghiêm trọng</span>'
+      : '<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-100">Cần xem xét</span>';
+  }
+
+  function securityHoldText(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN');
+  }
+
+  function renderSecurityAlerts() {
+    const box = document.getElementById('adm-security-list');
+    if (!box) return;
+    const { items, total, stats } = state.security;
+
+    box.innerHTML = items
+      .map((a) => {
+        const userLine = a.user
+          ? `<div class="font-semibold text-slate-700">${escapeHtml(a.user.name)}
+               <span class="text-xs font-normal text-slate-400">${escapeHtml(a.user.username || a.user.email || '')}</span>
+             </div>`
+          : `<div class="font-semibold text-slate-600">${escapeHtml(a.username || 'Không rõ')}</div>
+             <div class="text-[11px] text-slate-400">Tên đăng nhập không tồn tại hoặc tài khoản đã bị xoá</div>`;
+
+        const held = a.securityHeld
+          ? `<span class="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full">
+               <i data-lucide="lock" class="w-3 h-3"></i> Tạm giữ đến ${escapeHtml(securityHoldText(a.securityHoldUntil))}
+             </span>`
+          : '';
+
+        const statusBadge =
+          a.status === 'new'
+            ? '<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-100">Chưa xử lý</span>'
+            : '<span class="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border bg-emerald-50 text-emerald-600 border-emerald-100">Đã xử lý</span>';
+
+        const successLine = a.lastSuccessDate
+          ? `<div class="text-[11px] text-emerald-600 mt-1">Có đăng nhập đúng mật khẩu lúc ${escapeHtml(a.lastSuccessDate)}</div>`
+          : '';
+
+        const resolvedLine = a.resolvedDate
+          ? `<div class="text-[11px] text-slate-400 mt-1">Xử lý lúc ${escapeHtml(a.resolvedDate)}${
+              a.resolutionNote ? ` — ${escapeHtml(a.resolutionNote)}` : ''
+            }</div>`
+          : '';
+
+        const actions = [];
+        if (a.status === 'new') {
+          actions.push(
+            actionButton('data-adm-security-resolve', a.id, 'Đã xử lý', 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100')
+          );
+        }
+        if (a.userId && !a.securityHeld && (!a.user || a.user.role !== 'admin')) {
+          actions.push(
+            actionButton('data-adm-security-hold', a.id, 'Tạm giữ 24h', 'text-amber-700 bg-amber-50 hover:bg-amber-100')
+          );
+        }
+        if (a.userId && a.securityHeld) {
+          actions.push(
+            actionButton('data-adm-security-unlock', a.userId, 'Bỏ tạm giữ', 'text-slate-600 bg-slate-100 hover:bg-slate-200')
+          );
+        }
+
+        return `
+      <div class="p-4 rounded-2xl border border-slate-100 bg-slate-50/40">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              ${securitySeverityBadge(a.severity)}
+              ${statusBadge}
+              ${held}
+            </div>
+            <div class="mt-2">${userLine}</div>
+            <div class="text-sm text-slate-600 mt-1 break-words">${escapeHtml(a.detail || '')}</div>
+            <div class="text-[11px] text-slate-400 mt-1">
+              ${a.eventCount > 1 ? `Gộp ${a.eventCount} lần • ` : ''}
+              Gần nhất ${escapeHtml(a.lastSeenDate || a.date || '')}
+              ${a.ip ? ` • IP ${escapeHtml(a.ip)}` : ''}
+            </div>
+            ${successLine}
+            ${resolvedLine}
+          </div>
+          <div class="flex sm:flex-col items-center sm:items-end gap-2 shrink-0 flex-wrap">
+            ${actions.join(' ')}
+          </div>
+        </div>
+      </div>`;
+      })
+      .join('');
+
+    toggleEmpty('adm-security-empty', items.length === 0);
+    const openText = stats && stats.open ? ` • ${stats.open} chưa xử lý` : '';
+    setText('adm-security-count', `${total} cảnh báo${openText}`);
+    toggleMore('adm-security-more', items.length < total);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  async function resolveSecurityAlert(id, button) {
+    if (!window.confirm('Đánh dấu cảnh báo bảo mật này là đã xử lý?')) return;
+    setBusy(button, true);
+    try {
+      await api(`/admin/security-alerts/${encodeURIComponent(id)}/resolve`, {
+        method: 'POST',
+        body: { note: '' }
+      });
+      showToast('Đã đánh dấu cảnh báo là đã xử lý.', 'success');
+      await Promise.all([loadSecurityAlerts({ reset: true }), loadOverview()]);
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function holdSecurityAlert(id, button) {
+    if (!window.confirm('Tạm giữ tài khoản này 24 giờ để xem xét? Người dùng sẽ không đăng nhập được trong thời gian đó.')) {
+      return;
+    }
+    setBusy(button, true);
+    try {
+      const data = await api(`/admin/security-alerts/${encodeURIComponent(id)}/hold`, {
+        method: 'POST',
+        body: { hours: 24 }
+      });
+      showToast('Đã tạm giữ tài khoản đến ' + securityHoldText(data.heldUntil) + '.', 'success');
+      await Promise.all([loadSecurityAlerts({ reset: true }), loadOverview()]);
+      if (state.users.items.length) loadUsers({ reset: true });
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function unlockSecurityUser(userId, button) {
+    if (!window.confirm('Bỏ tạm giữ cho tài khoản này?')) return;
+    setBusy(button, true);
+    try {
+      await api(`/admin/users/${encodeURIComponent(userId)}/security-hold`, { method: 'DELETE' });
+      showToast('Đã bỏ tạm giữ tài khoản.', 'success');
+      await Promise.all([loadSecurityAlerts({ reset: true }), loadOverview()]);
+      if (state.users.items.length) loadUsers({ reset: true });
+    } catch (err) {
+      handleApiError(err);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  /* ==========================================
      Tab
   ========================================== */
 
@@ -1165,6 +1381,7 @@
       if (tab === 'orders' && state.orders.items.length === 0) loadOrders({ reset: true });
       else if (tab === 'withdrawals' && state.withdrawals.items.length === 0) loadWithdrawals({ reset: true });
       else if (tab === 'users' && state.users.items.length === 0) loadUsers({ reset: true });
+      else if (tab === 'security' && state.security.items.length === 0) loadSecurityAlerts({ reset: true });
       else if (tab === 'referrals' && state.referrals.items.length === 0) loadReferrals({ reset: true });
       else if (tab === 'password-resets' && state.resets.items.length === 0) loadResets({ reset: true });
       else if (tab === 'postbacks' && state.postbacks.items.length === 0) loadPostbacks({ reset: true });
@@ -1231,6 +1448,27 @@
         return;
       }
 
+      const resolveSecurityBtn = event.target.closest('[data-adm-security-resolve]');
+      if (resolveSecurityBtn) {
+        event.preventDefault();
+        resolveSecurityAlert(resolveSecurityBtn.dataset.admSecurityResolve, resolveSecurityBtn);
+        return;
+      }
+
+      const holdSecurityBtn = event.target.closest('[data-adm-security-hold]');
+      if (holdSecurityBtn) {
+        event.preventDefault();
+        holdSecurityAlert(holdSecurityBtn.dataset.admSecurityHold, holdSecurityBtn);
+        return;
+      }
+
+      const unlockSecurityBtn = event.target.closest('[data-adm-security-unlock]');
+      if (unlockSecurityBtn) {
+        event.preventDefault();
+        unlockSecurityUser(unlockSecurityBtn.dataset.admSecurityUnlock, unlockSecurityBtn);
+        return;
+      }
+
       const rawBtn = event.target.closest('[data-adm-pb-raw]');
       if (rawBtn) {
         event.preventDefault();
@@ -1252,6 +1490,7 @@
       if (event.target.closest('#adm-orders-more')) return loadOrders();
       if (event.target.closest('#adm-wd-more')) return loadWithdrawals();
       if (event.target.closest('#adm-users-more')) return loadUsers();
+      if (event.target.closest('#adm-security-more')) return loadSecurityAlerts();
       if (event.target.closest('#adm-ref-more')) return loadReferrals();
       if (event.target.closest('#adm-reset-more')) return loadResets();
       if (event.target.closest('#adm-pb-more')) return loadPostbacks();
@@ -1270,6 +1509,7 @@
         'adm-orders-search': ['orders', 'q'],
         'adm-wd-search': ['withdrawals', 'q'],
         'adm-users-search': ['users', 'q'],
+        'adm-security-search': ['security', 'q'],
         'adm-pb-search': ['postbacks', 'q'],
         'adm-audit-search': ['audit', 'q']
       };
@@ -1283,6 +1523,7 @@
       searchTimer = setTimeout(() => {
         if (bucket === 'orders') loadOrders({ reset: true });
         else if (bucket === 'withdrawals') loadWithdrawals({ reset: true });
+        else if (bucket === 'security') loadSecurityAlerts({ reset: true });
         else if (bucket === 'postbacks') loadPostbacks({ reset: true });
         else if (bucket === 'audit') loadAuditLogs({ reset: true });
         else loadUsers({ reset: true });
@@ -1302,6 +1543,9 @@
         state.resets.status = event.target.value;
         resetArmed = null;
         loadResets({ reset: true });
+      } else if (id === 'adm-security-status') {
+        state.security.status = event.target.value;
+        loadSecurityAlerts({ reset: true });
       } else if (id === 'adm-pb-status') {
         state.postbacks.status = event.target.value;
         loadPostbacks({ reset: true });
@@ -1325,6 +1569,15 @@
     state.orders = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.withdrawals = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
+    state.security = {
+      items: [],
+      total: 0,
+      q: '',
+      status: 'new',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, open: 0 }
+    };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
     state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
     state.postbacks = {
@@ -1345,6 +1598,8 @@
     const wdSearch = document.getElementById('adm-wd-search');
     const wdStatus = document.getElementById('adm-wd-status');
     const usersSearch = document.getElementById('adm-users-search');
+    const securitySearch = document.getElementById('adm-security-search');
+    const securityStatus = document.getElementById('adm-security-status');
     const resetStatus = document.getElementById('adm-reset-status');
     const pbSearch = document.getElementById('adm-pb-search');
     const pbStatus = document.getElementById('adm-pb-status');
@@ -1355,6 +1610,8 @@
     if (wdSearch) wdSearch.value = '';
     if (wdStatus) wdStatus.value = '';
     if (usersSearch) usersSearch.value = '';
+    if (securitySearch) securitySearch.value = '';
+    if (securityStatus) securityStatus.value = 'new';
     if (resetStatus) resetStatus.value = RESET_PENDING;
     if (pbSearch) pbSearch.value = '';
     if (pbStatus) pbStatus.value = '';
@@ -1366,6 +1623,7 @@
       loadOrders({ reset: true }),
       loadWithdrawals({ reset: true }),
       loadUsers({ reset: true }),
+      loadSecurityAlerts({ reset: true }),
       loadReferrals({ reset: true }),
       loadResets({ reset: true }),
       loadPostbacks({ reset: true }),
@@ -1384,6 +1642,15 @@
     state.orders = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.withdrawals = { items: [], total: 0, q: '', status: '', offset: 0, loading: false };
     state.users = { items: [], total: 0, q: '', offset: 0, loading: false };
+    state.security = {
+      items: [],
+      total: 0,
+      q: '',
+      status: 'new',
+      offset: 0,
+      loading: false,
+      stats: { total: 0, open: 0 }
+    };
     state.referrals = { items: [], total: 0, offset: 0, loading: false };
     state.resets = { items: [], total: 0, status: RESET_PENDING, offset: 0, loading: false };
     state.postbacks = {

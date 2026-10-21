@@ -90,6 +90,25 @@ MAIL_FROM_NAME=GZ AFL
 > `LOGIN_OTP=off` vào `backend/.env` rồi khởi động lại — khách vào được ngay bằng mật khẩu,
 > sửa xong SMTP thì bật lại `auto`.
 
+### Cảnh báo bảo mật khi đăng nhập sai
+
+Mặc định hệ thống **không tự khóa tài khoản** khi có nhiều lần đăng nhập sai. Nó ghi
+nhận và tạo cảnh báo trong **Quản trị → Bảo mật**; admin quyết định xử lý.
+
+```env
+SECURITY_ALERT_THRESHOLD=10      # số lần sai để tạo cảnh báo
+SECURITY_ALERT_WINDOW_MINUTES=15 # cửa sổ đếm
+SECURITY_AUTO_HOLD_HOURS=0       # 0 = chỉ cảnh báo; 24 = tự tạm giữ 24h
+SECURITY_STEP_UP=on              # yêu cầu OTP bổ sung nếu có cảnh báo
+SECURITY_STEP_UP_HOURS=24
+```
+
+- Admin có thể **Tạm giữ 24h** hoặc **Bỏ tạm giữ** trong tab Bảo mật. Tạm giữ chặn cả
+  đăng nhập mới và các phiên đang mở; hết hạn tự mở.
+- `SECURITY_AUTO_HOLD_HOURS=24` chỉ nên dùng nếu bạn thật sự muốn hệ thống tự tạm giữ;
+  không áp dụng cho tài khoản admin.
+- Cảnh báo không chứa mật khẩu, mã OTP hay token.
+
 Ghi chú quan trọng:
 
 - `backend/.env` **không** được commit lên git (đã nằm trong `.gitignore`).
@@ -409,6 +428,11 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `BACKUP_KEEP_DAYS` | `14` | Số ngày giữ bản sao lưu trước khi tự xoá |
 | `EMAIL_OTP` | `auto` | Bật xác thực email (đăng ký / quên mật khẩu / đổi email): `auto` / `on` / `off` |
 | `LOGIN_OTP` | `auto` | Bật xác thực khi đăng nhập: `auto` / `on` / `off` |
+| `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ để tạo cảnh báo cho admin; **không tự khóa tài khoản** |
+| `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm lần đăng nhập sai (phút) |
+| `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = chỉ cảnh báo (khuyến nghị); `24` = tự tạm giữ 24h sau ngưỡng, admin vẫn bỏ được |
+| `SECURITY_STEP_UP` | `on` | Yêu cầu OTP bổ sung khi tài khoản có cảnh báo chưa xử lý (nếu gửi được thư) |
+| `SECURITY_STEP_UP_HOURS` | `24` | Cảnh báo còn hiệu lực bao lâu thì vẫn yêu cầu OTP bổ sung |
 | `SMTP_HOST`, `SMTP_PORT` | – | Máy chủ gửi thư (mặc định cổng `587`) |
 | `SMTP_SECURE` | theo cổng | `true` khi cổng `465`; để trống thì tự suy ra |
 | `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail dùng mật khẩu ứng dụng) |

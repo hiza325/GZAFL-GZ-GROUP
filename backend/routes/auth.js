@@ -16,26 +16,20 @@ const { rateLimit } = require('../lib/rateLimit');
 const { RESET_PENDING, RESET_RESOLVED } = require('../lib/constants');
 const { notify } = require('../lib/notify');
 const otp = require('../lib/otp');
+const securityAlerts = require('../lib/securityAlerts');
 
 const router = express.Router();
 
 // Chống dò mật khẩu: tối đa 30 lần / phút / IP cho các endpoint đăng nhập-đăng ký
 router.use(rateLimit({ windowMs: 60 * 1000, max: 30, name: 'auth' }));
 
-// Chống dò mật khẩu PHÂN TÁN (nhiều IP cùng nhắm một tài khoản).
-// Giới hạn theo IP ở trên không chặn được kẻ dùng proxy xoay IP, nên thêm một
-// bộ đếm theo TÊN ĐĂNG NHẬP. Đây là đánh đổi có chủ đích: 30 lần / 15 phút cho
-// mỗi tài khoản là đủ rộng cho người dùng thật, nhưng chặn được dò diện rộng.
-const loginAccountRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 30,
-  name: 'login-account',
-  key: (req) => {
-    const username = normalizeUsername((req.body && req.body.username) || '');
-    return username ? 'acct:' + username.toLowerCase() : 'ip:' + (req.ip || 'unknown');
-  }
-});
-
+// Chống dò mật khẩu PHÂN TÁN (nhiều IP cùng nhắm một tài khoản):
+// KHÔNG tự khóa tài khoản. Hệ thống ghi nhận các lần đăng nhập sai và gửi
+// cảnh báo cho admin (lib/securityAlerts.js). Admin có thể tạm giữ 24 giờ
+// nếu thấy cần xem xét; người dùng thật không bị khóa vĩnh viễn.
+//
+// Riêng giới hạn theo IP ở trên vẫn giữ để chặn dò mật khẩu tốc độ cao.
+//
 // Riêng việc GỬI mã OTP khi ĐĂNG KÝ / KHÔI PHỤC MẬT KHẨU thì chặt hơn:
 // 10 lần / 15 phút / IP (dùng chung một bộ đếm cho các endpoint này).
 // (Ngoài ra lib/otp.js còn giới hạn theo từng email: cách 60 giây, tối đa 5 mã/giờ.)
@@ -272,7 +266,7 @@ router.post('/register', async (req, res) => {
    làm tốn thư trong hộp của người khác.
    ========================================== */
 
-router.post('/login', loginAccountRateLimit, async (req, res) => {
+router.post('/login', async (req, res) => {
   const username = normalizeUsername((req.body && req.body.username) || '');
   const password = String((req.body && req.body.password) || '').trim();
 
@@ -283,6 +277,13 @@ router.post('/login', loginAccountRateLimit, async (req, res) => {
   // Vẫn chạy bcrypt khi không có tài khoản để thời gian phản hồi không khác biệt.
   const passwordOk = bcrypt.compareSync(password, row ? row.password_hash : DUMMY_HASH);
   if (!row || !passwordOk) {
+    // Chỉ ghi nhận + cảnh báo admin, KHÔNG khóa tài khoản.
+    securityAlerts.recordFailure({
+      username,
+      user: row,
+      ip: req.ip || '',
+      userAgent: req.get('user-agent') || ''
+    });
     return res.status(401).json({ error: 'Tài khoản hoặc mật khẩu không đúng.' });
   }
 
@@ -293,9 +294,28 @@ router.post('/login', loginAccountRateLimit, async (req, res) => {
     });
   }
 
+  // Admin có thể tạm giữ tài khoản (mặc định 24 giờ) để xem xét cảnh báo.
+  // Chỉ kiểm tra SAU KHI mật khẩu đúng, nên người ngoài không dò được trạng thái này.
+  const heldUntil = securityAlerts.activeHold(row);
+  if (heldUntil) {
+    return res.status(423).json({
+      error:
+        'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
+        new Date(heldUntil).toLocaleString('vi-VN') +
+        '. Vui lòng liên hệ bộ phận hỗ trợ.',
+      code: 'security_hold',
+      heldUntil
+    });
+  }
+
+  // Nếu tài khoản vừa có cảnh báo đăng nhập sai, yêu cầu thêm OTP ở lần đăng nhập
+  // đúng mật khẩu tiếp theo. Đây là xác thực bổ sung, không phải khóa tài khoản.
+  const stepUp = otp.deliveryAvailable() && securityAlerts.requiresStepUp(row);
+
   // Tài khoản chưa có email thì không thể xác thực qua email -> cho vào luôn,
   // tránh tự khoá mình ra ngoài (chỉ xảy ra với tài khoản cũ).
-  if (!otp.loginOtpEnabled() || !row.email) {
+  if ((!otp.loginOtpEnabled() && !stepUp) || !row.email) {
+    securityAlerts.recordSuccess(row);
     setAuthCookie(res, row);
     return res.json({ user: toUser(row) });
   }
@@ -317,13 +337,20 @@ router.post('/login', loginAccountRateLimit, async (req, res) => {
     }
   }
 
+  const securityNote =
+    stepUp && !otp.loginOtpEnabled()
+      ? 'Tài khoản vừa có cảnh báo bảo mật nên cần xác thực thêm bằng mã gửi tới email.'
+      : '';
+
   return res.json({
     otpRequired: true,
     ticket: signLoginTicket(row),
     email: maskEmail(row.email),
-    message: active
-      ? 'Mã xác thực đã được gửi trước đó và còn hiệu lực. Bạn hãy dùng mã trong email đó.'
-      : 'Mã xác thực đã được gửi tới email của bạn. Nhớ kiểm tra cả thư rác (Spam).',
+    message:
+      securityNote ||
+      (active
+        ? 'Mã xác thực đã được gửi trước đó và còn hiệu lực. Bạn hãy dùng mã trong email đó.'
+        : 'Mã xác thực đã được gửi tới email của bạn. Nhớ kiểm tra cả thư rác (Spam).'),
     expiresInSeconds: otp.TTL_SECONDS,
     resendInSeconds: active ? active.resendInSeconds : otp.RESEND_COOLDOWN_SECONDS,
     // Chỉ có giá trị khi chưa cấu hình SMTP và đang ở môi trường phát triển
@@ -354,6 +381,20 @@ router.post('/login/otp', loginOtpRateLimit, (req, res) => {
     return handleOtpError(res, err);
   }
 
+  // Admin có thể đã tạm giữ tài khoản trong lúc người dùng đang nhập mã.
+  const heldUntil = securityAlerts.activeHold(row);
+  if (heldUntil) {
+    return res.status(423).json({
+      error:
+        'Tài khoản đang tạm giữ để quản trị viên xem xét đến ' +
+        new Date(heldUntil).toLocaleString('vi-VN') +
+        '. Vui lòng liên hệ bộ phận hỗ trợ.',
+      code: 'security_hold',
+      heldUntil
+    });
+  }
+
+  securityAlerts.recordSuccess(row);
   setAuthCookie(res, row);
   return res.json({ user: toUser(row) });
 });

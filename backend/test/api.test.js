@@ -68,6 +68,10 @@ async function startServer() {
     AFFILIATE_PROVIDER: 'mock',
     POSTBACK_SECRET,
     RATE_LIMIT_STORE: 'sqlite',
+    SECURITY_ALERT_THRESHOLD: '3',
+    SECURITY_ALERT_WINDOW_MINUTES: '15',
+    SECURITY_AUTO_HOLD_HOURS: '0',
+    SECURITY_STEP_UP: 'off',
     SMTP_HOST: '',
     SMTP_USER: '',
     SMTP_PASS: '',
@@ -435,6 +439,97 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
         (row) => row.action === 'Cập nhật người dùng' && String(row.targetId) === 'other@test.local'
       )
     );
+  });
+
+  await t.test('đăng nhập sai chỉ tạo cảnh báo, không tự khóa; admin có thể tạm giữ 24h', async () => {
+    const target = createUser({
+      username: 'security@test.local',
+      email: 'security@test.local',
+      name: 'Tài khoản bảo mật'
+    });
+
+    // 3 lần sai theo ngưỡng test: vẫn chỉ 401, không bị khóa tài khoản.
+    for (let i = 0; i < 3; i++) {
+      const bad = await json('/api/auth/login', {
+        method: 'POST',
+        body: { username: 'security@test.local', password: 'sai-mat-khau' }
+      });
+      assert.equal(bad.res.status, 401);
+    }
+
+    // Mật khẩu đúng vẫn đăng nhập được: hệ thống không tự khóa vĩnh viễn.
+    const stillAllowed = await json('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'security@test.local', password: PASSWORD }
+    });
+    assert.equal(stillAllowed.res.status, 200);
+
+    // Admin thấy cảnh báo bảo mật, không phải một tài khoản bị khóa.
+    const alerts = await json(
+      '/api/admin/security-alerts?status=new&q=' + encodeURIComponent('security@test.local'),
+      { cookie: admin.cookie }
+    );
+    assert.equal(alerts.res.status, 200);
+    assert.ok(alerts.data.total >= 1);
+    const alert = alerts.data.alerts.find((a) => a.username === 'security@test.local');
+    assert.ok(alert, 'Phải có cảnh báo cho tài khoản bị đăng nhập sai');
+    assert.equal(alert.userId, target.uid);
+    assert.ok(alert.eventCount >= 3);
+    assert.equal(alert.securityHeld, false);
+
+    // Admin tạm giữ 24 giờ từ cảnh báo.
+    const hold = await json(`/api/admin/security-alerts/${alert.id}/hold`, {
+      method: 'POST',
+      cookie: admin.cookie,
+      body: { hours: 24 }
+    });
+    assert.equal(hold.res.status, 200);
+    assert.ok(hold.data.heldUntil);
+
+    // Đăng nhập đúng mật khẩu vẫn bị chặn trong thời gian tạm giữ.
+    const heldLogin = await json('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'security@test.local', password: PASSWORD }
+    });
+    assert.equal(heldLogin.res.status, 423);
+    assert.equal(heldLogin.data.code, 'security_hold');
+
+    // Phiên đã đăng nhập trước đó cũng bị chặn, không chỉ chặn đăng nhập mới.
+    const heldSession = await json('/api/wallet', { cookie: target.cookie });
+    assert.equal(heldSession.res.status, 423);
+
+    // Admin bỏ tạm giữ -> đăng nhập lại được.
+    const unlock = await json(`/api/admin/users/${target.uid}/security-hold`, {
+      method: 'DELETE',
+      cookie: admin.cookie
+    });
+    assert.equal(unlock.res.status, 200);
+
+    const afterUnlock = await json('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'security@test.local', password: PASSWORD }
+    });
+    assert.equal(afterUnlock.res.status, 200);
+    assert.equal((await json('/api/wallet', { cookie: target.cookie })).res.status, 200);
+
+    // Admin đánh dấu cảnh báo đã xử lý.
+    const resolved = await json(`/api/admin/security-alerts/${alert.id}/resolve`, {
+      method: 'POST',
+      cookie: admin.cookie,
+      body: { note: 'Đã kiểm tra, không có dấu hiệu chiếm tài khoản.' }
+    });
+    assert.equal(resolved.res.status, 200);
+    assert.equal(resolved.data.alert.status, 'resolved');
+
+    const noNew = await json(
+      '/api/admin/security-alerts?status=new&q=' + encodeURIComponent('security@test.local'),
+      { cookie: admin.cookie }
+    );
+    assert.equal(noNew.data.total, 0);
+
+    const audit = await json('/api/admin/audit-logs?limit=20', { cookie: admin.cookie });
+    assert.ok(audit.data.logs.some((row) => row.action === 'Tạm giữ tài khoản'));
+    assert.ok(audit.data.logs.some((row) => row.action === 'Xử lý cảnh báo bảo mật'));
   });
 
   await t.test('không xoá người dùng đã có giao dịch tài chính (trừ khi force)', async () => {

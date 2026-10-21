@@ -38,6 +38,9 @@ db.exec(`
     role          TEXT NOT NULL DEFAULT 'user',
     token_version INTEGER NOT NULL DEFAULT 1,
     temp_password_expires_at TEXT,
+    -- Admin có thể tạm giữ tài khoản (ví dụ 24 giờ) để xem xét cảnh báo bảo mật.
+    -- Hệ thống KHÔNG tự khóa vĩnh viễn tài khoản người dùng.
+    security_hold_until TEXT,
     created_at    TEXT NOT NULL
   );
 
@@ -163,6 +166,38 @@ db.exec(`
     created_at     TEXT NOT NULL
   );
 
+  -- Các lần đăng nhập sai, dùng để phát hiện dò mật khẩu.
+  -- KHÔNG dùng bảng này để tự khóa tài khoản: chỉ dùng làm căn cứ cảnh báo admin.
+  CREATE TABLE IF NOT EXISTS login_failures (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT NOT NULL DEFAULT '',
+    user_id    INTEGER,
+    ip         TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
+  -- Cảnh báo bảo mật gửi cho quản trị viên xem xét.
+  -- Cố ý không dùng khoá ngoại tới users: xoá người dùng vẫn phải giữ lại cảnh báo.
+  CREATE TABLE IF NOT EXISTS security_alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind            TEXT NOT NULL DEFAULT 'login_failures',
+    severity        TEXT NOT NULL DEFAULT 'warning',
+    username        TEXT NOT NULL DEFAULT '',
+    user_id         INTEGER,
+    ip              TEXT NOT NULL DEFAULT '',
+    user_agent      TEXT NOT NULL DEFAULT '',
+    detail          TEXT NOT NULL DEFAULT '',
+    event_count     INTEGER NOT NULL DEFAULT 1,
+    status          TEXT NOT NULL DEFAULT 'new',
+    created_at      TEXT NOT NULL,
+    last_seen_at    TEXT NOT NULL,
+    last_success_at TEXT,
+    resolved_at     TEXT,
+    resolved_by     INTEGER,
+    resolution_note TEXT NOT NULL DEFAULT ''
+  );
+
   -- Bộ đếm giới hạn tần suất dùng chung khi chạy nhiều tiến trình
   -- (RATE_LIMIT_STORE=sqlite). Khoá gồm tên bộ đếm + IP/người dùng.
   CREATE TABLE IF NOT EXISTS rate_limits (
@@ -219,6 +254,10 @@ ensureColumn('users', 'token_version', 'INTEGER NOT NULL DEFAULT 1');
 // một mật khẩu tạm bị lộ trong tin nhắn/Zalo vẫn dùng được mãi về sau.
 ensureColumn('users', 'temp_password_expires_at', 'TEXT');
 
+// Thời điểm hết tạm giữ tài khoản do quản trị viên đặt (NULL = không tạm giữ).
+// Đây là quyết định của admin, không phải hệ thống tự khóa vĩnh viễn.
+ensureColumn('users', 'security_hold_until', 'TEXT');
+
 // Ảnh QR nhận tiền (VietQR...) do người dùng tải lên ở hộp thoại rút tiền
 ensureColumn('users', 'bank_qr_url', 'TEXT');
 
@@ -269,6 +308,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_postback_hash ON postback_logs (payload_hash);
   CREATE INDEX IF NOT EXISTS idx_audit_created       ON admin_audit_logs (created_at);
+  CREATE INDEX IF NOT EXISTS idx_login_fail_user     ON login_failures (username, created_at);
+  CREATE INDEX IF NOT EXISTS idx_security_alert_stat ON security_alerts (status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_security_alert_user ON security_alerts (user_id, status);
   CREATE INDEX IF NOT EXISTS idx_rate_limits_reset   ON rate_limits (reset_at);
 `);
 
