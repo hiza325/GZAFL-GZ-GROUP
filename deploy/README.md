@@ -62,7 +62,20 @@ sudo bash deploy/scripts/install-app.sh ten-mien-cua-ban.com
 Script làm: `npm ci --omit=dev` → tạo `.env` + `JWT_SECRET` → phân quyền `data/uploads/backups`
 → cài `/etc/systemd/system/gzafl.service` → `check:deploy` → khởi động → gọi `/api/health`.
 
-### Nginx + HTTPS
+### Nginx + HTTPS (1 lệnh)
+
+```bash
+sudo bash deploy/scripts/setup-nginx-ssl.sh ten-mien-cua-ban.com email@example.com
+```
+
+Script sẽ: cài Nginx + certbot → cài log format không lộ `POSTBACK_SECRET` → bật HTTP tạm →
+xin chứng chỉ Let's Encrypt → thay bằng cấu hình HTTPS đầy đủ → thêm hook tự reload khi cert
+gia hạn → kiểm tra `https://ten-mien-cua-ban.com/api/health`.
+
+Điều kiện: domain đã trỏ A record về IP VPS và cổng **80/443** đã mở.
+
+<details>
+<summary>Cách làm thủ công (nếu script lỗi)</summary>
 
 ```bash
 sudo apt-get install -y nginx certbot python3-certbot-nginx
@@ -84,17 +97,9 @@ sudo certbot certonly --webroot -w /var/www/html \
 sudo cp deploy/nginx/gzafl.conf /etc/nginx/sites-available/gzafl.conf
 sudo sed -i 's/gzafl\.vn/ten-mien-cua-ban.com/g' /etc/nginx/sites-available/gzafl.conf
 sudo nginx -t && sudo systemctl reload nginx
-
-# Kiểm tra tự gia hạn
-sudo certbot renew --dry-run
 ```
 
-Nếu `certbot renew` không tự reload Nginx, thêm hook:
-
-```bash
-echo 'systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-```
+</details>
 
 Kiểm tra `backend/.env` có:
 

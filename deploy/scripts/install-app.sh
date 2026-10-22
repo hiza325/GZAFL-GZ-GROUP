@@ -157,23 +157,8 @@ cat <<EOF
 ===============================================================
  Đã cài xong backend. Các bước còn lại:
 
- 1) Nginx + HTTPS:
-      sudo apt-get install -y nginx certbot python3-certbot-nginx
-      sudo cp $APP_DIR/deploy/nginx/00-log-format.conf /etc/nginx/conf.d/00-gzafl-log.conf
-
-      # (a) HTTP tạm để xin chứng chỉ
-      sudo cp $APP_DIR/deploy/nginx/gzafl-bootstrap.conf /etc/nginx/sites-available/${SERVICE_NAME}.conf
-      sudo sed -i 's/gzafl\\.vn/${DOMAIN}/g' /etc/nginx/sites-available/${SERVICE_NAME}.conf
-      sudo ln -sf /etc/nginx/sites-available/${SERVICE_NAME}.conf /etc/nginx/sites-enabled/
-      sudo nginx -t && sudo systemctl reload nginx
-
-      # (b) Xin chứng chỉ
-      sudo certbot certonly --webroot -w /var/www/html -d ${DOMAIN} -d www.${DOMAIN}
-
-      # (c) Cấu hình HTTPS đầy đủ
-      sudo cp $APP_DIR/deploy/nginx/gzafl.conf /etc/nginx/sites-available/${SERVICE_NAME}.conf
-      sudo sed -i 's/gzafl\\.vn/${DOMAIN}/g' /etc/nginx/sites-available/${SERVICE_NAME}.conf
-      sudo nginx -t && sudo systemctl reload nginx
+ 1) Nginx + HTTPS (1 lệnh, cần domain đã trỏ về VPS):
+      sudo bash $APP_DIR/deploy/scripts/setup-nginx-ssl.sh ${DOMAIN} email@example.com
 
  2) Cấp tài khoản quản trị (đăng ký trên web trước):
       cd $APP_DIR/backend && npm run make-admin -- email-cua-ban@example.com
