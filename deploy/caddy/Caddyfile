@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------
+# GZ AFL - HTTPS tự động bằng Caddy (không cần Nginx/certbot)
+#
+# Dùng trong docker-compose.caddy.yml:
+#   DOMAIN=ten-mien.com docker compose -f docker-compose.caddy.yml up -d --build
+#
+# Caddy tự xin và gia hạn chứng chỉ Let's Encrypt khi:
+#   - domain đã trỏ về IP máy chủ
+#   - cổng 80 và 443 mở
+# ---------------------------------------------------------------
+
+{$DOMAIN:gzafl.vn} {
+	encode gzip zstd
+
+	# Ảnh đại diện / QR gửi base64, tối đa ~6MB JSON
+	request_body {
+		max_size 8MB
+	}
+
+	reverse_proxy app:3000 {
+		# Giữ đúng IP khách cho rate-limit / cảnh báo bảo mật
+		header_up X-Real-IP {remote_host}
+	}
+
+	# KHÔNG bật access log: URL postback có thể chứa POSTBACK_SECRET.
+	# Caddy mặc định không ghi access log, chỉ ghi lỗi.
+}

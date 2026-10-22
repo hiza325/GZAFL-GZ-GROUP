@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------
+# GZ AFL - systemd service
+#
+# Cài đặt tự động:  sudo bash deploy/scripts/install-app.sh ten-mien.com
+# Cài thủ công:
+#   sudo cp deploy/systemd/gzafl.service /etc/systemd/system/gzafl.service
+#   sudo sed -i 's|@APP_DIR@|/var/www/gzafl|g; s|@SERVICE_USER@|www-data|g' \
+#        /etc/systemd/system/gzafl.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gzafl
+#
+# Xem log:  journalctl -u gzafl -f
+# ---------------------------------------------------------------
+
+[Unit]
+Description=GZ AFL backend (Express + SQLite)
+Documentation=file://@APP_DIR@/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@APP_DIR@/backend
+
+# Chạy đúng chế độ production (script tự nạp backend/.env)
+Environment=NODE_ENV=production
+# Cho phép đặt file env ngoài thư mục code nếu muốn:
+# Environment=GZAFL_ENV_FILE=/etc/gzafl/gzafl.env
+
+ExecStart=/usr/bin/node scripts/start-prod.js
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+# Ghi log vào journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gzafl
+
+# --- Bảo mật cơ bản --------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Chỉ các thư mục dữ liệu được ghi
+ReadWritePaths=@APP_DIR@/backend/data @APP_DIR@/backend/uploads @APP_DIR@/backend/backups
+
+# Giới hạn tài nguyên (tuỳ chọn, bỏ nếu VPS quá nhỏ)
+# MemoryMax=512M
+# TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

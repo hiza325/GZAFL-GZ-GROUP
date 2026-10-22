@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------
+# GZ AFL - Docker + Caddy (HTTPS tự động, không cần Nginx/certbot)
+#
+# Chuẩn bị:
+#   cp deploy/.env.production.example backend/.env
+#   # sửa backend/.env (SMTP, JWT_SECRET, PUBLIC_BASE_URL...)
+#
+# Chạy:
+#   DOMAIN=ten-mien-cua-ban.com docker compose -f docker-compose.caddy.yml up -d --build
+#   docker compose -f docker-compose.caddy.yml logs -f
+#
+# Yêu cầu: domain đã trỏ về IP máy chủ, cổng 80/443 mở.
+# Caddy tự xin + gia hạn chứng chỉ Let's Encrypt.
+# ---------------------------------------------------------------
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gzafl:latest
+    container_name: gzafl
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Caddy là proxy duy nhất -> bắt buộc để cookie secure hoạt động
+      TRUST_PROXY: "1"
+
+    volumes:
+      - gzafl-data:/app/backend/data
+      - gzafl-uploads:/app/backend/uploads
+      - gzafl-backups:/app/backend/backups
+
+    stop_grace_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: gzafl-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+
+    environment:
+      DOMAIN: ${DOMAIN:?Đặt DOMAIN=ten-mien-cua-ban.com khi chạy}
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data     # chứng chỉ Let's Encrypt
+      - caddy-config:/config
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gzafl-data:
+  gzafl-uploads:
+  gzafl-backups:
+  caddy-data:
+  caddy-config:

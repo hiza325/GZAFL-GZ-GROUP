@@ -1,0 +1,11 @@
+# Script Linux phải giữ LF, nếu không sẽ lỗi "bad interpreter: /bin/bash^M"
+*.sh            text eol=lf
+deploy/cron/*   text eol=lf
+*.service       text eol=lf
+Dockerfile      text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Caddyfile       text eol=lf
+
+# PowerShell trên Windows dùng CRLF
+*.ps1           text eol=crlf

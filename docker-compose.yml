@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------
+# GZ AFL - chạy bằng Docker (app + SQLite), đặt sau Nginx/Caddy có sẵn
+#
+# Chuẩn bị:
+#   cp deploy/.env.production.example backend/.env
+#   # sửa backend/.env: PUBLIC_BASE_URL, SMTP_*, JWT_SECRET...
+#
+# Chạy:
+#   docker compose up -d --build
+#   docker compose logs -f app
+#   curl http://127.0.0.1:3000/api/health
+#
+# Cổng chỉ mở trên 127.0.0.1 để bắt buộc đi qua reverse proxy có HTTPS.
+# Muốn Caddy tự lo HTTPS: dùng docker-compose.caddy.yml thay file này.
+#
+# Sao lưu:
+#   docker compose exec app npm run backup
+#   docker cp gzafl:/app/backend/backups ./backups-$(date +%F)
+# ---------------------------------------------------------------
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gzafl:latest
+    container_name: gzafl
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    volumes:
+      - gzafl-data:/app/backend/data       # file SQLite
+      - gzafl-uploads:/app/backend/uploads # avatar + ảnh QR
+      - gzafl-backups:/app/backend/backups # bản sao lưu
+
+    # SQLite cần ghi cả thư mục (file -wal/-shm), không chỉ file .sqlite
+    stop_grace_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gzafl-data:
+  gzafl-uploads:
+  gzafl-backups:

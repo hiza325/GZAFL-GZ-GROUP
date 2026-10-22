@@ -164,6 +164,10 @@ README.md
 docs/                      # Tài liệu kỹ thuật
   affiliate-integration.md # Thiết kế tích hợp chuyển đổi link hoàn tiền (chi tiết + các phương án)
   deployment.md            # Hướng dẫn đưa lên production (HTTPS, JWT_SECRET, Nginx, PM2...)
+deploy/                    # Bộ cấu hình deploy sẵn: Nginx, systemd, PM2, Docker, Windows
+  README.md                # Chọn cách deploy + checklist trước khi mở cho khách
+  scripts/install-app.sh   # Cài lần đầu trên Ubuntu/Debian (Node, env, systemd)
+  scripts/deploy.sh        # Cập nhật bản mới (pull, cài, backup, restart, health check)
 
 backend/
   server.js                # Khởi tạo Express: API + link rút gọn /r/<mã đơn> + phục vụ frontend tĩnh

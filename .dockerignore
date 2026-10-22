@@ -1,0 +1,28 @@
+# Không copy vào image
+.git
+.gitignore
+.gitattributes
+.vscode
+node_modules
+backend/node_modules
+backend/data
+backend/uploads
+backend/backups
+backend/logs
+backend/test
+deploy
+docs
+*.md
+
+# Bí mật - tuyệt đối không bake vào image
+backend/.env
+backend/.env.*
+!backend/.env.example
+*.key
+*.crt
+*.pem
+
+# Rác
+.DS_Store
+Thumbs.db
+npm-debug.log*

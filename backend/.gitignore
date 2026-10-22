@@ -3,6 +3,7 @@ data/
 uploads/*
 !uploads/.gitkeep
 backups/
+logs/
 
 # Bí mật cục bộ (JWT_SECRET, API key affiliate...) - KHÔNG commit
 .env

@@ -3,6 +3,10 @@
 Tài liệu này mô tả cách đưa website lên một máy chủ thật, có **HTTPS** và **JWT_SECRET riêng**.
 Làm theo đúng thứ tự dưới đây là đủ; phần cuối có mục xử lý sự cố.
 
+> Muốn dùng ngay bộ cấu hình có sẵn (Nginx, systemd, PM2, Docker, Windows Task Scheduler,
+> script cài đặt/cập nhật): xem [`deploy/README.md`](../deploy/README.md).
+> Chỉ cần chọn 1 cách và chạy theo hướng dẫn ở đó.
+
 ---
 
 ## 0. Chuẩn bị

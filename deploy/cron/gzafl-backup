@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------
+# GZ AFL - sao lưu hằng ngày (SQLite nóng + uploads)
+#
+# Cài đặt:
+#   sudo cp deploy/cron/gzafl-backup /etc/cron.d/gzafl-backup
+#   sudo sed -i 's|@APP_DIR@|/var/www/gzafl|g; s|@SERVICE_USER@|www-data|g' \
+#        /etc/cron.d/gzafl-backup
+#   sudo chmod 644 /etc/cron.d/gzafl-backup
+#
+# Chạy 02:00 mỗi ngày. Bản sao lưu nằm trong backend/backups/,
+# tự xoá bản cũ hơn BACKUP_KEEP_DAYS ngày (mặc định 14).
+#
+# Kiểm tra log: tail -f /var/www/gzafl/backend/backups/backup.log
+# ---------------------------------------------------------------
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 2 * * * @SERVICE_USER@ cd @APP_DIR@/backend && /usr/bin/env node scripts/backup.js >> backups/backup.log 2>&1
