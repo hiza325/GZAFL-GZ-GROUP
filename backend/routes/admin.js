@@ -107,6 +107,7 @@ const USER_AGGREGATES = `
      WHERE o.user_id = u.id AND o.status = '${PENDING_APPROVAL}') AS pending_approval_total,
   (SELECT COALESCE(SUM(${reversedExpr('o')}), 0) FROM orders o WHERE o.user_id = u.id) AS clawback_total,
   (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w WHERE w.user_id = u.id AND w.status != '${CANCELLED}') AS withdrawn_total,
+  (SELECT COALESCE(SUM(pr.amount), 0) FROM point_redemptions pr WHERE pr.user_id = u.id) AS points_value_total,
   (SELECT COUNT(*) FROM referrals r WHERE r.user_id = u.id) AS referral_count
 `;
 
@@ -115,12 +116,12 @@ function getUserMoney(userId) {
   return computeUserMoney(userId);
 }
 
-// Số tiền tối đa có thể chi cho một lệnh rút: hoa hồng đã được admin duyệt trừ
-// các lệnh rút KHÁC (không tính chính lệnh đang xét, bỏ qua đơn/lệnh đã huỷ).
+// Số tiền tối đa có thể chi cho một lệnh rút: số dư hiện tại (hoa hồng đã duyệt
+// + tiền đổi từ điểm - các lệnh rút KHÁC). Không tính chính lệnh đang xét.
 function payableForWithdrawal(row) {
   const money = getUserMoney(row.user_id);
   const selfCounted = row.status === CANCELLED ? 0 : Number(row.amount) || 0;
-  return Math.max(0, money.totalCommission - (money.withdrawn - selfCounted));
+  return Math.max(0, money.balance + selfCounted);
 }
 
 function findUserById(id) {
@@ -145,6 +146,8 @@ function findWithdrawalByCode(code) {
            WHERE o.user_id = w.user_id AND ${creditedCondition('o')}) AS commission_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
+         (SELECT COALESCE(SUM(pr.amount), 0) FROM point_redemptions pr
+           WHERE pr.user_id = w.user_id) AS points_value_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
            WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total
        FROM withdrawals w JOIN users u ON u.id = w.user_id
@@ -197,6 +200,12 @@ router.get('/overview', (req, res) => {
     .prepare('SELECT COUNT(*) AS total, COALESCE(SUM(points), 0) AS points FROM referrals')
     .get();
 
+  // Tiền đã cộng vào ví từ việc đổi điểm (100 điểm = 1.000đ) — cũng là khoản
+  // nền tảng phải trả khi người dùng rút, nên phải cộng vào số dư hệ thống.
+  const pointRedemptions = db
+    .prepare('SELECT COUNT(*) AS total, COALESCE(SUM(amount), 0) AS amount FROM point_redemptions')
+    .get();
+
   const passwordResets = db
     .prepare(
       `SELECT COUNT(*) AS total,
@@ -226,6 +235,8 @@ router.get('/overview', (req, res) => {
 
   const totalCommission = Number(orders.commission) || 0;
   const committed = Number(withdrawals.committed_amount) || 0;
+  // Tiền thưởng từ điểm đã cộng vào ví người dùng, cũng là nghĩa vụ phải trả.
+  const pointsRedeemed = Number(pointRedemptions.amount) || 0;
 
   return res.json({
     users: {
@@ -250,7 +261,9 @@ router.get('/overview', (req, res) => {
     },
     referrals: {
       total: Number(referrals.total) || 0,
-      points: Number(referrals.points) || 0
+      points: Number(referrals.points) || 0,
+      redemptions: Number(pointRedemptions.total) || 0,
+      redeemedAmount: pointsRedeemed
     },
     passwordResets: {
       total: Number(passwordResets.total) || 0,
@@ -267,11 +280,12 @@ router.get('/overview', (req, res) => {
     },
     money: {
       totalCommission,
+      pointsRedeemed,
       clawback: Number(orders.clawback) || 0,
       totalPaidOut: Number(withdrawals.paid_amount) || 0,
-      // Tổng hoa hồng đã được admin duyệt còn phải trả cho người dùng
-      systemBalance: totalCommission - committed,
-      availableSystemBalance: totalCommission - committed
+      // Tổng tiền còn phải trả cho người dùng (hoa hồng đã duyệt + tiền đổi từ điểm)
+      systemBalance: totalCommission + pointsRedeemed - committed,
+      availableSystemBalance: totalCommission + pointsRedeemed - committed
     }
   });
 });
@@ -784,6 +798,8 @@ router.get('/withdrawals', (req, res) => {
            WHERE o.user_id = w.user_id AND ${creditedCondition('o')}) AS commission_total,
          (SELECT COALESCE(SUM(w2.amount), 0) FROM withdrawals w2
            WHERE w2.user_id = w.user_id AND w2.status != '${CANCELLED}') AS withdrawn_total,
+         (SELECT COALESCE(SUM(pr.amount), 0) FROM point_redemptions pr
+           WHERE pr.user_id = w.user_id) AS points_value_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
            WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total
        FROM withdrawals w JOIN users u ON u.id = w.user_id

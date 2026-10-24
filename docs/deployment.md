@@ -466,7 +466,7 @@ Thư mục `backend/uploads/` phải ghi được bởi tài khoản chạy serv
 | `SHOPEE_AFFILIATE_APP_ID`, `SHOPEE_AFFILIATE_SECRET` | – | Khi `AFFILIATE_PROVIDER=shopee` |
 | `POSTBACK_SECRET` | – | Khoá xác thực postback do mạng gửi kèm. **Bắt buộc** để nhận chuyển đổi; thiếu thì mọi postback bị từ chối (503) |
 | `POSTBACK_PARAM_*` | tự dò | Ép tên tham số postback (ví dụ `POSTBACK_PARAM_TRANSACTION=transaction_id`) |
-| `CASHBACK_RATE` | `1` | Tỷ lệ hoa hồng trả cho người dùng (0–1) |
+| `CASHBACK_RATE` | `0.8` | Tỷ lệ hoa hồng trả cho người dùng (0–1), mặc định 0.8 = hoàn 80% |
 | `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp + nút "Liên hệ hỗ trợ" của khung chat |
 | `AI_API_KEY` | – | Khoá API cho trợ lý hỗ trợ. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn (xem mục 8) |
 | `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API + tên model (chuẩn OpenAI) |

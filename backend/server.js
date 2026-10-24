@@ -549,7 +549,7 @@ server.listen(PORT, () => {
   if (IS_PRODUCTION) {
     console.log('  Kiểm tra cấu hình     : npm run check:deploy');
     if (!String(process.env.CASHBACK_RATE || '').trim()) {
-      console.warn('  CẢNH BÁO: chưa đặt CASHBACK_RATE - đang hoàn 100% hoa hồng cho người dùng.');
+      console.warn('  CẢNH BÁO: chưa đặt CASHBACK_RATE - đang dùng mặc định 80% (nền tảng giữ 20%).');
     }
     if (!String(process.env.PUBLIC_BASE_URL || '').trim()) {
       console.warn(

@@ -433,6 +433,12 @@ body.sidebar-open {
   border: 1px solid rgba(244, 63, 94, 0.3);
 }
 
+.wallet-chip-points {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
 /* ==========================================================
    NÚT CHUYỂN ĐỔI SÁNG / TỐI
    ========================================================== */

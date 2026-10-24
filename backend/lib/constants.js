@@ -29,6 +29,12 @@ const RESET_RESOLVED = 'Đã xử lý';
 // Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng)
 const WITHDRAWAL_MIN = Number(process.env.WITHDRAWAL_MIN) || 1000;
 
+// Quy đổi điểm giới thiệu sang tiền trong ví: 100 điểm = 1.000đ (1 điểm = 10đ).
+// Chỉ đổi được bội số của 100 điểm và tối thiểu 100 điểm, để số tiền luôn chẵn nghìn.
+const POINT_VALUE = 10; // đồng cho mỗi điểm
+const POINT_REDEEM_MIN = 100; // số điểm tối thiểu mỗi lần đổi
+const POINT_REDEEM_STEP = 100; // số điểm mỗi bước đổi
+
 module.exports = {
   ORDER_STATUSES,
   WITHDRAWAL_STATUSES,
@@ -39,5 +45,8 @@ module.exports = {
   RESET_STATUSES,
   RESET_PENDING,
   RESET_RESOLVED,
-  WITHDRAWAL_MIN
+  WITHDRAWAL_MIN,
+  POINT_VALUE,
+  POINT_REDEEM_MIN,
+  POINT_REDEEM_STEP
 };

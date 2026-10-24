@@ -274,10 +274,10 @@ function totalsFor(order) {
   };
 }
 
-/** Tỷ lệ hoàn tiền cho người dùng (phần còn lại là doanh thu). Mặc định 1 = hoàn toàn bộ. */
+/** Tỷ lệ hoàn tiền cho người dùng (phần còn lại là doanh thu). Mặc định 0.8 = hoàn 80%. */
 function cashbackRate() {
   const raw = Number(process.env.CASHBACK_RATE);
-  if (!Number.isFinite(raw) || raw < 0) return 1;
+  if (!Number.isFinite(raw) || raw < 0) return 0.8;
   return raw > 1 ? 1 : raw;
 }
 

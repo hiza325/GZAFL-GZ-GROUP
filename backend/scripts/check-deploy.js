@@ -167,8 +167,8 @@ function isTruthy(value) {
   const raw = envText('CASHBACK_RATE');
   if (!raw) {
     warn(
-      'Chưa đặt CASHBACK_RATE — mặc định đang hoàn 100% cho người dùng (nền tảng không giữ lại doanh thu). ' +
-        'Ví dụ đặt CASHBACK_RATE=0.8 để hoàn 80%.'
+      'Chưa đặt CASHBACK_RATE — đang dùng mặc định hoàn 80% cho người dùng. ' +
+        'Nên ghi rõ CASHBACK_RATE=0.8 trong backend/.env để cấu hình tường minh.'
     );
   } else {
     const rate = Number(raw);

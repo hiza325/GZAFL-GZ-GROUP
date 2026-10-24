@@ -79,6 +79,17 @@ db.exec(`
     UNIQUE (user_id, code)
   );
 
+  -- Lịch sử đổi điểm giới thiệu sang tiền trong ví (100 điểm = 1.000đ).
+  -- Ghi lại từng lần đổi để đối soát: số điểm đã trừ và số tiền đã cộng vào số dư.
+  CREATE TABLE IF NOT EXISTS point_redemptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    points     INTEGER NOT NULL,
+    amount     INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS notifications (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL,
@@ -303,6 +314,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_sub_id      ON orders (sub_id);
   CREATE INDEX IF NOT EXISTS idx_withdrawals_user   ON withdrawals (user_id);
   CREATE INDEX IF NOT EXISTS idx_referrals_user     ON referrals (user_id);
+  CREATE INDEX IF NOT EXISTS idx_point_redemptions_user ON point_redemptions (user_id);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
   CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);
   CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);

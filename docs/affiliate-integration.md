@@ -153,7 +153,7 @@ https://shopee.vn/product/111
 | `SHOPEE_AFFILIATE_APP_ID` / `_SECRET` | — | Do Shopee cấp |
 | `POSTBACK_SECRET` | — | Chuỗi bí mật để xác thực postback |
 | `POSTBACK_PARAM_*` | — | Ép tên tham số mạng gửi về (xem mục 3.6.2) |
-| `CASHBACK_RATE` | `1` | Tỷ lệ hoàn cho người dùng (0.7 = 70%) |
+| `CASHBACK_RATE` | `0.8` | Tỷ lệ hoàn cho người dùng (mặc định 0.8 = 80%; 0.7 = 70%) |
 
 Nếu thiếu key thì **chỉ đơn hàng đó rơi về link gốc** (người dùng vẫn mua được, hệ thống ghi log lỗi) —
 cố ý không làm sập luồng tạo đơn vì một API bên ngoài đang lỗi.
@@ -303,9 +303,10 @@ Endpoint chính thức: `POST https://api.accesstrade.vn/v1/product_link/create`
 commission_ghi_cho_user = tổng hoa hồng mạng ĐÃ DUYỆT × CASHBACK_RATE
 ```
 
+- `CASHBACK_RATE=0.8` → hoàn 80%, giữ lại 20% (mức đang dùng).
 - `CASHBACK_RATE=0.7` → hoàn 70%, giữ lại 30%.
-- **Bỏ trống = `1` (hoàn 100%).** Con số này được in ra lúc khởi động:
-  `Tỷ lệ hoàn cho người dùng: 70% (CASHBACK_RATE)` — nhớ kiểm tra trước khi chạy thật.
+- **Bỏ trống = `0.8` (hoàn 80%).** Con số này được in ra lúc khởi động:
+  `Tỷ lệ hoàn cho người dùng: 80% (CASHBACK_RATE)` — nhớ kiểm tra trước khi chạy thật.
 - Chỉ áp dụng cho tiền do **mạng báo về tự động**; admin vẫn chốt tay được hoa hồng ở modal xử lý đơn như trước.
 - Muốn tỷ lệ riêng cho từng người (VIP, đối tác) thì bước tiếp theo là thêm cột `users.cashback_rate` và ưu tiên nó trước biến môi trường.
 
@@ -325,7 +326,7 @@ commission_ghi_cho_user = tổng hoa hồng mạng ĐÃ DUYỆT × CASHBACK_RATE
 | `routes/orders.js` + giao diện trả link | Dev | ✅ xong (3.3 – 3.5) |
 | `routes/postback.js` + `postback_logs` + chống trùng + tab Đối soát | Dev | ✅ xong (3.6) |
 | Trạng thái "Chờ đối soát" / "Chờ admin duyệt" + tỷ lệ hoàn tiền | Dev | ✅ xong (3.7) |
-| Chốt `CASHBACK_RATE` (mặc định đang là 1 = hoàn 100%) | Bạn | ⬜ **nhớ đặt trước khi chạy thật** |
+| Chốt `CASHBACK_RATE` (mặc định 0.8 = hoàn 80%) | Bạn | ✅ đã đặt 0.8, kiểm tra lại trước khi chạy thật |
 | Test bằng **một đơn thật nhỏ** rồi đối chiếu hoa hồng | Cả hai | ⬜ chốt chặn cuối cùng trước khi trả tiền cho khách |
 
 ---

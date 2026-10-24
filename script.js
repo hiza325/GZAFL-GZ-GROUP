@@ -1935,6 +1935,13 @@ async function updateWalletData() {
     debtEl.classList.toggle('hidden', debt <= 0);
   }
 
+  const pointsValue = Number(data.pointsValue) || 0;
+  const pointsEl = document.getElementById('wallet-points-note');
+  if (pointsEl) {
+    pointsEl.textContent = pointsValue > 0 ? `Điểm thưởng đã đổi: ${formatCurrency(pointsValue)}` : '';
+    pointsEl.classList.toggle('hidden', pointsValue <= 0);
+  }
+
   renderWithdrawHistory(data.withdrawals || []);
 }
 
@@ -2169,7 +2176,17 @@ async function copyTextToClipboard(text) {
   }
 }
 
-let referralState = { code: '', points: 0, redeemedCount: 0, history: [] };
+let referralState = {
+  code: '',
+  points: 0,
+  redeemedCount: 0,
+  history: [],
+  pointValue: 10,
+  minRedeemPoints: 100,
+  redeemStep: 100,
+  pointsInMoney: 0,
+  redemptions: []
+};
 
 function renderRedeemHistory() {
   const area = document.getElementById('redeem-history-area');
@@ -2215,6 +2232,81 @@ function refreshReferralStats() {
   setText('stat-redeemed-count', referralState.redeemedCount);
 }
 
+/**
+ * Cập nhật phần "Đổi điểm sang ví": số tiền tương ứng và nút đổi.
+ * Quy tắc lấy từ backend: 1 điểm = pointValue đồng (mặc định 10đ), tối thiểu
+ * minRedeemPoints điểm và đổi theo bội số redeemStep (mặc định 100 điểm).
+ */
+function refreshReferralExchange() {
+  const pointValue = Number(referralState.pointValue) || 10;
+  const minPoints = Number(referralState.minRedeemPoints) || 100;
+  const step = Number(referralState.redeemStep) || 100;
+  const points = Number(referralState.points) || 0;
+
+  setText('referral-points-value', formatCurrency(points * pointValue));
+
+  const btn = document.getElementById('btn-convert-points');
+  const label = document.getElementById('btn-convert-points-label');
+  if (!btn) return;
+
+  // Chỉ đổi phần điểm tròn bội số của step, phần lẻ giữ lại cho lần sau.
+  const convertible = Math.floor(points / step) * step;
+  const canConvert = convertible >= minPoints;
+
+  btn.disabled = !canConvert;
+  if (label) {
+    label.innerText = canConvert
+      ? `Đổi ${convertible} điểm → ${formatCurrency(convertible * pointValue)}`
+      : 'Chưa đủ điểm';
+  }
+  btn.title = canConvert
+    ? `Đổi ${convertible} điểm thành ${formatCurrency(convertible * pointValue)} vào ví`
+    : `Cần tối thiểu ${minPoints} điểm (${formatCurrency(minPoints * pointValue)}) để đổi.`;
+}
+
+/** Lịch sử các lần đổi điểm sang ví (mới nhất trước). */
+function renderPointRedemptions() {
+  const card = document.getElementById('point-redemption-card');
+  const area = document.getElementById('point-redemption-history');
+  if (!card || !area) return;
+
+  const list = referralState.redemptions || [];
+  card.classList.toggle('hidden', list.length === 0);
+  if (list.length === 0) {
+    area.innerHTML = '';
+    return;
+  }
+
+  area.innerHTML = `<div class="space-y-3">${list
+    .map(
+      (item) => `
+        <div class="flex items-center justify-between gap-4 p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="coins" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="font-bold text-slate-800">${Number(item.points) || 0} điểm → ${formatCurrency(item.amount)}</div>
+              <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(item.date)}</div>
+            </div>
+          </div>
+          <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">+${formatCurrency(item.amount)}</span>
+        </div>
+      `
+    )
+    .join('')}</div>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderReferralPage() {
+  setText('referral-code', referralState.code);
+  refreshReferralStats();
+  refreshReferralExchange();
+  renderRedeemHistory();
+  renderPointRedemptions();
+}
+
 function showRedeemFeedback(success, message) {
   const box = document.getElementById('redeem-feedback');
   const icon = document.getElementById('redeem-feedback-icon');
@@ -2241,7 +2333,9 @@ async function initReferralPage() {
 
   setText('referral-code', referralState.code);
   refreshReferralStats();
+  refreshReferralExchange();
   renderRedeemHistory();
+  renderPointRedemptions();
 
   const btnCopy = document.getElementById('btn-copy-code');
   if (btnCopy) {
@@ -2286,8 +2380,7 @@ async function initReferralPage() {
         showRedeemFeedback(true, result.message);
         redeemInput.value = '';
         referralState = await api('/referral');
-        refreshReferralStats();
-        renderRedeemHistory();
+        renderReferralPage();
       } catch (err) {
         showRedeemFeedback(false, err.message);
       } finally {
@@ -2297,6 +2390,36 @@ async function initReferralPage() {
     btnRedeem.onclick = handleRedeem;
     redeemInput.onkeydown = (e) => { if (e.key === 'Enter') handleRedeem(); };
     redeemInput.oninput = () => { redeemInput.value = redeemInput.value.toUpperCase(); };
+  }
+
+  const btnConvert = document.getElementById('btn-convert-points');
+  if (btnConvert) {
+    btnConvert.onclick = async () => {
+      const pointValue = Number(referralState.pointValue) || 10;
+      const minPoints = Number(referralState.minRedeemPoints) || 100;
+      const step = Number(referralState.redeemStep) || 100;
+      const points = Math.floor((Number(referralState.points) || 0) / step) * step;
+      if (points < minPoints) return;
+
+      const amount = points * pointValue;
+      if (!window.confirm(`Đổi ${points} điểm thành ${formatCurrency(amount)} vào ví?`)) return;
+
+      btnConvert.disabled = true;
+      try {
+        const result = await api('/referral/convert', {
+          method: 'POST',
+          body: { points }
+        });
+        showToast(result.message || `Đã đổi ${points} điểm thành ${formatCurrency(amount)}.`, 'success');
+        if (typeof result.balance === 'number') setHeaderBalance(result.balance);
+        referralState = await api('/referral');
+        renderReferralPage();
+      } catch (err) {
+        showToast(err.message || 'Không đổi được điểm. Vui lòng thử lại.', 'error');
+      } finally {
+        refreshReferralExchange();
+      }
+    };
   }
 }
 

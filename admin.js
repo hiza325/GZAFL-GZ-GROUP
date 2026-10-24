@@ -165,7 +165,12 @@
       data.money.availableSystemBalance == null ? data.money.systemBalance : data.money.availableSystemBalance;
     setText('adm-stat-commission-note', `Khả dụng ${formatCurrency(availableMoney)}`);
     setText('adm-stat-paid', formatCurrency(data.money.totalPaidOut));
-    setText('adm-stat-paid-note', data.referrals.points + ' điểm giới thiệu');
+    setText(
+      'adm-stat-paid-note',
+      `${data.referrals.points || 0} điểm giới thiệu • đã đổi ${formatCurrency(
+        (data.referrals && data.referrals.redeemedAmount) || 0
+      )}`
+    );
 
     renderResetBadge(data.passwordResets ? data.passwordResets.pending : 0);
     renderPostbackBadge(data.postbacks ? data.postbacks.unmatched : 0);

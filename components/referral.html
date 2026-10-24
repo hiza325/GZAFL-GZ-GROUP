@@ -3,7 +3,7 @@
   <!-- Header của trang con -->
   <div class="mb-8">
     <h2 class="text-3xl font-extrabold text-slate-800 tracking-tight">Mời bạn bè</h2>
-    <p class="text-slate-500 mt-2 text-sm">Chia sẻ mã giới thiệu của bạn cho người mới. Người nhập mã thành công sẽ nhận ngay 100 điểm thưởng.</p>
+    <p class="text-slate-500 mt-2 text-sm">Chia sẻ mã giới thiệu của bạn cho người mới. Người nhập mã thành công sẽ nhận ngay 100 điểm thưởng — tương đương 1.000đ khi đổi vào ví.</p>
   </div>
 
   <!-- Banner số điểm (Dark Card) -->
@@ -18,7 +18,7 @@
         </div>
         <div>
           <h3 class="text-lg font-bold">Chia sẻ mã — người nhập mã nhận thưởng</h3>
-          <p class="text-sm text-slate-300 mt-1">Người nhập mã thành công nhận <span class="font-bold text-white">100 điểm</span></p>
+          <p class="text-sm text-slate-300 mt-1">Người nhập mã thành công nhận <span class="font-bold text-white">100 điểm</span> (~1.000đ)</p>
         </div>
       </div>
 
@@ -26,6 +26,32 @@
         <div class="text-3xl font-extrabold" id="referral-points">0</div>
         <div class="text-[11px] font-semibold text-slate-300 uppercase tracking-wider mt-1">Điểm của bạn</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Đổi điểm sang ví: 100 điểm = 1.000đ -->
+  <div class="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div class="flex items-start gap-4">
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 flex-shrink-0">
+          <i data-lucide="coins" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-800">Đổi điểm sang ví</h3>
+          <p class="text-sm text-slate-500 mt-1 leading-relaxed">
+            Tỷ lệ <span class="font-semibold text-slate-700">100 điểm = 1.000đ</span>. Điểm đổi xong được cộng ngay vào số dư ví và có thể rút về ngân hàng.
+          </p>
+          <p class="text-xs text-slate-400 mt-1.5">
+            Điểm hiện có tương đương <span id="referral-points-value" class="font-bold text-emerald-600">đ0</span>
+            · tối thiểu 100 điểm, đổi theo bội số 100 điểm.
+          </p>
+        </div>
+      </div>
+      <button id="btn-convert-points" disabled
+              class="bg-[#18253f] hover:bg-[#233559] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-6 py-3.5 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] flex-shrink-0">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        <span id="btn-convert-points-label">Đổi điểm</span>
+      </button>
     </div>
   </div>
 
@@ -46,7 +72,7 @@
       </div>
       <div>
         <div class="text-xl font-bold text-slate-800" id="stat-total-points">0</div>
-        <div class="text-xs text-slate-400 font-medium mt-0.5">Tổng điểm kiếm được</div>
+        <div class="text-xs text-slate-400 font-medium mt-0.5">Điểm hiện có</div>
       </div>
     </div>
     <div class="stat-card bg-white p-5 rounded-2xl border border-slate-100 flex items-center gap-4">
@@ -118,6 +144,12 @@
     <div id="redeem-history-area">
       <!-- Nội dung sẽ được JavaScript tự động điền vào đây -->
     </div>
+  </div>
+
+  <!-- Lịch sử đổi điểm sang ví -->
+  <div id="point-redemption-card" class="hidden bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm mt-6">
+    <h3 class="font-bold text-slate-800 mb-6">Lịch sử đổi điểm</h3>
+    <div id="point-redemption-history"></div>
   </div>
 
 </main>

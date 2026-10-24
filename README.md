@@ -96,7 +96,7 @@ The language switch sits in the top-right of the home page navbar, and the choic
 | `AFFILIATE_PROVIDER` | `mock` | Link-conversion provider: `mock` / `accesstrade` / `shopee` |
 | `AFFILIATE_LIVE_PLATFORMS` | all | Restrict which platforms use the real API, e.g. `TikTok Shop, Tiki`. The remaining platforms fall back to test links; every order stores `affiliate.isReal` so the UI clearly shows **real link** vs **no commission attached** |
 | `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Prefix for the `sub_id` added to links, used to tell whose commission it is |
-| `CASHBACK_RATE` | `1` | Cashback share for the user versus the **network-approved** commission (`0.7` = pay back 70%, keep 30%). Only applies to money reported automatically by the network; this number is printed at startup, so check it before going live |
+| `CASHBACK_RATE` | `0.8` | Cashback share for the user versus the **network-approved** commission (`0.8` = pay back 80%, keep 20%; `1` = pay back 100%). Only applies to money reported automatically by the network; this number is printed at startup, so check it before going live |
 | `ACCESSTRADE_API_KEY` | – | AccessTrade API token |
 | `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | – | Per-platform campaign IDs (kept **as strings**) |
 | `ACCESSTRADE_CAMPAIGN_ID` | – | Optional: fallback campaign if a platform has no dedicated variable |
@@ -359,8 +359,9 @@ All APIs live under `/api` and return JSON. APIs that require login use the sess
 | GET | `/api/wallet` | Wallet stats, dashboard `insights` (current month, 6-month series, commission per platform), withdrawal history, `minWithdraw`, `canWithdraw` |
 | POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose one of two: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }` (uses the uploaded QR image, no bank/account number needed) |
 | DELETE | `/api/wallet/withdrawals/:code` | Cancel your own `Đang xử lý` withdrawal and return the amount to the available balance |
-| GET | `/api/referral` | Referral code, points, redemption history |
+| GET | `/api/referral` | Referral code, points, conversion rate (1 point = 10₫) and redemption history |
 | POST | `/api/referral/redeem` | Redeem a referral code `{ code }` |
+| POST | `/api/referral/convert` | Convert points into wallet balance `{ points }` — minimum 100 points, multiples of 100 (100 points = 1,000₫) |
 | GET | `/api/notifications` | Notification list + unread count |
 | POST | `/api/notifications/read-all` | Mark all notifications as read |
 | POST | `/api/support/chat` | Ask the support assistant `{ messages: [{ role: 'user'\|'assistant', content }] }` → `{ reply, source: 'ai'\|'faq', notice? }`. No login needed, limit 30 / 10 minutes per IP |
@@ -412,7 +413,9 @@ Valid statuses:
 
 > `Chờ đối soát` = the affiliate network **has recorded** the conversion but has not approved it yet. `Chờ admin duyệt` = the network approved it and the system writes the **expected** commission into `commission` but **does not add it to the balance**; only when the admin approves the order (moving it to `Hoàn thành`/`Đã thanh toán`) does the money enter the wallet.
 
-**How money is calculated:** a user's wallet balance = the sum of `commission` across **non-cancelled** orders − the sum of `amount` across **non-cancelled** withdrawals. So marking something `Đã huỷ` removes that order/withdrawal from the calculation, and when moving a withdrawal to `Đã thanh toán` you must enter the actual amount paid (it may not exceed the available balance).
+**How money is calculated:** a user's wallet balance = the sum of `commission` across **non-cancelled** orders − the sum of `amount` across **non-cancelled** withdrawals + the sum of `amount` in `point_redemptions`. So marking something `Đã huỷ` removes that order/withdrawal from the calculation, and when moving a withdrawal to `Đã thanh toán` you must enter the actual amount paid (it may not exceed the available balance).
+
+**Referral points:** entering someone's code awards **100 points**. Users can convert points into wallet balance on the referral page at **100 points = 1,000₫** (1 point = 10₫), minimum 100 points and in multiples of 100; the converted amount is recorded in `point_redemptions` and can be withdrawn like commission. Admin users list and withdrawal screens include the converted amount when showing balance/debt.
 
 **Withdrawals:** users do not type an amount — the system records the **entire available balance** at the time of the request. That amount is **reserved** right away, so it cannot be withdrawn twice. The server-side rules (`backend/routes/wallet.js`):
 
@@ -484,6 +487,7 @@ A prerequisite you should not skip: **ask the intermediary network whether their
 | `orders` | Orders per user: `GZ...` code, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, status, commission (expected while awaiting admin approval, final once approved), `commission_reversed` (reversed commission), `click_count`, `network_order_id` (transaction ID on the network), `network_commission` (network-reported amount, possibly unapproved), `network_status` |
 | `withdrawals` | Withdrawals per user: `WD...` code, bank, account number, amount, status |
 | `referrals` | Referral redemption history per user |
+| `point_redemptions` | Points converted into wallet balance (points deducted, amount credited, timestamp) |
 | `notifications` | Notifications per user: title, body, icon, read state |
 | `password_resets` | Password-reset requests sent to the admin (fallback path): requester, contact-back details, status (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), who handled it and when |
 | `email_otps` | Email verification codes: purpose (`register` / `reset` / `change_email` / `login`), recipient email, **bcrypt hash of the code** (raw code not stored), wrong-entry count, sends within the hour, expiry. Codes expired for more than a day are deleted automatically at server startup |

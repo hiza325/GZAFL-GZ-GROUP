@@ -128,6 +128,8 @@ router.get('/', (req, res) => {
     insights: computeInsights(userId),
     balance: money.balance,
     totalCommission: money.totalCommission,
+    // Tiền đã cộng vào ví từ việc đổi điểm giới thiệu (100 điểm = 1.000đ)
+    pointsValue: money.pointsValue,
     withdrawn: money.withdrawn,
     debt: money.debt,
     clawback: money.clawback,

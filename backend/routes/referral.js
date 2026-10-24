@@ -6,6 +6,13 @@ const { formatDateTime } = require('../lib/format');
 const { REFERRAL_CODE_LENGTH } = require('../lib/validate');
 const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
+const { formatMoney } = require('../lib/format');
+const {
+  POINT_VALUE,
+  POINT_REDEEM_MIN,
+  POINT_REDEEM_STEP
+} = require('../lib/constants');
+const { computeUserMoney } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -19,13 +26,36 @@ function getHistory(userId) {
     .map((row) => ({ code: row.code, date: formatDateTime(row.created_at), points: row.points }));
 }
 
+/** Các lần đổi điểm gần nhất, để người dùng đối chiếu với số dư ví. */
+function getRedemptions(userId) {
+  return db
+    .prepare(
+      `SELECT points, amount, created_at FROM point_redemptions
+       WHERE user_id = ? ORDER BY id DESC LIMIT 20`
+    )
+    .all(userId)
+    .map((row) => ({
+      points: Number(row.points) || 0,
+      amount: Number(row.amount) || 0,
+      date: formatDateTime(row.created_at)
+    }));
+}
+
 router.get('/', (req, res) => {
   const history = getHistory(req.user.id);
+  const points = Number(req.user.points) || 0;
+  const redemptions = getRedemptions(req.user.id);
   return res.json({
     code: req.user.referral_code,
-    points: req.user.points || 0,
+    points,
     redeemedCount: history.length,
-    history
+    history,
+    // Quy đổi điểm sang ví: 100 điểm = 1.000đ (1 điểm = 10đ)
+    pointValue: POINT_VALUE,
+    minRedeemPoints: POINT_REDEEM_MIN,
+    redeemStep: POINT_REDEEM_STEP,
+    pointsInMoney: points * POINT_VALUE,
+    redemptions
   });
 });
 
@@ -81,6 +111,73 @@ router.post('/redeem', (req, res) => {
     message: `Nhập mã thành công! Bạn vừa nhận được ${REWARD_POINTS} điểm.`,
     points: updated.points,
     redeemedCount: getHistory(req.user.id).length
+  });
+});
+
+/**
+ * Đổi điểm giới thiệu sang tiền trong ví.
+ * Tỷ lệ cố định: 100 điểm = 1.000đ. Chỉ nhận bội số của 100 điểm và tối thiểu 100
+ * điểm, để số tiền cộng vào ví luôn chẵn nghìn và dễ đối soát.
+ *
+ * Điểm bị trừ và tiền được ghi nhận trong CÙNG một transaction: nếu lỗi giữa
+ * chừng thì không có chuyện mất điểm mà ví không được cộng.
+ */
+router.post('/convert', (req, res) => {
+  const points = Number(req.body && req.body.points);
+
+  if (!Number.isInteger(points) || points <= 0) {
+    return res.status(400).json({ error: 'Số điểm cần đổi không hợp lệ.' });
+  }
+  if (points < POINT_REDEEM_MIN) {
+    return res.status(400).json({
+      error: `Số điểm đổi tối thiểu là ${POINT_REDEEM_MIN} điểm (${formatMoney(POINT_REDEEM_MIN * POINT_VALUE)}).`
+    });
+  }
+  if (points % POINT_REDEEM_STEP !== 0) {
+    return res.status(400).json({
+      error: `Số điểm đổi phải là bội số của ${POINT_REDEEM_STEP} điểm (ví dụ ${POINT_REDEEM_STEP}, ${POINT_REDEEM_STEP * 2}, ${POINT_REDEEM_STEP * 3}...).`
+    });
+  }
+
+  const amount = points * POINT_VALUE;
+
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      // Đọc lại số điểm bên trong transaction: hai request đồng thời không thể
+      // cùng đổi vượt quá số điểm đang có.
+      const row = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+      const available = Number(row && row.points) || 0;
+      if (available < points) {
+        throw Object.assign(
+          new Error(`Bạn chỉ có ${available} điểm, không đủ để đổi ${points} điểm.`),
+          { status: 400 }
+        );
+      }
+
+      db.prepare('UPDATE users SET points = points - ? WHERE id = ?').run(points, req.user.id);
+      db.prepare(
+        'INSERT INTO point_redemptions (user_id, points, amount, created_at) VALUES (?, ?, ?, ?)'
+      ).run(req.user.id, points, amount, new Date().toISOString());
+
+      notify(req.user.id, {
+        title: 'Đổi điểm thành công',
+        body: `${points} điểm đã được đổi thành ${formatMoney(amount)} và cộng vào số dư ví của bạn.`,
+        icon: 'wallet'
+      });
+
+      return db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+    });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+
+  return res.json({
+    message: `Đã đổi ${points} điểm thành ${formatMoney(amount)} vào ví.`,
+    points: Number(updated.points) || 0,
+    amount,
+    balance: computeUserMoney(req.user.id).balance
   });
 });
 

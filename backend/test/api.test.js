@@ -67,6 +67,9 @@ async function startServer() {
     AI_API_KEY: '',
     AFFILIATE_PROVIDER: 'mock',
     POSTBACK_SECRET,
+    // Test cũ kiểm tra số tiền tuyệt đối -> cố định tỷ lệ 100% cho dễ tính.
+    // Mặc định khi không đặt biến này là 0.8 (xem backend/lib/postback.js).
+    CASHBACK_RATE: '1',
     RATE_LIMIT_STORE: 'sqlite',
     SECURITY_ALERT_THRESHOLD: '3',
     SECURITY_ALERT_WINDOW_MINUTES: '15',
@@ -1066,6 +1069,88 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
       body: { amount: 1000 }
     });
     assert.equal(editPaid.res.status, 409);
+  });
+
+  await t.test('điểm giới thiệu: 100 điểm = 1.000đ, đổi vào ví và chặn dữ liệu sai', async () => {
+    const ptUser = createUser({
+      username: 'points@test.local',
+      email: 'points@test.local',
+      name: 'Người đổi điểm'
+    });
+
+    const db = new DatabaseSync(DB_PATH);
+    db.prepare('UPDATE users SET points = 250 WHERE id = ?').run(ptUser.uid);
+    db.close();
+
+    let referral = await json('/api/referral', { cookie: ptUser.cookie });
+    assert.equal(referral.res.status, 200);
+    assert.equal(referral.data.points, 250);
+    assert.equal(referral.data.pointValue, 10, '1 điểm = 10đ');
+    assert.equal(referral.data.minRedeemPoints, 100);
+    assert.equal(referral.data.redeemStep, 100);
+    assert.equal(referral.data.pointsInMoney, 2500);
+
+    const tooFew = await json('/api/referral/convert', {
+      method: 'POST',
+      cookie: ptUser.cookie,
+      body: { points: 50 }
+    });
+    assert.equal(tooFew.res.status, 400, 'Tối thiểu 100 điểm');
+
+    const notMultiple = await json('/api/referral/convert', {
+      method: 'POST',
+      cookie: ptUser.cookie,
+      body: { points: 150 }
+    });
+    assert.equal(notMultiple.res.status, 400, 'Phải là bội số của 100');
+
+    const tooMany = await json('/api/referral/convert', {
+      method: 'POST',
+      cookie: ptUser.cookie,
+      body: { points: 300 }
+    });
+    assert.equal(tooMany.res.status, 400, 'Không được đổi quá số điểm đang có');
+
+    // Đổi 200 điểm -> 2.000đ vào ví, còn lại 50 điểm
+    const converted = await json('/api/referral/convert', {
+      method: 'POST',
+      cookie: ptUser.cookie,
+      body: { points: 200 }
+    });
+    assert.equal(converted.res.status, 200);
+    assert.equal(converted.data.points, 50);
+    assert.equal(converted.data.amount, 2000);
+    assert.equal(converted.data.balance, 2000);
+
+    referral = await json('/api/referral', { cookie: ptUser.cookie });
+    assert.equal(referral.data.points, 50);
+    assert.equal(referral.data.redemptions.length, 1);
+    assert.equal(referral.data.redemptions[0].points, 200);
+    assert.equal(referral.data.redemptions[0].amount, 2000);
+
+    const wallet = await json('/api/wallet', { cookie: ptUser.cookie });
+    assert.equal(wallet.res.status, 200);
+    assert.equal(wallet.data.totalCommission, 0);
+    assert.equal(wallet.data.pointsValue, 2000);
+    assert.equal(wallet.data.balance, 2000);
+
+    // Tiền từ điểm cũng rút được như hoa hồng
+    const withdrawal = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: ptUser.cookie,
+      body: { bank: 'Vietcombank', accNum: '0123456789', accName: 'NGUYEN VAN A' }
+    });
+    assert.equal(withdrawal.res.status, 201);
+    assert.equal(withdrawal.data.balance, 0);
+
+    // Trang quản trị phải thấy khoản này là tiền phải trả, không phải 0
+    const adminWithdrawals = await json('/api/admin/withdrawals', { cookie: admin.cookie });
+    const adminWd = (adminWithdrawals.data.withdrawals || []).find(
+      (w) => w.id === withdrawal.data.withdrawal.id
+    );
+    assert.ok(adminWd);
+    assert.equal(adminWd.pointsValue, 2000);
+    assert.equal(adminWd.payable, 2000);
   });
 
   await t.test('SEO: robots.txt, sitemap.xml và thẻ chia sẻ có URL tuyệt đối', async () => {

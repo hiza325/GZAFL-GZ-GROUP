@@ -123,7 +123,8 @@ function toAdminUser(row) {
   const commission = Number(row.commission_total) || 0;
   const withdrawn = Number(row.withdrawn_total) || 0;
   const pendingApproval = Number(row.pending_approval_total) || 0;
-  const balance = commission - withdrawn;
+  const pointsValue = Number(row.points_value_total) || 0;
+  const balance = commission + pointsValue - withdrawn;
   const holdUntil = isFuture(row.security_hold_until) ? row.security_hold_until : null;
   return {
     id: row.id,
@@ -143,6 +144,7 @@ function toAdminUser(row) {
     commission,
     pendingApproval,
     withdrawn,
+    pointsValue,
     balance,
     debt: Math.max(0, -balance),
     clawback: Number(row.clawback_total) || 0,
@@ -221,7 +223,8 @@ function toAdminWithdrawal(row) {
   const commission = Number(row.commission_total) || 0;
   const withdrawn = Number(row.withdrawn_total) || 0;
   const otherWithdrawn = Number(row.other_withdrawn_total) || 0;
-  const userBalance = commission - withdrawn;
+  const pointsValue = Number(row.points_value_total) || 0;
+  const userBalance = commission + pointsValue - withdrawn;
   return {
     id: row.code,
     userId: row.user_id,
@@ -239,11 +242,12 @@ function toAdminWithdrawal(row) {
     status: row.status,
     createdAt: row.created_at,
     date: formatDateTime(row.created_at),
-    // Số dư hiện tại của người dùng (đã trừ mọi lệnh rút không bị huỷ)
+    // Số dư hiện tại của người dùng (hoa hồng + tiền đổi từ điểm - mọi lệnh rút)
     userBalance,
+    pointsValue,
     debt: Math.max(0, -userBalance),
     // Số tiền tối đa có thể chi cho riêng lệnh này (không tính chính nó)
-    payable: Math.max(0, commission - otherWithdrawn)
+    payable: Math.max(0, commission + pointsValue - otherWithdrawn)
   };
 }
 
