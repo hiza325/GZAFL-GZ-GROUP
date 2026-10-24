@@ -2001,6 +2001,13 @@ function renderWithdrawHistory(list = []) {
             <div>
               <div class="font-bold text-slate-800 text-sm">${accountLabel}</div>
               <div class="text-xs text-slate-400 mt-0.5">${meta}</div>
+              ${
+                tx.orderCount && Array.isArray(tx.orderCodes) && tx.orderCodes.length
+                  ? `<div class="text-[11px] text-slate-400 mt-1">Gồm ${tx.orderCount} đơn: ${tx.orderCodes
+                      .map((code) => escapeHtml(code))
+                      .join(', ')}</div>`
+                  : ''
+              }
             </div>
           </div>
           <div class="flex items-center gap-3 self-start sm:self-center">
@@ -2777,6 +2784,40 @@ const BANK_QR_MAX_SIZE = 2 * 1024 * 1024; // 2MB
 // Người dùng chỉ cần chọn 1 trong 2 cách (xem index.html -> #withdraw-method-*).
 let withdrawMode = 'account';
 
+// Hình thức rút: 'all' = toàn bộ số dư (gồm tiền đổi từ điểm),
+// 'orders' = chỉ rút hoa hồng của các đơn được chọn.
+let withdrawSource = 'all';
+let withdrawBalance = 0;
+let withdrawMin = 0;
+let withdrawDebt = 0;
+let withdrawOrders = [];
+let withdrawPending = null;
+const withdrawSelected = new Set();
+
+const WITHDRAW_TOGGLE_ON = ['bg-[#18253f]', 'text-white', 'border-[#18253f]', 'wd-mode-on'];
+const WITHDRAW_TOGGLE_OFF = ['bg-white', 'text-slate-600', 'border-slate-200', 'hover:bg-slate-50'];
+
+function styleWithdrawToggle(btn, active) {
+  if (!btn) return;
+  WITHDRAW_TOGGLE_ON.concat(WITHDRAW_TOGGLE_OFF).forEach((cls) => btn.classList.remove(cls));
+  (active ? WITHDRAW_TOGGLE_ON : WITHDRAW_TOGGLE_OFF).forEach((cls) => btn.classList.add(cls));
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+// Đổi giữa "rút toàn bộ" và "chọn theo đơn"
+window.setWithdrawSource = function(source) {
+  withdrawSource = source === 'orders' ? 'orders' : 'all';
+
+  styleWithdrawToggle(document.getElementById('withdraw-source-all'), withdrawSource === 'all');
+  styleWithdrawToggle(document.getElementById('withdraw-source-orders'), withdrawSource === 'orders');
+
+  const box = document.getElementById('withdraw-orders-box');
+  if (box) box.classList.toggle('hidden', withdrawSource !== 'orders');
+
+  renderWithdrawOrders();
+  updateWithdrawSummary();
+};
+
 // Đổi giữa 2 cách nhận tiền
 window.setWithdrawMode = function(mode) {
   withdrawMode = mode === 'qr' ? 'qr' : 'account';
@@ -3007,6 +3048,11 @@ window.openWithdrawModal = async function() {
   const savedBank = (currentUser && currentUser.bank) || {};
   setWithdrawMode(savedBank.accNum ? 'account' : savedBank.qrUrl ? 'qr' : 'account');
 
+  // Mỗi lần mở lại: mặc định rút toàn bộ, bỏ các đơn đã chọn lần trước.
+  withdrawSelected.clear();
+  withdrawOrders = [];
+  setWithdrawSource('all');
+
   modal.classList.remove('hidden');
   lockModal(modal);
 
@@ -3025,6 +3071,142 @@ window.openWithdrawModal = async function() {
   await refreshWithdrawBalance();
 };
 
+// Vẽ danh sách đơn còn hoa hồng có thể rút riêng.
+function renderWithdrawOrders() {
+  const listEl = document.getElementById('withdraw-orders-list');
+  const emptyEl = document.getElementById('withdraw-orders-empty');
+  if (!listEl || !emptyEl) return;
+
+  // Bỏ các lựa chọn không còn trong danh sách (đơn vừa được rút ở tab khác...)
+  const validCodes = new Set(withdrawOrders.map((order) => order.code));
+  Array.from(withdrawSelected).forEach((code) => {
+    if (!validCodes.has(code)) withdrawSelected.delete(code);
+  });
+
+  if (!withdrawOrders.length) {
+    listEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+  emptyEl.classList.add('hidden');
+
+  listEl.innerHTML = withdrawOrders
+    .map((order) => {
+      const checked = withdrawSelected.has(order.code);
+      return `
+        <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition">
+          <input type="checkbox" data-change-action="toggle-withdraw-order" data-code="${escapeHtml(order.code)}"
+                 ${checked ? 'checked' : ''}
+                 class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+          <span class="min-w-0 flex-1">
+            <span class="block text-xs font-bold text-slate-700">${escapeHtml(order.code)}</span>
+            <span class="block text-[11px] text-slate-400 mt-0.5">${escapeHtml(order.platform || 'Khác')} • ${escapeHtml(order.date)}</span>
+          </span>
+          <span class="text-sm font-extrabold text-slate-800 whitespace-nowrap">${formatCurrency(order.withdrawable)}</span>
+        </label>`;
+    })
+    .join('');
+}
+
+function selectedWithdrawTotal() {
+  const selected = new Set(withdrawSelected);
+  return withdrawOrders.reduce(
+    (sum, order) => sum + (selected.has(order.code) ? Number(order.withdrawable) || 0 : 0),
+    0
+  );
+}
+
+function toggleWithdrawOrder(el) {
+  const code = String((el && el.dataset && el.dataset.code) || '');
+  if (!code) return;
+  if (el.checked) withdrawSelected.add(code);
+  else withdrawSelected.delete(code);
+  updateWithdrawSummary();
+}
+
+// Cập nhật số tiền sẽ rút + trạng thái nút gửi theo hình thức đang chọn.
+function updateWithdrawSummary() {
+  const availableEl = document.getElementById('withdraw-available');
+  const noteEl = document.getElementById('withdraw-note');
+  const btn = document.getElementById('withdraw-submit-btn');
+  if (!availableEl || !noteEl || !btn) return;
+
+  availableEl.innerText = formatCurrency(withdrawBalance);
+
+  const selectedTotal = selectedWithdrawTotal();
+  const totalEl = document.getElementById('withdraw-selected-total');
+  if (totalEl) totalEl.innerText = formatCurrency(selectedTotal);
+
+  let extra = '';
+  if (withdrawDebt > 0) {
+    extra += ' Bạn đang cần hoàn lại ' + formatCurrency(withdrawDebt) + ' do hoa hồng bị thu hồi.';
+  }
+
+  // Mỗi tài khoản chỉ có 1 lệnh chờ. Khoá nút ngay từ đầu để tránh trường hợp
+  // rút một phần còn dư số dư, người dùng bấm gửi lần nữa rồi mới nhận lỗi 409.
+  if (withdrawPending) {
+    const pendingCode = withdrawPending.code ? ' ' + withdrawPending.code : '';
+    const pendingAmount = withdrawPending.amount
+      ? ' Số tiền: ' + formatCurrency(withdrawPending.amount) + '.'
+      : '';
+    noteEl.innerText =
+      'Bạn đang có lệnh rút' + pendingCode + ' chờ xử lý.' + pendingAmount +
+      ' Vui lòng đợi quản trị viên xử lý xong rồi gửi lệnh mới.' + extra;
+    btn.disabled = true;
+    btn.title = 'Đang có lệnh rút chờ xử lý';
+    return;
+  }
+
+  if (withdrawSource === 'all') {
+    if (withdrawBalance < withdrawMin) {
+      noteEl.innerText =
+        'Mức rút tối thiểu là ' + formatCurrency(withdrawMin) + '. ' +
+        (withdrawBalance > 0
+          ? 'Bạn còn thiếu ' + formatCurrency(withdrawMin - withdrawBalance) + '.'
+          : 'Bạn chưa có hoa hồng khả dụng để rút.') +
+        extra;
+      btn.disabled = true;
+      btn.title = 'Số dư chưa đủ để rút';
+    } else {
+      noteEl.innerText =
+        'Hệ thống sẽ rút toàn bộ ' + formatCurrency(withdrawBalance) + ' đang có, gồm cả tiền đổi từ điểm. ' +
+        'Mức tối thiểu: ' + formatCurrency(withdrawMin) + '.' + extra;
+      btn.disabled = false;
+      btn.title = '';
+    }
+    return;
+  }
+
+  if (!withdrawOrders.length) {
+    noteEl.innerText = 'Chưa có đơn nào còn hoa hồng khả dụng để rút.' + extra;
+    btn.disabled = true;
+    btn.title = 'Chưa có đơn đủ điều kiện';
+  } else if (!withdrawSelected.size) {
+    noteEl.innerText =
+      'Chọn các đơn muốn rút. Mức tối thiểu: ' + formatCurrency(withdrawMin) + '.' + extra;
+    btn.disabled = true;
+    btn.title = 'Vui lòng chọn đơn muốn rút';
+  } else if (selectedTotal < withdrawMin) {
+    noteEl.innerText =
+      'Đã chọn ' + withdrawSelected.size + ' đơn, tổng ' + formatCurrency(selectedTotal) + '. ' +
+      'Mức tối thiểu: ' + formatCurrency(withdrawMin) + '.' + extra;
+    btn.disabled = true;
+    btn.title = 'Tổng hoa hồng đã chọn chưa đủ mức tối thiểu';
+  } else if (selectedTotal > withdrawBalance) {
+    noteEl.innerText =
+      'Tổng đã chọn ' + formatCurrency(selectedTotal) + ' vượt số dư khả dụng ' +
+      formatCurrency(withdrawBalance) + '. Vui lòng bỏ bớt đơn hoặc rút toàn bộ.' + extra;
+    btn.disabled = true;
+    btn.title = 'Tổng chọn vượt số dư khả dụng';
+  } else {
+    noteEl.innerText =
+      'Đã chọn ' + withdrawSelected.size + ' đơn, tổng ' + formatCurrency(selectedTotal) + '. ' +
+      'Mức tối thiểu: ' + formatCurrency(withdrawMin) + '.' + extra;
+    btn.disabled = false;
+    btn.title = '';
+  }
+}
+
 // Nạp số dư + mức rút tối thiểu vào modal và chặn gửi nếu chưa đủ tiền.
 // Việc chặn thật vẫn do server quyết định (backend/routes/wallet.js).
 async function refreshWithdrawBalance() {
@@ -3032,6 +3214,11 @@ async function refreshWithdrawBalance() {
   const noteEl = document.getElementById('withdraw-note');
   const btn = document.getElementById('withdraw-submit-btn');
   if (!availableEl || !noteEl || !btn) return;
+
+  // Khoá nút trong lúc tải để không dùng dữ liệu cũ (đặc biệt là trạng thái
+  // "chưa có lệnh chờ" vừa bị thay đổi ở tab khác).
+  btn.disabled = true;
+  btn.title = 'Đang tải số dư...';
 
   let data;
   try {
@@ -3043,31 +3230,14 @@ async function refreshWithdrawBalance() {
     return;
   }
 
-  const balance = Number(data.balance) || 0;
-  const min = Number(data.minWithdraw) || 0;
-  const debt = Number(data.debt) || 0;
+  withdrawBalance = Number(data.balance) || 0;
+  withdrawMin = Number(data.minWithdraw) || 0;
+  withdrawDebt = Number(data.debt) || 0;
+  withdrawOrders = Array.isArray(data.withdrawableOrders) ? data.withdrawableOrders : [];
+  withdrawPending = data.pendingWithdrawal || null;
 
-  availableEl.innerText = formatCurrency(balance);
-
-  let extra = '';
-  if (debt > 0) extra += ' Bạn đang cần hoàn lại ' + formatCurrency(debt) + ' do hoa hồng bị thu hồi.';
-
-  if (balance < min) {
-    noteEl.innerText =
-      'Mức rút tối thiểu là ' + formatCurrency(min) + '. ' +
-      (balance > 0
-        ? 'Bạn còn thiếu ' + formatCurrency(min - balance) + '.'
-        : 'Bạn chưa có hoa hồng khả dụng để rút.') +
-      extra;
-    btn.disabled = true;
-    btn.title = 'Số dư chưa đủ để rút';
-  } else {
-    noteEl.innerText =
-      'Hệ thống sẽ rút toàn bộ ' + formatCurrency(balance) + ' đang có. ' +
-      'Mức tối thiểu: ' + formatCurrency(min) + '.' + extra;
-    btn.disabled = false;
-    btn.title = '';
-  }
+  renderWithdrawOrders();
+  updateWithdrawSummary();
 }
 
 window.closeWithdrawModal = function() {
@@ -3089,6 +3259,16 @@ window.submitWithdraw = async function() {
   const nameEl = document.getElementById('withdraw-acc-name');
   const btn = document.getElementById('withdraw-submit-btn');
   if (!numEl || !nameEl) return;
+
+  // Chặn sớm nếu đã có lệnh chờ (server vẫn kiểm tra lại trong transaction).
+  if (withdrawPending) {
+    showToast(
+      'Bạn đang có lệnh rút' + (withdrawPending.code ? ' ' + withdrawPending.code : '') +
+        ' chờ xử lý. Vui lòng đợi quản trị viên xử lý xong rồi gửi lệnh mới.',
+      'error'
+    );
+    return;
+  }
 
   const bank = currentBankName();
   const accNum = numEl.value.trim();
@@ -3118,6 +3298,12 @@ window.submitWithdraw = async function() {
     }
   }
 
+  const orderCodes = withdrawSource === 'orders' ? Array.from(withdrawSelected) : [];
+  if (withdrawSource === 'orders' && !orderCodes.length) {
+    showToast('Vui lòng chọn ít nhất một đơn hàng để rút.', 'error');
+    return;
+  }
+
   const originalHTML = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
@@ -3125,40 +3311,59 @@ window.submitWithdraw = async function() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
+  let data = null;
   try {
     // Cách "Ảnh QR" thì không gửi kèm thông tin ngân hàng/STK vì ảnh QR đã có sẵn
-    const data = await api('/wallet/withdrawals', {
+    data = await api('/wallet/withdrawals', {
       method: 'POST',
       body: isQrMode
-        ? { mode: 'qr', bank: '', accNum: '', accName: '' }
-        : { mode: 'account', bank, accNum, accName }
+        ? { mode: 'qr', bank: '', accNum: '', accName: '', source: withdrawSource, orderCodes }
+        : { mode: 'account', bank, accNum, accName, source: withdrawSource, orderCodes }
     });
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    // Trả lại giao diện nút trước khi refresh để nút không bị kẹt ở "Đang gửi..."
+    if (btn) {
+      btn.innerHTML = originalHTML;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  }
 
-    currentUser = data.user || currentUser;
-    renderProfileBank(currentUser && currentUser.bank);
+  if (!data) {
+    // Lỗi từ API: tải lại số dư/trạng thái lệnh chờ rồi để người dùng thử lại.
+    await refreshWithdrawBalance();
+    return;
+  }
 
+  // Từ đây lệnh rút đã được tạo thành công. Các lỗi khi làm mới dashboard/wallet
+  // KHÔNG được hiển thị như lỗi rút tiền, tránh người dùng bấm gửi lại và nhận 409.
+  currentUser = data.user || currentUser;
+  renderProfileBank(currentUser && currentUser.bank);
+
+  const amount = (data.withdrawal && data.withdrawal.amount) || 0;
+  const orderCount = (data.withdrawal && data.withdrawal.orderCount) || 0;
+  const detail = isQrMode
+    ? 'Nhận tiền qua ảnh QR'
+    : `Ngân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`;
+  const orderDetail =
+    withdrawSource === 'orders' && orderCount > 0
+      ? `\nGồm hoa hồng của ${orderCount} đơn đã chọn.`
+      : '';
+  showToast(`✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\n${detail}${orderDetail}`, 'success');
+  closeWithdrawModal();
+
+  try {
     if (document.getElementById('tx-container')) {
       await updateWalletData();
     } else if (document.getElementById('dash-recent-orders')) {
       await updateDashboardData();
     }
-
-    const amount = (data.withdrawal && data.withdrawal.amount) || 0;
-    const detail = isQrMode
-      ? 'Nhận tiền qua ảnh QR'
-      : `Ngân hàng: ${bank}\nSTK: ${accNum}\nTên: ${accName.toUpperCase()}`;
-    showToast(`✅ Đã gửi yêu cầu rút ${formatCurrency(amount)}!\n${detail}`, 'success');
-    closeWithdrawModal();
   } catch (err) {
-    showToast(err.message, 'error');
-  } finally {
-    if (btn) {
-      btn.innerHTML = originalHTML;
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    }
-    // Nạp lại số dư: nếu vừa gửi thành công thì nút sẽ tự bị khoá
-    await refreshWithdrawBalance();
+    console.warn('Không làm mới dữ liệu sau khi rút tiền:', err.message);
   }
+
+  await refreshWithdrawBalance();
 };
 
 
@@ -3374,6 +3579,8 @@ const UI_ACTIONS = {
   // Hộp thoại rút tiền
   'close-withdraw-modal': () => closeWithdrawModal(),
   'withdraw-mode': (el) => setWithdrawMode(el.dataset.mode),
+  'withdraw-source': (el) => setWithdrawSource(el.dataset.source),
+  'toggle-withdraw-order': (el) => toggleWithdrawOrder(el),
   'toggle-other-bank': () => toggleOtherBankInput(),
   'pick-withdraw-qr': () => document.getElementById('withdraw-qr-upload')?.click(),
   'remove-bank-qr': () => removeBankQr(),

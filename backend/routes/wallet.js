@@ -10,6 +10,7 @@ const { formatMoney } = require('../lib/format');
 const { WITHDRAWAL_MIN, CANCELLED } = require('../lib/constants');
 const { isValidBankName } = require('../lib/banks');
 const { computeUserMoney, creditedCondition } = require('../lib/money');
+const { listWithdrawableOrders } = require('../lib/withdrawalItems');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -115,8 +116,35 @@ router.get('/', (req, res) => {
     )
     .get(userId);
 
-  const withdrawals = db.prepare('SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC').all(userId);
+  const withdrawals = db
+    .prepare(
+      `SELECT w.*,
+         (SELECT COUNT(*) FROM withdrawal_items wi WHERE wi.withdrawal_id = w.id) AS order_count,
+         (SELECT GROUP_CONCAT(o.code, ', ')
+            FROM withdrawal_items wi
+            JOIN orders o ON o.id = wi.order_id
+           WHERE wi.withdrawal_id = w.id) AS order_codes
+       FROM withdrawals w
+       WHERE w.user_id = ?
+       ORDER BY w.id DESC`
+    )
+    .all(userId);
   const money = computeBalance(userId);
+  // Mỗi tài khoản chỉ được có 1 lệnh chờ. Trả kèm để giao diện khoá nút gửi
+  // ngay từ lần mở đầu tiên, thay vì để người dùng bấm rồi mới nhận lỗi 409.
+  const pendingWithdrawalRow = db
+    .prepare(
+      `SELECT code, amount FROM withdrawals
+       WHERE user_id = ? AND status = 'Đang xử lý'
+       ORDER BY id DESC LIMIT 1`
+    )
+    .get(userId);
+  const pendingWithdrawal = pendingWithdrawalRow
+    ? {
+        code: pendingWithdrawalRow.code,
+        amount: Number(pendingWithdrawalRow.amount) || 0
+      }
+    : null;
 
   return res.json({
     stats: {
@@ -134,7 +162,10 @@ router.get('/', (req, res) => {
     debt: money.debt,
     clawback: money.clawback,
     minWithdraw: WITHDRAWAL_MIN,
-    canWithdraw: money.balance >= WITHDRAWAL_MIN,
+    canWithdraw: !pendingWithdrawal && money.balance >= WITHDRAWAL_MIN,
+    pendingWithdrawal,
+    // Danh sách đơn còn hoa hồng có thể rút riêng (chọn theo đơn)
+    withdrawableOrders: listWithdrawableOrders(userId),
     withdrawals: withdrawals.map(toWithdrawal)
   });
 });
@@ -153,6 +184,34 @@ router.post('/withdrawals', (req, res) => {
   let mode = String((req.body && req.body.mode) || '').trim();
   if (mode !== 'qr' && mode !== 'account') {
     mode = qrUrl && !accNum && !accName ? 'qr' : 'account';
+  }
+
+  // Người dùng chọn rút toàn bộ số dư (mặc định, giữ tương thích API cũ)
+  // hoặc chỉ rút hoa hồng của một số đơn cụ thể.
+  const source = String((req.body && req.body.source) || 'all').trim();
+  if (source !== 'all' && source !== 'orders') {
+    return res.status(400).json({ error: 'Hình thức rút tiền không hợp lệ.' });
+  }
+
+  let orderCodes = [];
+  if (source === 'orders') {
+    const raw = req.body && req.body.orderCodes;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một đơn hàng để rút.' });
+    }
+    orderCodes = Array.from(
+      new Set(
+        raw
+          .map((code) => String(code || '').trim())
+          .filter(Boolean)
+      )
+    );
+    if (!orderCodes.length) {
+      return res.status(400).json({ error: 'Vui lòng chọn ít nhất một đơn hàng để rút.' });
+    }
+    if (orderCodes.length > 200) {
+      return res.status(400).json({ error: 'Chỉ được chọn tối đa 200 đơn trong một lệnh rút.' });
+    }
   }
 
   if (mode === 'qr') {
@@ -218,16 +277,80 @@ router.post('/withdrawals', (req, res) => {
       }
       if (!code) throw httpError(500, 'Không tạo được mã giao dịch.');
 
-      // Ghi nhận luôn số tiền = toàn bộ số dư khả dụng tại thời điểm gửi.
-      // Nhờ vậy số tiền này được giữ chỗ ngay, không thể rút trùng.
-      const amount = money.balance;
+      // Danh sách đơn còn hoa hồng chưa rút, tính ngay trong transaction để
+      // không bị lệch nếu có request khác vừa tạo lệnh rút.
+      const withdrawableOrders = listWithdrawableOrders(req.user.id);
+      let amount = 0;
+      let allocations = [];
+
+      if (source === 'orders') {
+        const byCode = new Map(withdrawableOrders.map((order) => [order.code, order]));
+        const picked = [];
+        for (const orderCode of orderCodes) {
+          const order = byCode.get(orderCode);
+          if (!order) {
+            throw httpError(
+              400,
+              `Đơn ${orderCode} chưa có hoa hồng khả dụng để rút (có thể đã rút hoặc chưa được duyệt).`
+            );
+          }
+          picked.push(order);
+        }
+
+        amount = picked.reduce((sum, order) => sum + order.withdrawable, 0);
+        if (amount < WITHDRAWAL_MIN) {
+          throw httpError(
+            400,
+            `Tổng hoa hồng các đơn đã chọn là ${formatMoney(amount)}, ` +
+              `thấp hơn mức rút tối thiểu ${formatMoney(WITHDRAWAL_MIN)}.`
+          );
+        }
+        if (amount > money.balance) {
+          throw httpError(
+            400,
+            `Tổng hoa hồng các đơn đã chọn (${formatMoney(amount)}) vượt số dư khả dụng ` +
+              `(${formatMoney(money.balance)}). Vui lòng chọn ít đơn hơn hoặc dùng "Rút toàn bộ".`
+          );
+        }
+
+        allocations = picked.map((order) => ({
+          orderId: order.id,
+          code: order.code,
+          amount: order.withdrawable
+        }));
+      } else {
+        // Rút toàn bộ: giữ nguyên hành vi cũ, gồm cả tiền đổi từ điểm giới thiệu.
+        amount = money.balance;
+        let left = amount;
+        for (const order of withdrawableOrders) {
+          if (left <= 0) break;
+          const take = Math.min(order.withdrawable, left);
+          if (take <= 0) continue;
+          allocations.push({ orderId: order.id, code: order.code, amount: take });
+          left -= take;
+        }
+      }
+
+      if (amount <= 0) {
+        throw httpError(400, 'Không có số dư khả dụng để rút.');
+      }
 
       const info = db
         .prepare(
-          `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, qr_url, amount, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', ?)`
+          `INSERT INTO withdrawals
+             (user_id, code, bank, acc_num, acc_name, qr_url, amount, status, items_allocated, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'Đang xử lý', 1, ?)`
         )
         .run(req.user.id, code, bank, accNum, accName, qrUrl, amount, new Date().toISOString());
+
+      const insertItem = db.prepare(
+        `INSERT INTO withdrawal_items (withdrawal_id, order_id, amount, created_at)
+         VALUES (?, ?, ?, ?)`
+      );
+      const now = new Date().toISOString();
+      for (const item of allocations) {
+        insertItem.run(Number(info.lastInsertRowid), item.orderId, item.amount, now);
+      }
 
       // Chỉ lưu làm thông tin nhận tiền mặc định khi người dùng nhập số tài khoản.
       // Chọn cách "ảnh QR" thì giữ nguyên thông tin ngân hàng đã lưu trước đó (không xoá).
@@ -244,14 +367,18 @@ router.post('/withdrawals', (req, res) => {
       const target = accNum
         ? `${bank} - ${accNum}`
         : `qua ảnh QR nhận tiền${bank ? ' (' + bank + ')' : ''}`;
+      const orderText =
+        source === 'orders' ? ` từ ${allocations.length} đơn đã chọn` : '';
 
       notify(req.user.id, {
         title: `Đã gửi yêu cầu rút ${code}`,
-        body: `Số tiền ${formatMoney(amount)} về ${target}. Quản trị viên sẽ xử lý trong thời gian sớm nhất.`,
+        body:
+          `Số tiền ${formatMoney(amount)}${orderText} về ${target}. ` +
+          'Quản trị viên sẽ xử lý trong thời gian sớm nhất.',
         icon: 'banknote'
       });
 
-      return { info, amount };
+      return { info, amount, allocations };
     });
   } catch (err) {
     if (err && err.status) return res.status(err.status).json({ error: err.message });
@@ -260,9 +387,12 @@ router.post('/withdrawals', (req, res) => {
 
   const row = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(Number(created.info.lastInsertRowid));
   const userRow = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  const withdrawal = toWithdrawal(row);
+  withdrawal.orderCount = created.allocations.length;
+  withdrawal.orderCodes = created.allocations.map((item) => item.code);
 
   return res.status(201).json({
-    withdrawal: toWithdrawal(row),
+    withdrawal,
     user: toUser(userRow),
     balance: computeBalance(req.user.id).balance
   });

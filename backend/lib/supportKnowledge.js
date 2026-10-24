@@ -124,12 +124,15 @@ const TOPICS = [
     title: 'Rút tiền',
     keywords: [
       'rut tien', 'rut', 'so du', 'toi thieu', 'bao lau nhan tien', 'chi tra',
-      'chuyen khoan', 'lenh rut', 'khi nao nhan tien'
+      'chuyen khoan', 'lenh rut', 'khi nao nhan tien', 'rut theo don', 'chon don',
+      'tung don', 'rut hoa hong don'
     ],
     answer: [
       `Mức rút tối thiểu là ${minWithdrawal}.`,
-      'Số dư khả dụng = hoa hồng đã được admin duyệt - tiền đã rút.',
-      'Mỗi lần rút là rút TOÀN BỘ số dư khả dụng, và mỗi tài khoản chỉ được có 1 lệnh rút đang xử lý tại một thời điểm.',
+      'Số dư khả dụng = hoa hồng đã được admin duyệt - tiền đã rút + tiền đổi từ điểm giới thiệu.',
+      'Bạn có 2 hình thức rút: (1) rút toàn bộ số dư khả dụng, hoặc (2) chọn hoa hồng của từng đơn cụ thể.',
+      'Khi chọn theo đơn, mỗi đơn chỉ rút được một lần cho tới khi lệnh rút bị huỷ; không thể chọn trùng một đơn.',
+      'Mỗi tài khoản chỉ được có 1 lệnh rút đang xử lý tại một thời điểm.',
       'Bạn chọn 1 trong 2 cách nhận tiền: (1) nhập ngân hàng/ví + số tài khoản + tên chủ tài khoản, hoặc (2) tải lên ảnh QR nhận tiền.',
       'Sau khi gửi, lệnh ở trạng thái "Đang xử lý"; quản trị viên kiểm tra và chuyển khoản, tiền thường về trong vài giờ đến 1 ngày làm việc.',
       'Nếu hoa hồng bị thu hồi sau khi bạn đã rút, số dư có thể âm và khoản đó tự trừ vào hoa hồng tiếp theo.',
@@ -225,6 +228,7 @@ const SUGGESTIONS = [
   'Làm sao tạo đơn hoàn tiền?',
   'Khi nào hoa hồng vào ví?',
   'Rút tiền thế nào?',
+  'Rút theo từng đơn thế nào?',
   'Mức rút tối thiểu là bao nhiêu?',
   'Hoa hồng bị thu hồi thì sao?',
   'Rút tiền bằng ảnh QR thế nào?',

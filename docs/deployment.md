@@ -322,6 +322,11 @@ Phải thấy `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-F
 | Đổi JWT_SECRET | `npm run gen-secret -- --write` rồi khởi động lại |
 | Sao lưu dữ liệu | `npm run backup` |
 
+> **Nâng cấp lên bản rút theo từng đơn:** chỉ cần thay mã và khởi động lại server.
+> Database tự tạo bảng `withdrawal_items`, thêm cột `withdrawals.items_allocated` và
+> phân bổ một lần các lệnh rút cũ cho những đơn hoa hồng còn lại (đơn cũ trước).
+> Không cần chạy migration tay; vẫn nên `npm run backup` trước khi nâng cấp.
+
 Khách quên mật khẩu thường sẽ **tự xử lý được**: bấm **"Quên mật khẩu?"** ở màn hình đăng nhập,
 hệ thống gửi mã xác thực về email đã đăng ký, khách nhập mã kèm mật khẩu mới là xong.
 

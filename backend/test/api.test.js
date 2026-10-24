@@ -1071,6 +1071,232 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(editPaid.res.status, 409);
   });
 
+  await t.test('rút theo từng đơn: chọn đơn, chống rút trùng, huỷ trả lại đơn, rút toàn bộ vẫn gồm điểm', async () => {
+    const pickUser = createUser({
+      username: 'pick@test.local',
+      email: 'pick@test.local',
+      name: 'Người rút theo đơn'
+    });
+    const stamp = Date.now();
+    const codeA = 'PICK-A-' + stamp;
+    const codeB = 'PICK-B-' + stamp;
+    const otherCode = 'PICK-OTHER-' + stamp;
+
+    const db = new DatabaseSync(DB_PATH);
+    const insertOrder = db.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, ?, ?, 'Hoàn thành', ?, ?)`
+    );
+    insertOrder.run(pickUser.uid, codeA, 'https://shopee.vn/a', 'Shopee', 100000, new Date(stamp - 2000).toISOString());
+    insertOrder.run(pickUser.uid, codeB, 'https://tiki.vn/b', 'Tiki', 50000, new Date(stamp - 1000).toISOString());
+    insertOrder.run(other.uid, otherCode, 'https://lazada.vn/c', 'Lazada', 70000, new Date().toISOString());
+    db.prepare('UPDATE users SET points = 100 WHERE id = ?').run(pickUser.uid);
+    db.close();
+
+    // 100 điểm -> 1.000đ vào ví, để kiểm tra "rút toàn bộ" gồm cả tiền điểm
+    const converted = await json('/api/referral/convert', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { points: 100 }
+    });
+    assert.equal(converted.res.status, 200);
+    assert.equal(converted.data.amount, 1000);
+
+    let wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.equal(wallet.res.status, 200);
+    assert.equal(wallet.data.balance, 151000);
+    assert.equal(wallet.data.withdrawableOrders.length, 2);
+    assert.deepEqual(
+      wallet.data.withdrawableOrders.map((order) => order.code),
+      [codeA, codeB],
+      'Đơn cũ phải đứng trước'
+    );
+    assert.deepEqual(
+      wallet.data.withdrawableOrders.map((order) => order.withdrawable),
+      [100000, 50000]
+    );
+
+    const body = { mode: 'account', bank: 'Vietcombank', accNum: '0123456789', accName: 'NGUYEN VAN A' };
+
+    // Chọn riêng đơn A
+    const onlyA = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { ...body, source: 'orders', orderCodes: [codeA] }
+    });
+    assert.equal(onlyA.res.status, 201);
+    assert.equal(onlyA.data.withdrawal.amount, 100000);
+    assert.equal(onlyA.data.withdrawal.orderCount, 1);
+    assert.deepEqual(onlyA.data.withdrawal.orderCodes, [codeA]);
+    assert.equal(onlyA.data.balance, 51000);
+
+    wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.deepEqual(
+      wallet.data.withdrawableOrders.map((order) => order.code),
+      [codeB],
+      'Đơn A đang chờ rút thì không được chọn lại'
+    );
+    assert.equal(wallet.data.pendingWithdrawal.code, onlyA.data.withdrawal.id);
+    assert.equal(wallet.data.pendingWithdrawal.amount, 100000);
+    assert.equal(wallet.data.canWithdraw, false, 'Có lệnh chờ thì không được rút tiếp');
+
+    // Huỷ -> đơn A mở lại
+    const cancelA = await json('/api/wallet/withdrawals/' + encodeURIComponent(onlyA.data.withdrawal.id), {
+      method: 'DELETE',
+      cookie: pickUser.cookie
+    });
+    assert.equal(cancelA.res.status, 200);
+    assert.equal(cancelA.data.balance, 151000);
+
+    wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.equal(wallet.data.withdrawableOrders.length, 2);
+    assert.equal(wallet.data.pendingWithdrawal, null);
+    assert.equal(wallet.data.canWithdraw, true);
+
+    // Không được chọn đơn của người khác
+    const stranger = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { ...body, source: 'orders', orderCodes: [otherCode] }
+    });
+    assert.equal(stranger.res.status, 400);
+
+    // Không được gửi danh sách rỗng
+    const empty = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { ...body, source: 'orders', orderCodes: [] }
+    });
+    assert.equal(empty.res.status, 400);
+
+    // Chọn cả A + B -> đúng 150.000đ, còn lại 1.000đ tiền điểm
+    const both = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { ...body, source: 'orders', orderCodes: [codeA, codeB] }
+    });
+    assert.equal(both.res.status, 201);
+    assert.equal(both.data.withdrawal.amount, 150000);
+    assert.equal(both.data.withdrawal.orderCount, 2);
+    assert.deepEqual(both.data.withdrawal.orderCodes.sort(), [codeA, codeB].sort());
+    assert.equal(both.data.balance, 1000);
+
+    wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.equal(wallet.data.withdrawableOrders.length, 0, 'Cả 2 đơn đã được rút');
+
+    // Admin sửa số tiền thực trả: phần phân bổ theo đơn phải co giãn theo
+    const reduced = await json('/api/admin/withdrawals/' + encodeURIComponent(both.data.withdrawal.id), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { amount: 120000 }
+    });
+    assert.equal(reduced.res.status, 200);
+
+    wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.equal(wallet.data.balance, 31000);
+    assert.deepEqual(
+      wallet.data.withdrawableOrders.map((order) => [order.code, order.withdrawable]),
+      [[codeB, 30000]],
+      'Giảm tiền rút phải mở lại phần hoa hồng chênh lệch'
+    );
+
+    const increased = await json('/api/admin/withdrawals/' + encodeURIComponent(both.data.withdrawal.id), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { amount: 150000 }
+    });
+    assert.equal(increased.res.status, 200);
+
+    wallet = await json('/api/wallet', { cookie: pickUser.cookie });
+    assert.equal(wallet.data.balance, 1000);
+    assert.equal(wallet.data.withdrawableOrders.length, 0);
+
+    // Admin thấy lệnh rút gắn với đúng 2 đơn
+    let adminWithdrawals = await json('/api/admin/withdrawals', { cookie: admin.cookie });
+    let adminWd = (adminWithdrawals.data.withdrawals || []).find(
+      (row) => row.id === both.data.withdrawal.id
+    );
+    assert.ok(adminWd);
+    assert.equal(adminWd.orderCount, 2);
+    assert.deepEqual(adminWd.orderCodes.sort(), [codeA, codeB].sort());
+
+    // Admin chi trả, sau đó người dùng rút nốt 1.000đ tiền điểm bằng "rút toàn bộ"
+    const paid = await json('/api/admin/withdrawals/' + encodeURIComponent(both.data.withdrawal.id), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { status: 'Đã thanh toán', amount: 150000 }
+    });
+    assert.equal(paid.res.status, 200);
+
+    const pointsOnly = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: pickUser.cookie,
+      body: { ...body, source: 'all' }
+    });
+    assert.equal(pointsOnly.res.status, 201);
+    assert.equal(pointsOnly.data.withdrawal.amount, 1000);
+    assert.equal(pointsOnly.data.withdrawal.orderCount, 0);
+    assert.equal(pointsOnly.data.balance, 0);
+
+    adminWithdrawals = await json('/api/admin/withdrawals', { cookie: admin.cookie });
+    adminWd = (adminWithdrawals.data.withdrawals || []).find(
+      (row) => row.id === pointsOnly.data.withdrawal.id
+    );
+    assert.ok(adminWd);
+    assert.equal(adminWd.pointsValue, 1000);
+    assert.equal(adminWd.payable, 1000);
+  });
+
+  await t.test('đơn còn hoa hồng không vượt quá số dư khi khách đang nợ', async () => {
+    const debtUser = createUser({
+      username: 'debt@test.local',
+      email: 'debt@test.local',
+      name: 'Người đang nợ'
+    });
+    const stamp = Date.now();
+    const oldCode = 'DEBT-OLD-' + stamp;
+    const newCode = 'DEBT-NEW-' + stamp;
+    const biggerCode = 'DEBT-BIG-' + stamp;
+
+    const db = new DatabaseSync(DB_PATH);
+    // Đơn cũ từng được rút nhưng sau đó bị huỷ -> khoản đã chi thành nợ
+    db.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, 'https://shopee.vn/old', 'Shopee', 'Đã huỷ', 0, ?)`
+    ).run(debtUser.uid, oldCode, new Date(stamp - 4000).toISOString());
+    db.prepare(
+      `INSERT INTO withdrawals (user_id, code, bank, acc_num, acc_name, amount, status, items_allocated, created_at)
+       VALUES (?, ?, 'Vietcombank', '0123456789', 'NGUYEN VAN A', 100000, 'Đã thanh toán', 1, ?)`
+    ).run(debtUser.uid, 'DEBT-WD-' + stamp, new Date(stamp - 3000).toISOString());
+    db.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, 'https://tiki.vn/new', 'Tiki', 'Hoàn thành', 50000, ?)`
+    ).run(debtUser.uid, newCode, new Date(stamp - 2000).toISOString());
+    db.close();
+
+    let wallet = await json('/api/wallet', { cookie: debtUser.cookie });
+    assert.equal(wallet.res.status, 200);
+    assert.equal(wallet.data.balance, -50000);
+    assert.equal(wallet.data.debt, 50000);
+    assert.equal(wallet.data.withdrawableOrders.length, 0, 'Đang nợ thì chưa được chọn đơn');
+
+    // Thêm đơn 100.000đ: trả hết nợ 50.000đ, chỉ còn 50.000đ chọn được
+    const db2 = new DatabaseSync(DB_PATH);
+    db2.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, 'https://lazada.vn/big', 'Lazada', 'Hoàn thành', 100000, ?)`
+    ).run(debtUser.uid, biggerCode, new Date(stamp - 1000).toISOString());
+    db2.close();
+
+    wallet = await json('/api/wallet', { cookie: debtUser.cookie });
+    assert.equal(wallet.data.balance, 50000);
+    assert.equal(
+      wallet.data.withdrawableOrders.reduce((sum, order) => sum + order.withdrawable, 0),
+      50000,
+      'Tổng chọn được phải bằng số dư, không phải toàn bộ hoa hồng'
+    );
+  });
+
   await t.test('điểm giới thiệu: 100 điểm = 1.000đ, đổi vào ví và chặn dữ liệu sai', async () => {
     const ptUser = createUser({
       username: 'points@test.local',

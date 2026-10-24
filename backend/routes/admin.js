@@ -54,6 +54,7 @@ const { UPLOAD_DIR } = require('../lib/uploads');
 const postback = require('../lib/postback');
 const { generateTempPassword } = require('../lib/validate');
 const { creditedCondition, reversedExpr, isCredited, computeUserMoney } = require('../lib/money');
+const { resizeWithdrawalItems } = require('../lib/withdrawalItems');
 const securityAlerts = require('../lib/securityAlerts');
 
 const router = express.Router();
@@ -149,7 +150,12 @@ function findWithdrawalByCode(code) {
          (SELECT COALESCE(SUM(pr.amount), 0) FROM point_redemptions pr
            WHERE pr.user_id = w.user_id) AS points_value_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
-           WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total
+           WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total,
+         (SELECT COUNT(*) FROM withdrawal_items wi WHERE wi.withdrawal_id = w.id) AS order_count,
+         (SELECT GROUP_CONCAT(o.code, ', ')
+            FROM withdrawal_items wi
+            JOIN orders o ON o.id = wi.order_id
+           WHERE wi.withdrawal_id = w.id) AS order_codes
        FROM withdrawals w JOIN users u ON u.id = w.user_id
        WHERE w.code = ?`
     )
@@ -801,7 +807,12 @@ router.get('/withdrawals', (req, res) => {
          (SELECT COALESCE(SUM(pr.amount), 0) FROM point_redemptions pr
            WHERE pr.user_id = w.user_id) AS points_value_total,
          (SELECT COALESCE(SUM(w3.amount), 0) FROM withdrawals w3
-           WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total
+           WHERE w3.user_id = w.user_id AND w3.status != '${CANCELLED}' AND w3.id != w.id) AS other_withdrawn_total,
+         (SELECT COUNT(*) FROM withdrawal_items wi WHERE wi.withdrawal_id = w.id) AS order_count,
+         (SELECT GROUP_CONCAT(o.code, ', ')
+            FROM withdrawal_items wi
+            JOIN orders o ON o.id = wi.order_id
+           WHERE wi.withdrawal_id = w.id) AS order_codes
        FROM withdrawals w JOIN users u ON u.id = w.user_id
        ${whereSql}
        ORDER BY w.id DESC
@@ -880,6 +891,14 @@ router.patch('/withdrawals/:code', (req, res) => {
       }
 
       db.prepare(`UPDATE withdrawals SET ${updates.join(', ')} WHERE code = ?`).run(...values, code);
+
+      // Giữ phân bổ theo đơn khớp với số tiền thực trả mới. Nếu admin giảm tiền
+      // (ví dụ trừ phí chuyển khoản), phần chênh lệch được trả lại vào số dư;
+      // các đơn tương ứng cũng phải được mở lại để người dùng rút sau.
+      const oldAmount = Number(row.amount) || 0;
+      if (nextStatus !== CANCELLED && nextAmount !== oldAmount) {
+        resizeWithdrawalItems(row.id, row.user_id, oldAmount, nextAmount, row.created_at);
+      }
 
       // Báo cho người dùng biết lệnh rút của họ vừa thay đổi
       const amountChanged = nextAmount !== (Number(row.amount) || 0);

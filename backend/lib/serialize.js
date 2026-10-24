@@ -94,6 +94,12 @@ function toNotification(row) {
 
 function toWithdrawal(row) {
   if (!row) return null;
+  const orderCodes = row.order_codes
+    ? String(row.order_codes)
+        .split(', ')
+        .map((code) => code.trim())
+        .filter(Boolean)
+    : [];
   return {
     id: row.code,
     bank: row.bank,
@@ -102,6 +108,9 @@ function toWithdrawal(row) {
     qrUrl: row.qr_url || null,
     amount: Number(row.amount) || 0,
     status: row.status,
+    // Các đơn hoa hồng được phân bổ cho lệnh rút này (rỗng nếu chỉ rút tiền từ điểm)
+    orderCount: Number(row.order_count) || orderCodes.length,
+    orderCodes,
     date: formatDateTime(row.created_at),
     createdAt: row.created_at
   };
@@ -225,6 +234,12 @@ function toAdminWithdrawal(row) {
   const otherWithdrawn = Number(row.other_withdrawn_total) || 0;
   const pointsValue = Number(row.points_value_total) || 0;
   const userBalance = commission + pointsValue - withdrawn;
+  const orderCodes = row.order_codes
+    ? String(row.order_codes)
+        .split(', ')
+        .map((code) => code.trim())
+        .filter(Boolean)
+    : [];
   return {
     id: row.code,
     userId: row.user_id,
@@ -240,6 +255,9 @@ function toAdminWithdrawal(row) {
     qrUrl: row.qr_url || null,
     amount: Number(row.amount) || 0,
     status: row.status,
+    // Các đơn hoa hồng được phân bổ cho lệnh rút này
+    orderCount: Number(row.order_count) || orderCodes.length,
+    orderCodes,
     createdAt: row.created_at,
     date: formatDateTime(row.created_at),
     // Số dư hiện tại của người dùng (hoa hồng + tiền đổi từ điểm - mọi lệnh rút)

@@ -65,8 +65,26 @@ db.exec(`
     acc_name   TEXT NOT NULL,
     amount     INTEGER NOT NULL DEFAULT 0,
     status     TEXT NOT NULL DEFAULT 'Đang xử lý',
+    -- 1 = đã phân bổ số tiền rút này cho các đơn hoa hồng (bảng withdrawal_items).
+    -- Lệnh cũ trước khi có tính năng rút theo đơn sẽ được phân bổ một lần khi nâng cấp.
+    items_allocated INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  );
+
+  -- Phân bổ từng lệnh rút cho các đơn hoa hồng cụ thể.
+  -- Nhờ bảng này người dùng có thể chọn rút hoa hồng của từng đơn mà không rút trùng.
+  -- Khoản tiền đổi từ điểm giới thiệu không gắn với đơn nào nên sẽ nằm ở phần
+  -- chênh lệch giữa withdrawals.amount và tổng withdrawal_items.amount.
+  CREATE TABLE IF NOT EXISTS withdrawal_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    withdrawal_id INTEGER NOT NULL,
+    order_id      INTEGER NOT NULL,
+    amount        INTEGER NOT NULL,
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (withdrawal_id) REFERENCES withdrawals (id) ON DELETE CASCADE,
+    FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+    UNIQUE (withdrawal_id, order_id)
   );
 
   CREATE TABLE IF NOT EXISTS referrals (
@@ -276,6 +294,10 @@ ensureColumn('users', 'bank_qr_url', 'TEXT');
 // cũng không làm thay đổi ảnh mà quản trị viên đang dùng để chuyển tiền.
 ensureColumn('withdrawals', 'qr_url', 'TEXT');
 
+// Đánh dấu lệnh rút đã được phân bổ cho các đơn (xem bảng withdrawal_items).
+// Lệnh cũ có sẵn sẽ được phân bổ một lần ở cuối file này.
+ensureColumn('withdrawals', 'items_allocated', 'INTEGER NOT NULL DEFAULT 0');
+
 // Phân biệt link hoàn tiền THẬT với link mock/chưa gắn hoa hồng.
 // Lưu theo từng đơn để sau này đổi AFFILIATE_LIVE_PLATFORMS vẫn xem lại được lịch sử.
 ensureColumn('orders', 'affiliate_provider', 'TEXT');
@@ -313,6 +335,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_orders_user        ON orders (user_id);
   CREATE INDEX IF NOT EXISTS idx_orders_sub_id      ON orders (sub_id);
   CREATE INDEX IF NOT EXISTS idx_withdrawals_user   ON withdrawals (user_id);
+  CREATE INDEX IF NOT EXISTS idx_withdrawal_items_wd ON withdrawal_items (withdrawal_id);
+  CREATE INDEX IF NOT EXISTS idx_withdrawal_items_order ON withdrawal_items (order_id);
   CREATE INDEX IF NOT EXISTS idx_referrals_user     ON referrals (user_id);
   CREATE INDEX IF NOT EXISTS idx_point_redemptions_user ON point_redemptions (user_id);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
@@ -383,5 +407,72 @@ function transaction(fn) {
 }
 
 db.transaction = transaction;
+
+/**
+ * Phân bổ các lệnh rút CŨ (trước khi có tính năng rút theo đơn) cho các đơn
+ * hoa hồng theo thứ tự thời gian. Nhờ vậy số "còn rút được" của từng đơn khớp
+ * với số dư tổng, không bị rút trùng sau khi nâng cấp.
+ *
+ * Quy tắc: mỗi lệnh rút trừ dần vào hoa hồng của các đơn cũ trước; phần còn
+ * lại (nếu có) được coi là tiền đổi từ điểm giới thiệu, không gắn với đơn nào.
+ * Chỉ chạy một lần cho mỗi lệnh nhờ cột withdrawals.items_allocated.
+ */
+function backfillWithdrawalItems() {
+  db.transaction(() => {
+    const pending = db
+      .prepare(
+        `SELECT id, user_id, amount, status, created_at
+         FROM withdrawals
+         WHERE items_allocated = 0
+         ORDER BY created_at ASC, id ASC`
+      )
+      .all();
+    if (!pending.length) return;
+
+    const ordersStmt = db.prepare(
+      `SELECT id, commission
+       FROM orders
+       WHERE user_id = ? AND status IN ('Hoàn thành', 'Đã thanh toán')
+       ORDER BY created_at ASC, id ASC`
+    );
+    const usedStmt = db.prepare(
+      `SELECT COALESCE(SUM(wi.amount), 0) AS total
+       FROM withdrawal_items wi
+       JOIN withdrawals w ON w.id = wi.withdrawal_id
+       WHERE wi.order_id = ? AND w.status != 'Đã huỷ'`
+    );
+    const insertItem = db.prepare(
+      `INSERT INTO withdrawal_items (withdrawal_id, order_id, amount, created_at)
+       VALUES (?, ?, ?, ?)`
+    );
+    const markAllocated = db.prepare('UPDATE withdrawals SET items_allocated = 1 WHERE id = ?');
+
+    for (const withdrawal of pending) {
+      if (withdrawal.status !== 'Đã huỷ') {
+        let remaining = Number(withdrawal.amount) || 0;
+        if (remaining > 0) {
+          for (const order of ordersStmt.all(withdrawal.user_id)) {
+            if (remaining <= 0) break;
+            const used = Number(usedStmt.get(order.id).total) || 0;
+            const available = Math.max(0, (Number(order.commission) || 0) - used);
+            if (available <= 0) continue;
+            const take = Math.min(available, remaining);
+            insertItem.run(withdrawal.id, order.id, take, withdrawal.created_at);
+            remaining -= take;
+          }
+        }
+      }
+      markAllocated.run(withdrawal.id);
+    }
+  });
+}
+
+try {
+  backfillWithdrawalItems();
+} catch (err) {
+  // Không để lỗi phân bổ lịch sử làm sập server; dữ liệu tiền vẫn được bảo toàn
+  // và lần khởi động sau sẽ thử lại các lệnh chưa được đánh dấu.
+  console.warn(`CẢNH BÁO: chưa phân bổ được lịch sử rút tiền theo đơn (${err.message}).`);
+}
 
 module.exports = db;

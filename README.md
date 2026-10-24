@@ -356,8 +356,8 @@ All APIs live under `/api` and return JSON. APIs that require login use the sess
 | POST | `/api/auth/forgot-password` | Fallback path: send a request to the admin `{ username, note }` |
 | GET | `/api/orders` | Your order list (with cashback link, `sub_id`, click count) |
 | POST | `/api/orders` | Create an order `{ link }` → returns `{ order, affiliate }` with the cashback link |
-| GET | `/api/wallet` | Wallet stats, dashboard `insights` (current month, 6-month series, commission per platform), withdrawal history, `minWithdraw`, `canWithdraw` |
-| POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose one of two: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }` (uses the uploaded QR image, no bank/account number needed) |
+| GET | `/api/wallet` | Wallet stats, dashboard `insights` (current month, 6-month series, commission per platform), withdrawal history, `withdrawableOrders` (approved orders with commission left to withdraw), `minWithdraw`, `canWithdraw`, `pendingWithdrawal` (code and amount of the pending request, if any) |
+| POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose payout method: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }`. Choose amount source: `{ source: 'all' }` (default, whole available balance) or `{ source: 'orders', orderCodes: ['GZ...'] }` (commission of selected orders) |
 | DELETE | `/api/wallet/withdrawals/:code` | Cancel your own `Đang xử lý` withdrawal and return the amount to the available balance |
 | GET | `/api/referral` | Referral code, points, conversion rate (1 point = 10₫) and redemption history |
 | POST | `/api/referral/redeem` | Redeem a referral code `{ code }` |
@@ -417,12 +417,15 @@ Valid statuses:
 
 **Referral points:** entering someone's code awards **100 points**. Users can convert points into wallet balance on the referral page at **100 points = 1,000₫** (1 point = 10₫), minimum 100 points and in multiples of 100; the converted amount is recorded in `point_redemptions` and can be withdrawn like commission. Admin users list and withdrawal screens include the converted amount when showing balance/debt.
 
-**Withdrawals:** users do not type an amount — the system records the **entire available balance** at the time of the request. That amount is **reserved** right away, so it cannot be withdrawn twice. The server-side rules (`backend/routes/wallet.js`):
+**Withdrawals:** users can withdraw the **entire available balance** (default) or pick the **commission of individual orders**. The amount is **reserved** right away, so it cannot be withdrawn twice. The server-side rules (`backend/routes/wallet.js`):
 
-- Available balance = total commission from **admin-approved** orders − money already withdrawn. Orders in `Chờ đối soát` or `Chờ admin duyệt` are **not part of the balance**.
-- The available balance must reach the `WITHDRAWAL_MIN` minimum (default **1,000 VND**) — otherwise `400` is returned with the shortfall.
+- Available balance = total commission from **admin-approved** orders − money already withdrawn + converted referral points. Orders in `Chờ đối soát` or `Chờ admin duyệt` are **not part of the balance**.
+- In `source: 'orders'` mode, each selected order contributes its **remaining commission** (commission minus amounts already allocated to non-cancelled withdrawals). Selecting the same order again is rejected; cancelling the withdrawal releases it.
+- `source: 'all'` allocates the amount across approved orders oldest-first; any remainder is the converted-points portion (no order attached). The default when `source` is omitted is still `all`.
+- `withdrawal_items` stores the order-level allocation, including when an admin adjusts the actual paid amount.
+- The available balance must reach the `WITHDRAWAL_MIN` minimum (default **1,000 VND**) — otherwise `400` is returned with the shortfall. In per-order mode, the **sum of selected orders** must reach the minimum.
 - Each account may have only **one** `Đang xử lý` withdrawal; a second one returns `409`.
-- The customer can **cancel their own** `Đang xử lý` withdrawal (`DELETE /api/wallet/withdrawals/:code`) — useful when they entered the wrong account. The reserved money returns to the available balance immediately.
+- The customer can **cancel their own** `Đang xử lý` withdrawal (`DELETE /api/wallet/withdrawals/:code`) — useful when they entered the wrong account. The reserved money returns to the available balance immediately and the selected orders become available again.
 - If the network reports a cancellation/refund after the customer has withdrawn, the system records a **reversal** and the balance may go negative. The negative amount is a **debt to be recovered**, automatically deducted from the next commission; the wallet and admin page both show it clearly.
 - Bank/e-wallet is chosen from the list in `backend/lib/banks.js` (about 50 banks and e-wallets, shown in the dropdown and in `GET /api/config`). Users can also pick **"Other bank"** and type the name themselves (max 60 characters).
 - Users **choose one of two** payout methods, not both:
@@ -486,6 +489,7 @@ A prerequisite you should not skip: **ask the intermediary network whether their
 | `users` | Accounts: `username`, `password_hash` (bcrypt), personal info, referral code, points, `role` (`user`/`admin`), `token_version`, `security_hold_until` (admin hold), payout details |
 | `orders` | Orders per user: `GZ...` code, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, status, commission (expected while awaiting admin approval, final once approved), `commission_reversed` (reversed commission), `click_count`, `network_order_id` (transaction ID on the network), `network_commission` (network-reported amount, possibly unapproved), `network_status` |
 | `withdrawals` | Withdrawals per user: `WD...` code, bank, account number, amount, status |
+| `withdrawal_items` | Which orders (and how much commission) each withdrawal used; allows per-order withdrawals without double-spending |
 | `referrals` | Referral redemption history per user |
 | `point_redemptions` | Points converted into wallet balance (points deducted, amount credited, timestamp) |
 | `notifications` | Notifications per user: title, body, icon, read state |
@@ -528,7 +532,7 @@ The admin page has 8 tabs:
 | Tab | What you can do |
 |---|---|
 | **Orders** | Search by order code / link / platform / customer; approve orders and **settle commission** (money only enters the wallet once the admin approves); clearly see **awaiting admin approval** / **added to wallet** / **reversed**; cancelling an order records a reversal if it had already been added to the wallet |
-| **Withdrawals** | View withdrawal requests with **available balance**, **debt** and the **payout QR image** (if the customer uploaded one — click the image to enlarge and scan it with a banking app); enter the actual amount paid then mark `Đã thanh toán`, or `Đã huỷ` |
+| **Withdrawals** | View withdrawal requests with **available balance**, **debt**, the **orders included** (per-order withdrawals) and the **payout QR image** (if the customer uploaded one — click the image to enlarge and scan it with a banking app); enter the actual amount paid then mark `Đã thanh toán`, or `Đã huỷ` |
 | **Users** | View points, order count, commission, **pending**, withdrawn, balance/debt; edit role and reward points; delete users |
 | **Security** | View failed-login alerts (merged counts, IP, timestamp); mark **Resolved**; **Hold 24h** or **Release**. The system never permanently locks accounts |
 | **Referrals** | See who entered whose code and how many points they received |

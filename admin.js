@@ -431,7 +431,11 @@
             </div>
           </div>
         </td>
-        <td class="px-3 py-3 font-semibold text-slate-700">${formatCurrency(w.amount)}</td>
+        <td class="px-3 py-3 font-semibold text-slate-700">${formatCurrency(w.amount)}${
+          w.orderCount
+            ? `<div class="text-[10px] font-normal text-slate-400 mt-0.5">${w.orderCount} đơn</div>`
+            : ''
+        }</td>
         <td class="px-3 py-3 text-slate-600">
           <div>${formatCurrency(w.payable)}</div>
           ${w.debt > 0 ? `<div class="text-[10px] font-bold text-rose-600">Khách nợ ${formatCurrency(w.debt)}</div>` : ''}
@@ -487,6 +491,16 @@
         formatCurrency(wd.payable) +
         (wd.debt > 0 ? ' • Khách đang nợ: ' + formatCurrency(wd.debt) : '')
     );
+
+    const ordersEl = document.getElementById('adm-wd-orders');
+    if (ordersEl) {
+      const codes = Array.isArray(wd.orderCodes) ? wd.orderCodes : [];
+      ordersEl.textContent = codes.length
+        ? `Gồm ${wd.orderCount || codes.length} đơn: ${codes.join(', ')}`
+        : 'Không gắn với đơn cụ thể (rút toàn bộ hoặc tiền từ điểm).';
+      ordersEl.classList.remove('hidden');
+      ordersEl.title = codes.join(', ');
+    }
 
     openModal('adm-wd-modal');
   }

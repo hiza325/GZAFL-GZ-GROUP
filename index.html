@@ -98,6 +98,29 @@
           <p id="withdraw-note" class="text-[11px] text-slate-400 mt-2 leading-relaxed">Mức rút tối thiểu: đ1.000</p>
         </div>
 
+        <!-- Hình thức rút: toàn bộ số dư, hoặc chọn hoa hồng của từng đơn -->
+        <div class="mb-6">
+          <span id="withdraw-source-label" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Hình thức rút</span>
+          <div class="grid grid-cols-2 gap-2" role="group" aria-labelledby="withdraw-source-label">
+            <button type="button" id="withdraw-source-all" data-action="withdraw-source" data-source="all" aria-pressed="true" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
+              <i data-lucide="wallet" class="w-4 h-4"></i> Rút toàn bộ
+            </button>
+            <button type="button" id="withdraw-source-orders" data-action="withdraw-source" data-source="orders" aria-pressed="false" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
+              <i data-lucide="list-checks" class="w-4 h-4"></i> Chọn theo đơn
+            </button>
+          </div>
+
+          <div id="withdraw-orders-box" class="hidden mt-3">
+            <p class="text-[11px] text-slate-400 mb-2">Chọn các đơn muốn rút hoa hồng. Mỗi đơn chỉ rút được một lần cho tới khi lệnh rút được huỷ.</p>
+            <div id="withdraw-orders-list" class="max-h-52 overflow-y-auto space-y-2 pr-1"></div>
+            <p id="withdraw-orders-empty" class="hidden text-xs text-slate-400 text-center py-4">Chưa có đơn nào còn hoa hồng khả dụng để rút.</p>
+            <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+              <span class="text-xs font-semibold text-slate-500">Đã chọn</span>
+              <span id="withdraw-selected-total" class="text-sm font-extrabold text-slate-800">đ0</span>
+            </div>
+          </div>
+        </div>
+
         <div class="space-y-4">
           <!-- Cách nhận tiền: người dùng CHỈ CẦN CHỌN 1 TRONG 2 (số tài khoản hoặc ảnh QR) -->
           <div>
