@@ -1,21 +1,21 @@
-# GZ AFL — Nền tảng Affiliate / Hoàn tiền
+# GZ AFL — Affiliate / Cashback Platform
 
-Ứng dụng web hoàn tiền affiliate (Shopee / TikTok Shop / Tiki / Lazada) gồm 2 phần:
+An affiliate cashback web app (Shopee / TikTok Shop / Tiki / Lazada) made of two parts:
 
-- **Frontend**: HTML + Tailwind CSS + JavaScript thuần (`index.html`, `script.js`, `style.css`, `components/`). Tailwind được **build sẵn thành file `tailwind.build.css`** — không phụ thuộc CDN, không cần Internet khi chạy.
-- **Backend**: Node.js + Express + SQLite (`backend/`) — quản lý tài khoản, đơn hàng, ví, rút tiền và mã giới thiệu.
+- **Frontend**: HTML + Tailwind CSS + plain JavaScript (`index.html`, `script.js`, `style.css`, `components/`). Tailwind is **pre-built into `tailwind.build.css`** — no CDN dependency, no Internet needed at runtime.
+- **Backend**: Node.js + Express + SQLite (`backend/`) — handles accounts, orders, wallet, withdrawals and referral codes.
 
-Backend phục vụ luôn frontend nên cả hai chạy **cùng một địa chỉ** (`http://localhost:3000`). Nhờ vậy phiên đăng nhập dùng cookie `httpOnly` và không cần cấu hình CORS.
+The backend also serves the frontend, so both run on **the same address** (`http://localhost:3000`). That lets the login session use an `httpOnly` cookie and removes the need to configure CORS.
 
 ---
 
-## Yêu cầu
+## Requirements
 
-- **Node.js >= 22.13** (backend dùng module `node:sqlite` có sẵn, không cần cài native module).
-  Node 22.5–22.12 vẫn chạy được nhưng phải thêm cờ `--experimental-sqlite`; khuyến nghị **Node 24 LTS**.
-- Không cần cài database riêng — SQLite lưu thành file.
+- **Node.js >= 22.13** (the backend uses the built-in `node:sqlite` module, so no native module is needed).
+  Node 22.5–22.12 also works but requires the `--experimental-sqlite` flag; **Node 24 LTS** is recommended.
+- No separate database to install — SQLite is stored as a file.
 
-Kiểm tra phiên bản:
+Check the version:
 
 ```bash
 node -v
@@ -23,7 +23,7 @@ node -v
 
 ---
 
-## Cách chạy
+## Running the app
 
 ```bash
 cd backend
@@ -31,589 +31,587 @@ npm install
 npm start
 ```
 
-Sau đó mở: **http://localhost:3000**
+Then open: **http://localhost:3000**
 
-> ⚠️ **Không mở trực tiếp `index.html` bằng `file://`** — giao diện được tải qua `fetch()` và cần backend, mở kiểu file sẽ bị trắng trang.
+> ⚠️ **Do not open `index.html` directly via `file://`** — the UI is loaded through `fetch()` and needs the backend; opening it that way gives you a blank page.
 
-Chạy chế độ tự nạp lại khi sửa code:
+Run in auto-reload mode while editing code:
 
 ```bash
 npm run dev
 ```
 
-> Cấu hình (cổng, khoá bí mật, nhà cung cấp hoàn tiền...) đọc từ file **`backend/.env`**.
-> Sao chép `backend/.env.example` thành `backend/.env` rồi sửa. File này đã được bỏ qua khi commit.
+> Configuration (port, secret key, cashback provider...) is read from **`backend/.env`**.
+> Copy `backend/.env.example` to `backend/.env` and edit it. That file is already git-ignored.
 
-### Giao diện (Tailwind CSS)
+### UI (Tailwind CSS)
 
-CSS đã được build sẵn thành `tailwind.build.css` và commit vào repo, nên **chạy web không cần bước build nào**.
+The CSS is already built into `tailwind.build.css` and committed to the repo, so **running the app needs no build step**.
 
-Chỉ khi bạn **thêm/sửa class Tailwind** trong `index.html`, `script.js`, `admin.js` hoặc `components/*.html` thì mới phải build lại:
+You only need to rebuild when you **add/change Tailwind classes** in `index.html`, `script.js`, `admin.js` or `components/*.html`:
 
 ```bash
-npm install        # chỉ lần đầu (cài Tailwind cho phần giao diện)
-npm run build:css  # build lại tailwind.build.css
+npm install        # first time only (installs Tailwind for the UI part)
+npm run build:css  # rebuilds tailwind.build.css
 ```
 
-Khi đang sửa giao diện, có thể để nó tự build lại mỗi lần lưu file:
+While working on the UI you can let it rebuild on every save:
 
 ```bash
 npm run watch:css
 ```
 
-> Quên build lại thì class mới sẽ **không có tác dụng** (giao diện thiếu định dạng) — đây là đánh đổi để bỏ được CDN.
+> If you forget to rebuild, the new classes will **have no effect** (the UI looks unstyled) — that is the trade-off for dropping the CDN.
 
-### Ngôn ngữ (VI / EN)
+### Language (VI / EN)
 
-Nút chuyển ngôn ngữ nằm ở góc phải navbar trang chủ, lựa chọn được lưu vào `localStorage` nên giữ nguyên khi tải lại trang.
+The language switch sits in the top-right of the home page navbar, and the choice is saved in `localStorage`, so it survives a page reload.
 
-- Đã dịch: trang chủ, modal đăng nhập / đăng ký / quên mật khẩu / đặt lại mật khẩu, modal hướng dẫn.
-- Chưa dịch: các trang bên trong app và trợ lý hỗ trợ (chatbot) — vẫn dùng tiếng Việt.
-- Thêm chuỗi mới: khai báo khóa ở **cả** `vi` và `en` trong `i18n.js`; HTML dùng `data-i18n`, JS dùng `tr('key')`.
+- Translated: home page, login / sign-up / forgot-password / reset-password modals, and the guide modal.
+- Not translated yet: the in-app pages and the support assistant (chatbot) — they still use Vietnamese.
+- Adding a new string: declare the key in **both** `vi` and `en` in `i18n.js`; use `data-i18n` in HTML and `tr('key')` in JS.
 
-### Giao diện sáng / tối
+### Light / dark theme
 
-- Nút đổi giao diện nằm cạnh nút ngôn ngữ ở thanh trên cùng (trang chủ) và trong header của khu vực đã đăng nhập.
-- Lần đầu mở web, giao diện theo cài đặt hệ thống (`prefers-color-scheme`). Sau khi người dùng bấm nút, lựa chọn được lưu vào `localStorage` với khoá `gzafl_theme` và giữ nguyên khi tải lại trang.
-- `theme.js` được nạp ngay trong `<head>` để gắn `class="dark"` lên `<html>` **trước khi** CSS vẽ, nhờ vậy không bị nháy trắng khi mở lại ở chế độ tối.
-- Thêm nút ở chỗ khác: dùng cùng cấu trúc `<button type="button" data-action="toggle-theme" data-theme-toggle>…</button>`; nhãn và trạng thái `aria-pressed` sẽ được `theme.js` tự cập nhật.
-- Toàn bộ CSS giao diện tối nằm ở cuối `style.css`, chọn theo `html.dark`. Khi thêm class màu mới của Tailwind cho giao diện, nhớ bổ sung quy tắc tương ứng (dùng `:where(html.dark)` để không phá các trạng thái hover/focus).
-- Lựa chọn giao diện được đồng bộ giữa các tab đang mở của cùng trình duyệt.
+- The theme toggle sits next to the language switch in the top bar (home page) and in the header of the logged-in area.
+- The first time the site is opened, the theme follows the system setting (`prefers-color-scheme`). After the user clicks the toggle, the choice is stored in `localStorage` under the key `gzafl_theme` and survives a reload.
+- `theme.js` is loaded right inside `<head>` so `class="dark"` is applied to `<html>` **before** CSS paints, which avoids a white flash when reopening in dark mode.
+- Adding the toggle elsewhere: use the same markup `<button type="button" data-action="toggle-theme" data-theme-toggle>…</button>`; the label and `aria-pressed` state are updated by `theme.js` automatically.
+- All dark-mode CSS lives at the end of `style.css`, keyed on `html.dark`. When you add new Tailwind colour classes, remember to add the matching rule (use `:where(html.dark)` so hover/focus states are not broken).
+- The theme choice is synced across open tabs of the same browser.
 
-### Biến môi trường (tuỳ chọn)
+### Environment variables (optional)
 
-| Biến | Mặc định | Ý nghĩa |
+| Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | `3000` | Cổng của server |
-| `NODE_ENV` | `development` | Đặt `production` để bật kiểm tra bảo mật nghiêm ngặt |
-| `JWT_SECRET` | `gzafl-dev-secret-change-me` | Khóa ký token phiên — **bắt buộc đổi khi triển khai thật**. Ở `NODE_ENV=production` server **từ chối khởi động** nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự |
-| `SSL_KEY_PATH`, `SSL_CERT_PATH` | – | Điền vào để server tự chạy HTTPS (không cần nếu đã có Nginx/Caddy) |
-| `TRUST_PROXY` | – | Bật khi chạy sau reverse proxy (`1` / `true` / danh sách IP) — cần để cookie `secure` và link hoàn tiền dùng đúng `https` |
-| `PUBLIC_BASE_URL` | – | URL công khai đầy đủ, ví dụ `https://gzafl.example.com`. Dùng cho link hoàn tiền và hướng dẫn postback. **Bắt buộc khi `NODE_ENV=production`** (thiếu thì server không khởi động) để không dựng link từ Host header do client gửi |
-| `COOKIE_SECURE` | theo `NODE_ENV` | Ghi đè cờ `secure` của cookie phiên |
-| `DB_PATH` | `backend/data/gzafl.sqlite` | Đường dẫn file database |
-| `WITHDRAWAL_MIN` | `1000` | Số dư khả dụng tối thiểu để được gửi yêu cầu rút tiền (đồng) |
-| `AFFILIATE_PROVIDER` | `mock` | Nhà cung cấp chuyển đổi link: `mock` / `accesstrade` / `shopee` |
-| `AFFILIATE_LIVE_PLATFORMS` | tất cả | Giới hạn sàn dùng API thật, ví dụ `TikTok Shop, Tiki`. Các sàn còn lại tạm dùng link thử nghiệm; mỗi đơn lưu `affiliate.isReal` để giao diện hiển thị rõ **link thật** hay **chưa gắn hoa hồng** |
-| `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Tiền tố `sub_id` gắn vào link để biết hoa hồng thuộc về ai |
-| `CASHBACK_RATE` | `1` | Tỷ lệ hoàn tiền cho người dùng so với hoa hồng **mạng đã duyệt** (`0.7` = hoàn 70%, giữ 30%). Chỉ áp dụng cho tiền do mạng báo về tự động; con số này được in ra lúc khởi động nên nhớ kiểm tra trước khi chạy thật |
-| `ACCESSTRADE_API_KEY` | – | Token API của AccessTrade |
-| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | – | Campaign ID riêng cho từng sàn (giữ **dạng chuỗi**) |
-| `ACCESSTRADE_CAMPAIGN_ID` | – | Tuỳ chọn: campaign mặc định nếu sàn chưa có biến riêng |
-| `ACCESSTRADE_SHORT_DOMAIN` | – | Tuỳ chọn: domain rút gọn riêng đã đăng ký với AccessTrade |
-| `POSTBACK_SECRET` | – | Chìa khoá xác thực báo cáo chuyển đổi (postback). **Bỏ trống thì mọi postback bị từ chối** (xem mục [Nhận hoa hồng về](#nhận-hoa-hồng-về--đối-soát-postback)) |
-| `POSTBACK_PARAM_*` | dò tự động | Ép tên tham số mạng gửi về: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB`, `_ORDER_CODE` |
-| `EMAIL_OTP` | `auto` | Bước xác thực email: `auto` (bật khi đã cấu hình SMTP, hoặc khi chạy `development`) / `on` / `off`. Áp dụng cho **đăng ký**, **quên mật khẩu** và **đổi email**. Ở production, xác thực email **bắt buộc bật** (xem `ALLOW_UNVERIFIED_EMAIL`) |
-| `ALLOW_UNVERIFIED_EMAIL` | – | Chỉ đặt `1` khi thật sự chưa có SMTP: cho phép production khởi động dù email đăng ký **không được xác thực** (chấp nhận rủi ro người khác dùng email của bạn) |
-| `LOGIN_OTP` | `auto` | Bước xác thực khi **đăng nhập**: `auto` (bật khi `EMAIL_OTP` đang bật **và** gửi được thư) / `on` (luôn bắt buộc) / `off` (đăng nhập chỉ cần mật khẩu). Công tắc "cứu hộ" khi máy chủ thư gặp sự cố |
-| `DEV_OTP_CODE` | – | `1` = cho API trả mã OTP trong trường `devCode` (chỉ khi đang ở chế độ thử nghiệm, chưa có SMTP). Mặc định **tắt** để không lộ mã nếu quên `NODE_ENV=production` |
-| `SECURITY_ALERT_THRESHOLD` | `10` | Số lần đăng nhập sai trong cửa sổ bên dưới thì tạo cảnh báo cho admin. **Không tự khóa tài khoản** |
-| `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Cửa sổ đếm số lần đăng nhập sai (phút) |
-| `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = chỉ cảnh báo, admin tự quyết định (khuyến nghị). `24` = tự tạm giữ tài khoản 24 giờ sau ngưỡng cảnh báo; admin vẫn bỏ tạm giữ được. Tối đa `168` |
-| `SECURITY_STEP_UP` | `on` | Khi tài khoản có cảnh báo chưa xử lý, lần đăng nhập đúng mật khẩu tiếp theo phải nhập thêm OTP (nếu có email và gửi được thư). Đặt `off` để tắt |
-| `SECURITY_STEP_UP_HOURS` | `24` | Cảnh báo còn hiệu lực bao lâu thì vẫn yêu cầu OTP bổ sung |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Máy chủ gửi thư dùng cho mã xác thực. Bỏ trống `SMTP_SECURE` thì tự suy ra (`true` khi cổng `465`) |
-| `SMTP_USER`, `SMTP_PASS` | – | Tài khoản gửi thư (Gmail thì dùng *Mật khẩu ứng dụng* 16 ký tự) |
-| `MAIL_FROM`, `MAIL_FROM_NAME` | theo `SMTP_USER`, tên `GZ AFL` | Địa chỉ và tên người gửi hiện trên thư |
-| `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Thông tin liên hệ hiển thị ở trang Trợ giúp (bỏ trống thì dùng giá trị mặc định trong `components/guide.html`) |
-| `AI_API_KEY` | – | Khoá API cho **trợ lý hỗ trợ (chatbot)**. Bỏ trống thì trợ lý trả lời theo kịch bản có sẵn trong `backend/lib/supportKnowledge.js`. Điền khoá là trợ lý trả lời bằng AI (xem mục [Trợ lý hỗ trợ (chatbot)](#trợ-lý-hỗ-trợ-chatbot)) |
-| `AI_BASE_URL`, `AI_MODEL` | tự đoán theo khoá | Địa chỉ API và tên model (chuẩn OpenAI). Chỉ cần khi muốn chỉ định rõ nhà cung cấp |
-| `AI_ENABLED` | `true` | `off` để tạm tắt AI (vẫn giữ khoá) mà không phải xoá cấu hình |
-| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `4096`, `0.4` | Thời gian chờ tối đa, độ dài và độ "sáng tạo" của câu trả lời. Nếu AI vẫn bị cắt vì hết token, server tự gọi tiếp tối đa 2 lần để hoàn thành câu trả lời |
-| `AI_DAILY_LIMIT` | `800` | Trần **tổng** số lượt gọi AI mỗi ngày (mọi IP cộng lại). Vượt trần thì trợ lý vẫn trả lời nhưng bằng kịch bản có sẵn. `0` = không giới hạn |
+| `PORT` | `3000` | Server port |
+| `NODE_ENV` | `development` | Set to `production` to enable strict security checks |
+| `JWT_SECRET` | `gzafl-dev-secret-change-me` | Signing key for session tokens — **must be changed for a real deployment**. In `NODE_ENV=production` the server **refuses to start** if the key is empty, still the default, or shorter than 32 characters |
+| `SSL_KEY_PATH`, `SSL_CERT_PATH` | – | Fill these in to have the server run HTTPS itself (not needed if you already use Nginx/Caddy) |
+| `TRUST_PROXY` | – | Enable when running behind a reverse proxy (`1` / `true` / a list of IPs) — required so the `secure` cookie and cashback links use `https` correctly |
+| `PUBLIC_BASE_URL` | – | Full public URL, e.g. `https://gzafl.example.com`. Used for cashback links and postback instructions. **Required when `NODE_ENV=production`** (the server will not start without it) so links are never built from the client-supplied Host header |
+| `COOKIE_SECURE` | based on `NODE_ENV` | Overrides the `secure` flag of the session cookie |
+| `DB_PATH` | `backend/data/gzafl.sqlite` | Database file path |
+| `WITHDRAWAL_MIN` | `1000` | Minimum available balance required to send a withdrawal request (VND) |
+| `AFFILIATE_PROVIDER` | `mock` | Link-conversion provider: `mock` / `accesstrade` / `shopee` |
+| `AFFILIATE_LIVE_PLATFORMS` | all | Restrict which platforms use the real API, e.g. `TikTok Shop, Tiki`. The remaining platforms fall back to test links; every order stores `affiliate.isReal` so the UI clearly shows **real link** vs **no commission attached** |
+| `AFFILIATE_SUB_ID_PREFIX` | `gzafl` | Prefix for the `sub_id` added to links, used to tell whose commission it is |
+| `CASHBACK_RATE` | `1` | Cashback share for the user versus the **network-approved** commission (`0.7` = pay back 70%, keep 30%). Only applies to money reported automatically by the network; this number is printed at startup, so check it before going live |
+| `ACCESSTRADE_API_KEY` | – | AccessTrade API token |
+| `ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA` | – | Per-platform campaign IDs (kept **as strings**) |
+| `ACCESSTRADE_CAMPAIGN_ID` | – | Optional: fallback campaign if a platform has no dedicated variable |
+| `ACCESSTRADE_SHORT_DOMAIN` | – | Optional: your own short domain registered with AccessTrade |
+| `POSTBACK_SECRET` | – | Authentication key for conversion reports (postbacks). **If empty, every postback is rejected** (see [Receiving commissions](#receiving-commissions--postback-reconciliation)) |
+| `POSTBACK_PARAM_*` | auto-detected | Force the network's parameter names: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB`, `_ORDER_CODE` |
+| `EMAIL_OTP` | `auto` | Email verification step: `auto` (on when SMTP is configured, or when running `development`) / `on` / `off`. Applies to **sign-up**, **forgot password** and **email changes**. In production, email verification is **mandatory** (see `ALLOW_UNVERIFIED_EMAIL`) |
+| `ALLOW_UNVERIFIED_EMAIL` | – | Only set to `1` when you truly have no SMTP: lets production start even though sign-up emails are **not verified** (accepting the risk that someone registers with someone else's email) |
+| `LOGIN_OTP` | `auto` | Verification step at **login**: `auto` (on when `EMAIL_OTP` is on **and** mail can be sent) / `on` (always required) / `off` (password only). The "rescue" switch for when the mail server breaks |
+| `DEV_OTP_CODE` | – | `1` = have the API return the OTP in a `devCode` field (only in test mode, without SMTP). Defaults to **off** so codes are not leaked if you forget `NODE_ENV=production` |
+| `SECURITY_ALERT_THRESHOLD` | `10` | Number of failed logins within the window below before an alert is created for the admin. **Never auto-locks the account** |
+| `SECURITY_ALERT_WINDOW_MINUTES` | `15` | Counting window for failed logins (minutes) |
+| `SECURITY_AUTO_HOLD_HOURS` | `0` | `0` = alert only, admin decides (recommended). `24` = auto-hold the account for 24 hours after the alert threshold; the admin can still release it. Maximum `168` |
+| `SECURITY_STEP_UP` | `on` | When an account has an unresolved alert, the next successful password login must also enter an OTP (if an email exists and mail can be sent). Set to `off` to disable |
+| `SECURITY_STEP_UP_HOURS` | `24` | How long an alert stays effective for requiring the extra OTP |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE` | – | Mail server used for verification codes. If `SMTP_SECURE` is blank it is inferred (`true` for port `465`) |
+| `SMTP_USER`, `SMTP_PASS` | – | Sending account (for Gmail use a 16-character *App Password*) |
+| `MAIL_FROM`, `MAIL_FROM_NAME` | based on `SMTP_USER`, name `GZ AFL` | Sender address and name shown on emails |
+| `SUPPORT_EMAIL`, `SUPPORT_ZALO` | – | Contact details shown on the Help page (if blank, defaults from `components/guide.html` are used) |
+| `AI_API_KEY` | – | API key for the **support assistant (chatbot)**. If blank, the assistant answers from the built-in script in `backend/lib/supportKnowledge.js`. Fill it in to have the assistant answer with AI (see [Support assistant (chatbot)](#support-assistant-chatbot)) |
+| `AI_BASE_URL`, `AI_MODEL` | guessed from the key | API endpoint and model name (OpenAI standard). Only needed when you want to pin a provider explicitly |
+| `AI_ENABLED` | `true` | `off` to temporarily disable AI (keeping the key) without deleting the config |
+| `AI_TIMEOUT_MS`, `AI_MAX_TOKENS`, `AI_TEMPERATURE` | `25000`, `4096`, `0.4` | Maximum wait time, answer length and "creativity". If the AI is still cut off by the token limit, the server automatically calls it again up to 2 times to finish the answer |
+| `AI_DAILY_LIMIT` | `800` | Cap on the **total** number of AI calls per day (all IPs combined). Past the cap the assistant still answers, but from the built-in script. `0` = unlimited |
 
-> **Chưa có tài khoản email?** Cứ để trống. Khi chạy `development`, bước xác thực vẫn bật nhưng **thư chỉ được in ra màn hình console** của server (mã cũng được trả về trong API) để bạn thử ngay — xem mục [Xác thực email (OTP)](#xác-thực-email-otp).
+> **No email account yet?** Just leave it blank. When running `development`, the verification step is still on but **emails are only printed to the server console** (the code is also returned in the API) so you can try it immediately — see [Email verification (OTP)](#email-verification-otp).
 
-Tạo khoá `JWT_SECRET` ngẫu nhiên:
+Generate a random `JWT_SECRET`:
 
 ```bash
 cd backend
-npm run gen-secret              # chỉ in ra màn hình
-npm run gen-secret -- --write   # ghi thẳng vào backend/.env
+npm run gen-secret              # prints only
+npm run gen-secret -- --write   # writes straight into backend/.env
 ```
 
-> Đổi `JWT_SECRET` làm mọi phiên đăng nhập hiện tại hết hiệu lực — mọi người chỉ cần đăng nhập lại.
+> Changing `JWT_SECRET` invalidates every current login session — people simply need to log in again.
 
 ---
 
-## Cấu trúc
+## Structure
 
 ```
-index.html                 # Khung trang + modal rút tiền
-style.css                  # CSS viết tay dùng chung
-tailwind.build.css         # CSS Tailwind đã build (KHÔNG sửa tay - xem mục "Giao diện")
-package.json               # Công cụ build CSS (không phải gói chạy server)
-tailwind.config.js         # Cấu hình Tailwind: nơi Tailwind quét tên class
-styles/tailwind.css        # File nguồn của Tailwind
-styles/inter-variable.woff2 # Font Inter tự host (không phụ thuộc Google Fonts)
-styles/Inter-LICENSE.txt   # Giấy phép SIL Open Font License của Inter
-script.js                  # Toàn bộ logic frontend (gọi API)
-i18n.js                    # Bộ dịch VI/EN cho trang chủ + đăng nhập (lưu lựa chọn vào localStorage)
-theme.js                   # Chuyển đổi giao diện sáng/tối (nạp trong <head>, lưu vào localStorage)
-lucide.min.js              # Thư viện icon tự host (không tải từ unpkg/CDN)
-admin.js                   # Logic riêng của trang quản trị (chỉ tải khi mở trang này)
-support.js                 # Logic khung trợ lý hỗ trợ (chatbot) ở góc phải-dưới
-assets/flags/              # Cờ SVG (Việt Nam, Vương quốc Anh) cho nút chuyển ngôn ngữ
-components/                # Các mảnh giao diện (landing, sidebar, header, các trang...)
-  admin.html               # Giao diện trang quản trị
-  support-widget.html      # Khung chat + nút tròn của trợ lý hỗ trợ
-  guide.html               # Nội dung Trợ giúp / Điều khoản (dùng cho cả trang trong app và modal ở trang chủ)
-LOGO.png                   # Logo thương hiệu (menu trái + thanh trên trang chủ + favicon)
-CHATBOT.png                # Logo của trợ lý hỗ trợ (nút tròn + ô đầu khung chat)
+index.html                 # Page shell + withdrawal modal
+style.css                  # Hand-written shared CSS
+tailwind.build.css         # Built Tailwind CSS (do NOT edit by hand - see "UI")
+package.json               # CSS build tooling (not the server runtime package)
+tailwind.config.js         # Tailwind config: where it scans for class names
+styles/tailwind.css        # Tailwind source file
+styles/inter-variable.woff2 # Self-hosted Inter font (no Google Fonts dependency)
+styles/Inter-LICENSE.txt   # SIL Open Font License for Inter
+script.js                  # All frontend logic (API calls)
+i18n.js                    # VI/EN translation set for home page + auth (saves choice in localStorage)
+theme.js                   # Light/dark toggle (loaded in <head>, saved in localStorage)
+lucide.min.js              # Self-hosted icon library (not loaded from unpkg/CDN)
+admin.js                   # Logic specific to the admin page (loaded only there)
+support.js                 # Support assistant (chatbot) widget logic, bottom-right
+assets/flags/              # SVG flags (Vietnam, United Kingdom) for the language switch
+components/                # UI fragments (landing, sidebar, header, pages...)
+  admin.html               # Admin page UI
+  support-widget.html      # Chat window + round button of the support assistant
+  guide.html               # Help / Terms content (used both in-app and in the home page modal)
+LOGO.png                   # Brand logo (left menu + home top bar + favicon)
+CHATBOT.png                # Support assistant logo (round button + chat header)
 README.md
-docs/                      # Tài liệu kỹ thuật
-  affiliate-integration.md # Thiết kế tích hợp chuyển đổi link hoàn tiền (chi tiết + các phương án)
-  deployment.md            # Hướng dẫn đưa lên production (HTTPS, JWT_SECRET, Nginx, PM2...)
-deploy/                    # Bộ cấu hình deploy sẵn: Nginx, systemd, PM2, Docker, Windows
-  README.md                # Chọn cách deploy + checklist trước khi mở cho khách
-  scripts/install-app.sh   # Cài lần đầu trên Ubuntu/Debian (Node, env, systemd)
-  scripts/deploy.sh        # Cập nhật bản mới (pull, cài, backup, restart, health check)
+docs/                      # Technical documentation
+  affiliate-integration.md # Design of the cashback link conversion (details + options)
+  deployment.md            # Production guide (HTTPS, JWT_SECRET, Nginx, PM2...)
+deploy/                    # Ready-made deploy config: Nginx, systemd, PM2, Docker, Windows
+  README.md                # Choosing a deploy method + pre-launch checklist
+  scripts/install-app.sh   # First-time install on Ubuntu/Debian (Node, env, systemd)
+  scripts/deploy.sh        # Update to a new release (pull, install, backup, restart, health check)
 
 backend/
-  server.js                # Khởi tạo Express: API + link rút gọn /r/<mã đơn> + phục vụ frontend tĩnh
-  db.js                    # Kết nối SQLite + tạo bảng + tự nâng cấp cột khi có bản mới + `db.transaction()`
+  server.js                # Express bootstrap: API + short links /r/<order code> + static frontend
+  db.js                    # SQLite connection + table creation + automatic column upgrades + `db.transaction()`
   package.json
-  .env.example             # Mẫu cấu hình - sao chép thành .env rồi điền
+  .env.example             # Config template - copy to .env and fill in
   scripts/
-    make-admin.js          # Cấp / thu quyền quản trị từ dòng lệnh
-    reset-password.js      # Đặt lại mật khẩu khi quên / bị khoá tài khoản
-    generate-secret.js     # Sinh JWT_SECRET ngẫu nhiên
-    start-prod.js          # Khởi động ở chế độ production (chạy được trên Windows)
+    make-admin.js          # Grant / revoke admin rights from the CLI
+    reset-password.js      # Reset a password when forgotten / locked out
+    generate-secret.js     # Generate a random JWT_SECRET
+    start-prod.js          # Start in production mode (works on Windows)
   lib/
-    env.js                 # Nạp backend/.env + các cờ cấu hình dùng chung
-    auth.js                # JWT, cookie phiên, middleware requireAuth / requireAdmin
-    constants.js           # Trạng thái đơn/lệnh rút, vai trò, mức rút tối thiểu
-    validate.js            # Kiểm tra email/SĐT, sinh mã đơn/mã giới thiệu
-    serialize.js           # Chuyển dữ liệu DB -> JSON cho frontend
-    format.js              # Định dạng ngày/tiền kiểu Việt Nam
-    rateLimit.js           # Giới hạn số yêu cầu cho API đăng nhập
-    banks.js               # Danh sách ngân hàng / ví điện tử cho dropdown rút tiền
-    affiliate.js           # Chuyển link sản phẩm -> link hoàn tiền (mock / accesstrade / shopee)
-    postback.js            # Nhận & xử lý báo cáo chuyển đổi từ mạng affiliate (chống trùng, cộng dồn theo đơn)
-    mailer.js              # Gửi email qua SMTP (in ra console khi chưa cấu hình ở môi trường dev)
-    otp.js                 # Sinh / kiểm tra mã xác thực email (OTP) cho đăng ký và quên mật khẩu
-    notify.js              # Ghi thông báo cho người dùng
-    supportKnowledge.js    # Kiến thức nền của trợ lý hỗ trợ (dùng cho cả chế độ AI và chế độ kịch bản)
-    ai.js                  # Gọi API AI chuẩn OpenAI (Gemini / Groq / OpenRouter / OpenAI...)
+    env.js                 # Loads backend/.env + shared config flags
+    auth.js                # JWT, session cookie, requireAuth / requireAdmin middleware
+    constants.js           # Order/withdrawal statuses, roles, minimum withdrawal
+    validate.js            # Email/phone validation, order/referral code generation
+    serialize.js           # DB data -> JSON for the frontend
+    format.js              # Vietnamese-style date/money formatting
+    rateLimit.js           # Request limiting for login APIs
+    banks.js               # Bank / e-wallet list for the withdrawal dropdown
+    affiliate.js           # Product link -> cashback link (mock / accesstrade / shopee)
+    postback.js            # Receive & process conversion reports from affiliate networks (dedupe, accumulate per order)
+    mailer.js              # Send email via SMTP (prints to console when unconfigured in dev)
+    otp.js                 # Generate / verify email verification codes (OTP) for sign-up and password reset
+    notify.js              # Write notifications for users
+    supportKnowledge.js    # Knowledge base of the support assistant (used by both AI and scripted mode)
+    ai.js                  # Calls an OpenAI-compatible AI API (Gemini / Groq / OpenRouter / OpenAI...)
   routes/
-    auth.js                # Đăng ký (2 bước kèm mã xác thực) / đăng nhập / đăng xuất / me / quên mật khẩu
-    orders.js              # Danh sách + tạo đơn hàng (kèm chuyển đổi link)
-    wallet.js              # Thống kê ví + rút tiền
-    referral.js            # Mã giới thiệu + nhập mã
-    profile.js             # Cập nhật hồ sơ, avatar, ảnh QR nhận tiền + đổi mật khẩu
-    notifications.js       # Danh sách thông báo + đánh dấu đã đọc
-    support.js             # Trợ lý hỗ trợ: nhận câu hỏi, trả lời bằng AI hoặc theo kịch bản
-    admin.js               # API quản trị (chỉ role = 'admin')
-  data/                    # File SQLite (tự sinh, đã bỏ qua khi commit)
-  uploads/                 # Ảnh đại diện + ảnh QR nhận tiền do người dùng tải lên
+    auth.js                # Sign-up (2 steps with verification code) / login / logout / me / forgot password
+    orders.js              # List + create orders (with link conversion)
+    wallet.js              # Wallet stats + withdrawals
+    referral.js            # Referral code + redeem
+    profile.js             # Update profile, avatar, payout QR image + change password
+    notifications.js       # Notification list + mark as read
+    support.js             # Support assistant: receives questions, answers with AI or scripts
+    admin.js               # Admin API (only role = 'admin')
+  data/                    # SQLite file (auto-created, git-ignored)
+  uploads/                 # Avatars + payout QR images uploaded by users
 ```
 
 ---
 
-## Xác thực email (OTP)
+## Email verification (OTP)
 
-Khi đăng ký, hệ thống gửi một **mã 6 chữ số** tới email người dùng nhập; nhập đúng mã mới tạo được tài khoản. Cùng cơ chế đó cho phép khách **tự đặt lại mật khẩu** khi quên, và dùng làm **xác thực 2 lớp khi đăng nhập**.
+On sign-up, the system sends a **6-digit code** to the email address the user entered; the account is only created once the correct code is entered. The same mechanism lets guests **reset their own password** when forgotten, and doubles as **two-factor authentication at login**.
 
-- **Email là bắt buộc khi đăng ký**, kể cả khi đăng nhập bằng số điện thoại.
-- **Email dùng làm tên đăng nhập phải trùng đúng email nhận mã xác thực.** Nếu không, người khác có thể “giữ chỗ” email của bạn bằng một email khác. Email cũng được chuẩn hoá lowercase và **không thể dùng cho hai tài khoản**.
-- **Đổi email trong trang Cá nhân cũng phải xác thực**: mã được gửi tới *địa chỉ mới* rồi mới lưu, nên email khôi phục luôn là địa chỉ thật. Chỉ đổi tên/số điện thoại thì không cần mã.
-- **Đăng nhập 2 bước** (khi `LOGIN_OTP` bật): mật khẩu đúng thì server mới gửi mã, sau đó mới cấp phiên. Mã còn hiệu lực thì **dùng lại mã cũ** — đăng xuất rồi đăng nhập lại ngay không tốn thêm thư.
-- Mã có hiệu lực **10 phút**, chỉ dùng được **một lần**, lưu dưới dạng **bcrypt hash** (không lưu mã gốc). Mã của luồng này **không dùng được** cho luồng khác.
-- Nhập sai quá **5 lần** thì phải yêu cầu mã mới; mỗi lần yêu cầu lại phải chờ **60 giây**, tối đa **5 mã/giờ** cho mỗi email.
-- Mỗi IP chỉ được yêu cầu gửi mã **10 lần / 15 phút** (đăng ký & khôi phục mật khẩu) và **40 lần / 15 phút** (đăng nhập).
-- Bước yêu cầu gửi mã **luôn trả về cùng một thông báo** dù tài khoản có tồn tại hay không — người ngoài không dò được danh sách tài khoản.
-- Nếu ai đó thử **đăng ký trùng** email/tài khoản đã có: hệ thống **không gửi mã đăng ký** và **không tạo tài khoản mới**, nhưng gửi một thư báo *"tài khoản đã tồn tại — hãy đăng nhập hoặc dùng Quên mật khẩu"* tới **đúng email đã đăng ký của chủ tài khoản** (không gửi tới email người lạ vừa nhập), tối đa **1 thư / 30 phút**. Nhờ vậy chủ tài khoản biết chuyện, còn người dò tài khoản vẫn không nhận được thông tin gì.
+- **Email is required at sign-up**, even when logging in with a phone number.
+- **The email used as the login name must match the email that receives the verification code.** Otherwise someone else could "reserve" your email with a different address. Emails are also lowercased and **cannot be used by two accounts**.
+- **Changing the email on the Profile page also requires verification**: the code is sent to the *new address* before it is saved, so the recovery email is always a real address. Changing only the name/phone number needs no code.
+- **Two-step login** (when `LOGIN_OTP` is on): the server only sends a code after the password is correct, and only then issues a session. If a code is still valid, the **existing code is reused** — logging out and straight back in does not cost an extra email.
+- Codes are valid for **10 minutes**, are **single-use**, and are stored as a **bcrypt hash** (the raw code is not stored). A code from one flow **cannot be used** for another flow.
+- After **5** wrong entries you must request a new code; each new request must wait **60 seconds**, with a maximum of **5 codes/hour** per email.
+- Each IP may request codes **10 times / 15 minutes** (sign-up & password reset) and **40 times / 15 minutes** (login).
+- The request-code step **always returns the same message** whether or not the account exists — outsiders cannot probe the account list.
+- If someone tries to **sign up again** with an existing email/account: the system does **not send a sign-up code** and **does not create a new account**, but sends an *"account already exists — please log in or use Forgot password"* email to **the account owner's registered email** (never to the stranger's newly entered address), at most **1 email / 30 minutes**. That way the owner knows, while the prober still learns nothing.
 
-### Chưa có tài khoản email?
+### No email account yet?
 
-`EMAIL_OTP=auto` (mặc định) xử lý như sau:
+`EMAIL_OTP=auto` (the default) behaves like this:
 
-| Tình huống | Kết quả |
+| Situation | Result |
 |---|---|
-| `development`, chưa cấu hình SMTP | Bước xác thực **vẫn bật**, nhưng thư chỉ được **in ra console** của server. Muốn mã hiện trong ô vàng "mã thử nghiệm" trên giao diện thì đặt thêm `DEV_OTP_CODE=1` (mặc định tắt để tránh lộ mã qua API) |
-| `production`, chưa cấu hình SMTP | Server **từ chối khởi động** (xem giải thích bên dưới) |
-| Đã điền `SMTP_*` + `MAIL_FROM` | Gửi thư thật |
+| `development`, no SMTP configured | The verification step is **still on**, but emails are only **printed to the server console**. To see the code in the yellow "test code" box in the UI, also set `DEV_OTP_CODE=1` (off by default to avoid leaking codes through the API) |
+| `production`, no SMTP configured | The server **refuses to start** (see the explanation below) |
+| `SMTP_*` + `MAIL_FROM` filled in | Real emails are sent |
 
-Muốn tự quyết định thì đặt `EMAIL_OTP=on` (luôn bật) hoặc `EMAIL_OTP=off` (luôn tắt).
+If you want to decide yourself, set `EMAIL_OTP=on` (always on) or `EMAIL_OTP=off` (always off).
 
-> **Vì sao production bắt buộc phải xác thực email?** Đăng ký luôn bắt buộc nhập email
-> (để nhận mã khôi phục mật khẩu). Nếu không ai kiểm chứng được địa chỉ đó thì người ta
-> có thể đăng ký bằng **email của người khác**, giữ chỗ khiến người thật không đăng ký
-> được, và email đó còn bị coi là kênh khôi phục mật khẩu của tài khoản.
+> **Why is email verification mandatory in production?** Sign-up always requires an email
+> (to receive password-recovery codes). If nobody can verify that address, people could
+> sign up with **someone else's email**, reserve it so the real owner cannot register,
+> and that email would also count as the account's password-recovery channel.
 >
-> Nếu thật sự chưa cấu hình được SMTP và đã chấp nhận rủi ro, đặt
-> `ALLOW_UNVERIFIED_EMAIL=1` để server vẫn khởi động (kèm cảnh báo trong log).
-> `npm run check:deploy` cũng báo **lỗi** cho cấu hình này.
+> If you truly cannot set up SMTP and accept the risk, set
+> `ALLOW_UNVERIFIED_EMAIL=1` so the server still starts (with a warning in the log).
+> `npm run check:deploy` also reports this configuration as an **error**.
 
-Riêng bước xác thực **khi đăng nhập** có công tắc riêng là `LOGIN_OTP`:
+The **login** verification step has its own switch, `LOGIN_OTP`:
 
-| `LOGIN_OTP` | Kết quả |
+| `LOGIN_OTP` | Result |
 |---|---|
-| `auto` *(mặc định)* | Bật khi `EMAIL_OTP` đang bật **và** gửi được thư. Chưa cấu hình SMTP thì đăng nhập vẫn chỉ cần mật khẩu — **tránh khoá toàn bộ người dùng ra ngoài** |
-| `on` | Luôn bắt buộc mã. CẢNH BÁO: chưa cấu hình SMTP thì **không ai đăng nhập được** |
-| `off` | Đăng nhập chỉ cần mật khẩu. Dùng khi máy chủ thư gặp sự cố |
+| `auto` *(default)* | On when `EMAIL_OTP` is on **and** mail can be sent. Without SMTP, login still needs only the password — **this avoids locking every user out** |
+| `on` | The code is always required. WARNING: without SMTP configured, **nobody can log in** |
+| `off` | Login needs only the password. Use it when the mail server breaks |
 
-> **Lưu ý về hạn mức gửi thư**: mỗi lần đăng nhập tốn 1 email. Gmail cá nhân chỉ cho ~**500 thư/ngày** (Brevo miễn phí ~300/ngày). Nếu số lượt đăng nhập mỗi ngày lớn, hãy chuyển sang dịch vụ gửi thư chuyên dụng hoặc đặt `LOGIN_OTP=off`.
+> **Note on mail quotas**: every login costs one email. A personal Gmail account allows only ~**500 emails/day** (free Brevo ~300/day). If daily logins are high, switch to a dedicated mail service or set `LOGIN_OTP=off`.
 
-### Cảnh báo bảo mật khi đăng nhập sai
+### Security alerts on failed logins
 
-Hệ thống **không tự khóa vĩnh viễn tài khoản** khi có nhiều lần đăng nhập sai. Sau `SECURITY_ALERT_THRESHOLD` lần sai trong `SECURITY_ALERT_WINDOW_MINUTES` phút:
+The system **never permanently locks an account** after many failed logins. After `SECURITY_ALERT_THRESHOLD` failures within `SECURITY_ALERT_WINDOW_MINUTES` minutes:
 
-- Tạo một **cảnh báo bảo mật** trong **Quản trị → Bảo mật** (có huy hiệu đỏ). Cảnh báo gộp các lần sai liên tiếp, ghi tên đăng nhập, IP gần nhất và thời điểm.
-- Nếu `SECURITY_STEP_UP=on` và tài khoản có email/gửi được thư, lần đăng nhập **đúng mật khẩu** tiếp theo sẽ yêu cầu thêm OTP. Đây là xác thực bổ sung, không phải khóa.
-- Admin có thể **Đã xử lý**, **Tạm giữ 24h**, hoặc **Bỏ tạm giữ**. Tạm giữ chặn cả đăng nhập mới và phiên đang mở; hết hạn tự mở.
-- Mặc định `SECURITY_AUTO_HOLD_HOURS=0`: chỉ cảnh báo. Nếu muốn hệ thống tự tạm giữ sau ngưỡng, đặt `24`; không áp dụng cho tài khoản admin.
+- A **security alert** is created under **Admin → Security** (with a red badge). Alerts merge consecutive failures and record the login name, the most recent IP and the timestamp.
+- If `SECURITY_STEP_UP=on` and the account has an email and mail can be sent, the next login with the **correct password** also requires an OTP. This is extra verification, not a lock.
+- The admin can **Resolve**, **Hold for 24h**, or **Release**. A hold blocks both new logins and active sessions; it lifts automatically when it expires.
+- The default is `SECURITY_AUTO_HOLD_HOURS=0`: alert only. To have the system hold automatically after the threshold, set `24`; admin accounts are exempt.
 
-### Cấu hình gửi thư
+### Mail configuration
 
-Điền vào `backend/.env` — mẫu có sẵn trong `backend/.env.example`. Với Gmail: bật xác thực 2 lớp rồi tạo **Mật khẩu ứng dụng** 16 ký tự và dùng nó làm `SMTP_PASS`.
+Fill in `backend/.env` — a template is available in `backend/.env.example`. For Gmail: turn on 2-step verification, create a 16-character **App Password** and use it as `SMTP_PASS`.
 
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=ten-ban@gmail.com
+SMTP_USER=your-name@gmail.com
 SMTP_PASS=abcd efgh ijkl mnop
-MAIL_FROM=ten-ban@gmail.com
+MAIL_FROM=your-name@gmail.com
 MAIL_FROM_NAME=GZ AFL
 ```
 
-Cần tỉ lệ vào Inbox tốt hơn Gmail thì dùng Brevo (`smtp-relay.brevo.com`, miễn phí 300 thư/ngày).
+For better inbox placement than Gmail, use Brevo (`smtp-relay.brevo.com`, free 300 emails/day).
 
-### Quên mật khẩu có 2 đường
+### Two ways to reset a forgotten password
 
-1. **Tự đặt lại (mặc định)**: khách bấm **"Quên mật khẩu?"** → nhận mã qua email → nhập mã kèm mật khẩu mới. Xong ngay, không cần quản trị viên.
-2. **Nhờ quản trị viên (dự phòng)**: dùng khi tài khoản **chưa có email**, khi hệ thống chưa gửi được thư, hoặc khi khách không nhận được mail. Yêu cầu vào tab **Khôi phục mật khẩu** của trang quản trị.
+1. **Self-service (default)**: the customer clicks **"Forgot password?"** → receives a code by email → enters the code plus a new password. Done immediately, no admin needed.
+2. **Ask the admin (fallback)**: for accounts **without an email**, when the system cannot send mail yet, or when the customer does not receive the email. Requests land in the **Password resets** tab of the admin page.
 
-Đặt lại mật khẩu thành công bằng đường nào cũng **tự đóng** yêu cầu đang chờ của đường kia, và làm **mọi phiên đăng nhập cũ hết hiệu lực**.
+A successful reset through either path also **closes** any pending request from the other path and invalidates **all old login sessions**.
 
 ---
 
-## Trợ lý hỗ trợ (chatbot)
+## Support assistant (chatbot)
 
-Góc phải-dưới của **mọi trang** (kể cả trang chủ với khách chưa đăng nhập) có một nút tròn mở khung chat hỗ trợ:
+The bottom-right corner of **every page** (including the home page for guests) has a round button that opens a support chat window:
 
-- Trả lời các câu hỏi thường gặp: tạo đơn/lấy link hoàn tiền, thời gian ghi nhận hoa hồng, **đơn chờ admin duyệt**, **thu hồi hoa hồng/số dư âm**, rút tiền (mức tối thiểu, ảnh QR), mã OTP, mời bạn bè, bảo mật...
-- Nút **"Liên hệ hỗ trợ"** ngay trong khung chat: hiện số điện thoại/Zalo và email (lấy từ `SUPPORT_ZALO`, `SUPPORT_EMAIL`) kèm nút copy.
-- **Gợi ý câu hỏi** sẵn ở trên ô nhập — bấm là hỏi luôn.
-- **Nhớ hội thoại**: lịch sử chat lưu trong trình duyệt (`localStorage`), tải lại trang không mất. Server **không lưu** nội dung chat.
-- Muốn đổi ảnh của trợ lý: thay file `CHATBOT.png` ở thư mục gốc (ảnh vuông, nền tối) — dùng cho cả nút tròn lẫn ô logo ở đầu khung chat.
+- Answers common questions: creating orders/getting cashback links, how long commissions take to be recorded, **orders awaiting admin approval**, **commission reversals/negative balances**, withdrawals (minimum amount, QR image), OTP codes, inviting friends, security...
+- A **"Contact support"** button right in the chat window shows the phone/Zalo number and email (from `SUPPORT_ZALO`, `SUPPORT_EMAIL`) with a copy button.
+- **Suggested questions** sit above the input box — click one to ask it.
+- **Conversation memory**: chat history is stored in the browser (`localStorage`) and survives a reload. The server does **not** store chat content.
+- To change the assistant image: replace `CHATBOT.png` in the project root (square image, dark background) — it is used both for the round button and the logo at the top of the chat window.
 
-### Hai chế độ hoạt động
+### Two modes
 
-| Chế độ | Khi nào | Trả lời thế nào |
+| Mode | When | How it answers |
 |---|---|---|
-| **Theo kịch bản** | Chưa đặt `AI_API_KEY` | Khớp từ khoá trong câu hỏi (gõ có dấu hay không dấu đều được) với bộ kiến thức trong `backend/lib/supportKnowledge.js`. Miễn phí, không cần Internet |
-| **Dùng AI** | Đã đặt `AI_API_KEY` | Gọi API AI chuẩn OpenAI, kèm `system prompt` chứa đúng bộ kiến thức trên nên không bịa thêm chính sách |
+| **Scripted** | `AI_API_KEY` not set | Matches keywords in the question (with or without Vietnamese diacritics) against the knowledge base in `backend/lib/supportKnowledge.js`. Free, no Internet needed |
+| **AI** | `AI_API_KEY` set | Calls an OpenAI-compatible AI API with a `system prompt` containing that same knowledge base, so it does not invent extra policies |
 
-Nếu AI gặp lỗi (sai khoá, hết hạn mức, mất mạng), trợ lý **tự lùi về chế độ kịch bản** để khách vẫn nhận được câu trả lời.
+If the AI fails (bad key, quota exhausted, network down), the assistant **falls back to scripted mode** so the customer still gets an answer.
 
-### Bật trợ lý AI (chọn 1 nhà cung cấp)
+### Enable the AI assistant (pick one provider)
 
-Chỉ cần điền `AI_API_KEY` vào `backend/.env` rồi **khởi động lại server** — hệ thống tự đoán nhà cung cấp theo tiền tố khoá và in ra lúc khởi động. Muốn chắc chắn thì điền thêm `AI_BASE_URL` + `AI_MODEL`:
+Just fill in `AI_API_KEY` in `backend/.env` and **restart the server** — the system guesses the provider from the key prefix and prints it at startup. To be certain, also fill in `AI_BASE_URL` + `AI_MODEL`:
 
-| Nhà cung cấp | `AI_BASE_URL` | `AI_MODEL` gợi ý | Ghi chú |
+| Provider | `AI_BASE_URL` | Suggested `AI_MODEL` | Notes |
 |---|---|---|---|
-| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | Có gói miễn phí — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (khoá dạng `AIza...` hoặc `AQ....` đều dùng được). Dùng `gemini-3.5-flash` nếu cần chất lượng cao hơn |
-| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Có gói miễn phí — [console.groq.com/keys](https://console.groq.com/keys) |
-| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct:free` | Có model miễn phí — [openrouter.ai/keys](https://openrouter.ai/keys) |
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | Trả phí |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-3.5-flash-lite` | Free tier available — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (keys of the form `AIza...` or `AQ....` both work). Use `gemini-3.5-flash` if you need higher quality |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Free tier available — [console.groq.com/keys](https://console.groq.com/keys) |
+| OpenRouter | `https://openrouter.ai/api/v1` | `meta-llama/llama-3.3-70b-instruct:free` | Free models available — [openrouter.ai/keys](https://openrouter.ai/keys) |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | Paid |
 
-Kiểm tra nhanh sau khi khởi động lại:
+Quick check after restarting:
 
 ```bash
 curl http://localhost:3000/api/support/status
 # {"ai":true,"dailyLimit":800,"usedToday":0,"remainingToday":800,"suggestions":8}
 ```
 
-> API chỉ trả về trạng thái bật/tắt và hạn mức, **không** lộ nhà cung cấp AI, tên model hay URL nội bộ.
+> The API only reports on/off status and quota, and does **not** expose the AI provider, model name or internal URL.
 
-> Khoá API **chỉ nằm ở server**, không bao giờ gửi xuống trình duyệt. Mỗi IP được hỏi tối đa **30 tin nhắn / 10 phút** (chống spam, tránh cháy hạn mức khoá API). Muốn tạm tắt AI mà vẫn giữ khoá: đặt `AI_ENABLED=off`.
+> The API key **stays on the server** and is never sent to the browser. Each IP may send at most **30 messages / 10 minutes** (anti-spam, and to avoid burning through the API key quota). To temporarily disable AI while keeping the key: set `AI_ENABLED=off`.
 
-### Muốn trợ lý trả lời đúng hơn?
+### Want better answers?
 
-Sửa nội dung trong `backend/lib/supportKnowledge.js` — file đó là **nguồn duy nhất** cho cả 2 chế độ (chế độ AI đọc nó trong `system prompt`, chế độ kịch bản khớp từ khoá với nó). Thêm câu hỏi vào `SUGGESTIONS` là khung chat có thêm nút gợi ý.
+Edit the content of `backend/lib/supportKnowledge.js` — that file is the **single source** for both modes (AI mode reads it in the `system prompt`, scripted mode matches keywords against it). Adding a question to `SUGGESTIONS` adds another suggestion button to the chat window.
 
 ---
 
 ## API
 
-Tất cả API nằm dưới `/api`, trả về JSON. Các API cần đăng nhập dùng cookie phiên.
+All APIs live under `/api` and return JSON. APIs that require login use the session cookie.
 
-| Method | Đường dẫn | Mô tả |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Kiểm tra server sống |
-| GET | `/api/config` | Cấu hình công khai cho giao diện (thông tin liên hệ hỗ trợ, có bật xác thực email hay không, câu hỏi gợi ý của trợ lý) |
-| POST | `/api/auth/register/otp` | Bước 1 khi đăng ký: gửi mã xác thực `{ username, name, email }` (giới hạn 10 lần / 15 phút) |
-| POST | `/api/auth/register` | Bước 2: tạo tài khoản `{ username, password, name, email, otp }` |
-| POST | `/api/auth/login` | Đăng nhập. Nếu bật xác thực khi đăng nhập thì trả về `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` thay vì đặt cookie (`devCode` chỉ có khi bật `DEV_OTP_CODE=1`) |
-| POST | `/api/auth/login/otp` | Bước 2 của đăng nhập: `{ ticket, otp }` → đặt cookie phiên (giới hạn 40 lần / 15 phút) |
-| POST | `/api/auth/login/otp/resend` | Gửi lại mã đăng nhập `{ ticket }` (không cần nhập lại mật khẩu) |
-| POST | `/api/auth/logout` | Đăng xuất |
-| GET | `/api/auth/me` | Người dùng hiện tại (`null` nếu chưa đăng nhập; `423` kèm `code: 'security_hold'` nếu tài khoản đang bị tạm giữ) |
-| POST | `/api/auth/forgot-password/otp` | Quên mật khẩu bước 1: gửi mã xác thực `{ username }` |
-| POST | `/api/auth/forgot-password/confirm` | Quên mật khẩu bước 2: `{ username, otp, newPassword }` |
-| POST | `/api/auth/forgot-password` | Đường dự phòng: gửi yêu cầu cho quản trị viên `{ username, note }` |
-| GET | `/api/orders` | Danh sách đơn hàng của mình (kèm link hoàn tiền, `sub_id`, số lượt bấm) |
-| POST | `/api/orders` | Tạo đơn `{ link }` → trả về `{ order, affiliate }` với link hoàn tiền |
-| GET | `/api/wallet` | Thống kê ví + lịch sử rút tiền + `minWithdraw`, `canWithdraw` |
-| POST | `/api/wallet/withdrawals` | Yêu cầu rút tiền. Chọn 1 trong 2: `{ mode: 'account', bank, accNum, accName }` hoặc `{ mode: 'qr' }` (dùng ảnh QR đã tải lên, không cần ngân hàng/STK) |
-| GET | `/api/referral` | Mã giới thiệu, điểm, lịch sử đã nhập |
-| POST | `/api/referral/redeem` | Nhập mã giới thiệu `{ code }` |
-| GET | `/api/notifications` | Danh sách thông báo + số chưa đọc |
-| POST | `/api/notifications/read-all` | Đánh dấu tất cả thông báo là đã đọc |
-| POST | `/api/support/chat` | Hỏi trợ lý hỗ trợ `{ messages: [{ role: 'user'\|'assistant', content }] }` → `{ reply, source: 'ai'\|'faq', notice? }`. Không cần đăng nhập, giới hạn 30 lần / 10 phút mỗi IP |
-| GET | `/api/support/status` | Kiểm tra trợ lý đang ở chế độ AI hay kịch bản (dùng khi cấu hình `AI_*` trong `.env`) |
-| PUT | `/api/profile` | Cập nhật hồ sơ `{ name, email, phone }`. Nếu **đổi email** và đang bật xác thực thì phải kèm `emailOtp` |
-| POST | `/api/profile/email/otp` | Gửi mã xác thực tới **email mới** khi đổi email `{ email }` (giới hạn 10 lần / 15 phút) |
-| POST | `/api/profile/avatar` | Cập nhật ảnh đại diện `{ dataUrl }` |
-| POST | `/api/profile/bank-qr` | Lưu **ảnh QR nhận tiền** `{ dataUrl }` — chỉ nhận ảnh PNG/JPG, tối đa 2MB (server kiểm tra cả chữ ký byte đầu file) |
-| DELETE | `/api/profile/bank-qr` | Xoá ảnh QR nhận tiền đã lưu |
-| PUT | `/api/profile/password` | Đổi mật khẩu `{ currentPassword, newPassword }` (tối đa 10 lần / 15 phút) |
+| GET | `/api/health` | Server liveness check |
+| GET | `/api/config` | Public config for the UI (support contact details, whether email verification is on, assistant suggested questions) |
+| POST | `/api/auth/register/otp` | Sign-up step 1: send a verification code `{ username, name, email }` (limit 10 / 15 minutes) |
+| POST | `/api/auth/register` | Step 2: create the account `{ username, password, name, email, otp }` |
+| POST | `/api/auth/login` | Log in. If login verification is on, returns `{ otpRequired: true, ticket, email, resendInSeconds, devCode }` instead of setting a cookie (`devCode` only when `DEV_OTP_CODE=1`) |
+| POST | `/api/auth/login/otp` | Login step 2: `{ ticket, otp }` → sets the session cookie (limit 40 / 15 minutes) |
+| POST | `/api/auth/login/otp/resend` | Resend the login code `{ ticket }` (no need to re-enter the password) |
+| POST | `/api/auth/logout` | Log out |
+| GET | `/api/auth/me` | Current user (`null` if not logged in; `423` with `code: 'security_hold'` if the account is on hold) |
+| POST | `/api/auth/forgot-password/otp` | Forgot password step 1: send a verification code `{ username }` |
+| POST | `/api/auth/forgot-password/confirm` | Forgot password step 2: `{ username, otp, newPassword }` |
+| POST | `/api/auth/forgot-password` | Fallback path: send a request to the admin `{ username, note }` |
+| GET | `/api/orders` | Your order list (with cashback link, `sub_id`, click count) |
+| POST | `/api/orders` | Create an order `{ link }` → returns `{ order, affiliate }` with the cashback link |
+| GET | `/api/wallet` | Wallet stats + withdrawal history + `minWithdraw`, `canWithdraw` |
+| POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose one of two: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }` (uses the uploaded QR image, no bank/account number needed) |
+| GET | `/api/referral` | Referral code, points, redemption history |
+| POST | `/api/referral/redeem` | Redeem a referral code `{ code }` |
+| GET | `/api/notifications` | Notification list + unread count |
+| POST | `/api/notifications/read-all` | Mark all notifications as read |
+| POST | `/api/support/chat` | Ask the support assistant `{ messages: [{ role: 'user'\|'assistant', content }] }` → `{ reply, source: 'ai'\|'faq', notice? }`. No login needed, limit 30 / 10 minutes per IP |
+| GET | `/api/support/status` | Check whether the assistant is in AI or scripted mode (used when configuring `AI_*` in `.env`) |
+| PUT | `/api/profile` | Update the profile `{ name, email, phone }`. If you **change the email** while verification is on, you must include `emailOtp` |
+| POST | `/api/profile/email/otp` | Send a verification code to the **new email** when changing it `{ email }` (limit 10 / 15 minutes) |
+| POST | `/api/profile/avatar` | Update the avatar `{ dataUrl }` |
+| POST | `/api/profile/bank-qr` | Save the **payout QR image** `{ dataUrl }` — only PNG/JPG, max 2MB (the server also checks the leading byte signature) |
+| DELETE | `/api/profile/bank-qr` | Delete the saved payout QR image |
+| PUT | `/api/profile/password` | Change the password `{ currentPassword, newPassword }` (max 10 / 15 minutes) |
 
-Ngoài `/api`, server còn có một đường dẫn công khai:
+Beyond `/api`, the server also exposes one public path:
 
-| Method | Đường dẫn | Mô tả |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/r/:code` | Link hoàn tiền rút gọn — đếm lượt bấm rồi chuyển hướng (302) sang link đích |
-| GET/POST | `/api/postback/:provider` | **Điểm nhận báo cáo chuyển đổi** từ mạng affiliate (AccessTrade gọi GET). Không dùng cookie phiên; xác thực bằng `POSTBACK_SECRET`. Trả `403` khi sai chìa khoá, `503` khi chưa cấu hình, `200` khi đã ghi nhận (kể cả lần gọi trùng) |
+| GET | `/r/:code` | Short cashback link — counts the click, then redirects (302) to the target link |
+| GET/POST | `/api/postback/:provider` | **Conversion report endpoint** from affiliate networks (AccessTrade calls it with GET). Does not use the session cookie; authenticated with `POSTBACK_SECRET`. Returns `403` on a wrong key, `503` when unconfigured, `200` once recorded (including duplicate calls) |
 
-### API quản trị (`/api/admin`)
+### Admin API (`/api/admin`)
 
-Tất cả API dưới đây **yêu cầu tài khoản có `role = 'admin'`**. Người chưa đăng nhập nhận `401`, người dùng thường nhận `403`.
+Every API below **requires an account with `role = 'admin'`**. Anonymous callers get `401`, regular users get `403`.
 
-| Method | Đường dẫn | Mô tả |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/admin/overview` | Thống kê toàn hệ thống (người dùng, đơn, lệnh rút, tiền, yêu cầu khôi phục mật khẩu đang chờ) |
-| GET | `/api/admin/users` | Danh sách người dùng (`q`, `limit`, `offset`) |
-| PATCH | `/api/admin/users/:id` | Đổi `{ role, points }` |
-| DELETE | `/api/admin/users/:id` | Xoá người dùng (xoá kèm đơn hàng/lệnh rút/lịch sử giới thiệu) |
-| GET | `/api/admin/security-alerts` | Cảnh báo bảo mật (`status` = `new`/`resolved`/`all`, `q`, `limit`, `offset`) |
-| POST | `/api/admin/security-alerts/:id/resolve` | Đánh dấu cảnh báo đã xử lý `{ note }` |
-| POST | `/api/admin/security-alerts/:id/hold` | Tạm giữ tài khoản gắn với cảnh báo `{ hours }` (mặc định 24) |
-| POST | `/api/admin/users/:id/security-hold` | Tạm giữ tài khoản trực tiếp `{ hours }` |
-| DELETE | `/api/admin/users/:id/security-hold` | Bỏ tạm giữ tài khoản |
-| GET | `/api/admin/orders` | Danh sách đơn hàng (`status`, `q`, `limit`, `offset`) |
-| PATCH | `/api/admin/orders/:code` | Đổi `{ status, commission }` |
-| GET | `/api/admin/withdrawals` | Danh sách lệnh rút tiền (`status`, `q`, `limit`, `offset`) |
-| PATCH | `/api/admin/withdrawals/:code` | Đổi `{ status, amount }` |
-| GET | `/api/admin/referrals` | Lịch sử nhập mã giới thiệu (`limit`, `offset`) |
-| GET | `/api/admin/postbacks` | **Nhật ký đối soát**: các lần mạng gọi postback (`q`, `status` = `pending`/`approved`/`rejected`, `only` = `matched`/`unmatched`/`refused`, `limit`, `offset`) + thống kê tổng |
-| POST | `/api/admin/postbacks/:id/reapply` | Xử lý lại một log cũ (dùng khi postback về trước lúc đơn được tạo) |
-| GET | `/api/admin/password-resets` | Hàng đợi yêu cầu khôi phục mật khẩu (`status`, `limit`, `offset`) |
-| POST | `/api/admin/password-resets/:id/reset` | Đặt lại mật khẩu, trả về `tempPassword` **đúng một lần** (không lưu vào DB) |
-| POST | `/api/admin/password-resets/:id/cancel` | Từ chối yêu cầu khôi phục |
+| GET | `/api/admin/overview` | System-wide stats (users, orders, withdrawals, money, pending password-reset requests) |
+| GET | `/api/admin/users` | User list (`q`, `limit`, `offset`) |
+| PATCH | `/api/admin/users/:id` | Change `{ role, points }` |
+| DELETE | `/api/admin/users/:id` | Delete a user (also deletes their orders/withdrawals/referral history) |
+| GET | `/api/admin/security-alerts` | Security alerts (`status` = `new`/`resolved`/`all`, `q`, `limit`, `offset`) |
+| POST | `/api/admin/security-alerts/:id/resolve` | Mark an alert as resolved `{ note }` |
+| POST | `/api/admin/security-alerts/:id/hold` | Hold the account linked to an alert `{ hours }` (default 24) |
+| POST | `/api/admin/users/:id/security-hold` | Hold an account directly `{ hours }` |
+| DELETE | `/api/admin/users/:id/security-hold` | Release an account |
+| GET | `/api/admin/orders` | Order list (`status`, `q`, `limit`, `offset`) |
+| PATCH | `/api/admin/orders/:code` | Change `{ status, commission }` |
+| GET | `/api/admin/withdrawals` | Withdrawal list (`status`, `q`, `limit`, `offset`) |
+| PATCH | `/api/admin/withdrawals/:code` | Change `{ status, amount }` |
+| GET | `/api/admin/referrals` | Referral redemption history (`limit`, `offset`) |
+| GET | `/api/admin/postbacks` | **Reconciliation log**: every time a network called the postback endpoint (`q`, `status` = `pending`/`approved`/`rejected`, `only` = `matched`/`unmatched`/`refused`, `limit`, `offset`) + aggregate stats |
+| POST | `/api/admin/postbacks/:id/reapply` | Reprocess an old log (e.g. a postback that arrived before the order was created) |
+| GET | `/api/admin/password-resets` | Password-reset request queue (`status`, `limit`, `offset`) |
+| POST | `/api/admin/password-resets/:id/reset` | Reset the password, returning `tempPassword` **exactly once** (not stored in the DB) |
+| POST | `/api/admin/password-resets/:id/cancel` | Reject a reset request |
 
-Trạng thái hợp lệ:
+Valid statuses:
 
-- Đơn hàng: `Đang xử lý` → `Chờ đối soát` → `Chờ admin duyệt` → `Hoàn thành` → `Đã thanh toán`, hoặc `Đã huỷ`.
-- Lệnh rút tiền: `Đang xử lý` → `Đã thanh toán`, hoặc `Đã huỷ`.
+- Orders: `Đang xử lý` (processing) → `Chờ đối soát` (awaiting reconciliation) → `Chờ admin duyệt` (awaiting admin approval) → `Hoàn thành` (completed) → `Đã thanh toán` (paid), or `Đã huỷ` (cancelled).
+- Withdrawals: `Đang xử lý` (processing) → `Đã thanh toán` (paid), or `Đã huỷ` (cancelled).
 
-> `Chờ đối soát` = mạng affiliate **đã ghi nhận** chuyển đổi nhưng chưa duyệt. `Chờ admin duyệt` = mạng đã duyệt, hệ thống ghi số hoa hồng **dự kiến** vào `commission` nhưng **chưa cộng vào số dư**; quản trị viên duyệt đơn (chuyển `Hoàn thành`/`Đã thanh toán`) thì tiền mới vào ví.
+> `Chờ đối soát` = the affiliate network **has recorded** the conversion but has not approved it yet. `Chờ admin duyệt` = the network approved it and the system writes the **expected** commission into `commission` but **does not add it to the balance**; only when the admin approves the order (moving it to `Hoàn thành`/`Đã thanh toán`) does the money enter the wallet.
 
-**Cách tiền được tính:** số dư ví của người dùng = tổng `commission` của các đơn **không bị huỷ** − tổng `amount` của các lệnh rút **không bị huỷ**. Vì vậy đánh dấu `Đã huỷ` sẽ loại đơn/lệnh đó khỏi phép tính, còn khi chuyển một lệnh rút sang `Đã thanh toán` thì phải nhập số tiền thực trả (không được vượt số dư khả dụng).
+**How money is calculated:** a user's wallet balance = the sum of `commission` across **non-cancelled** orders − the sum of `amount` across **non-cancelled** withdrawals. So marking something `Đã huỷ` removes that order/withdrawal from the calculation, and when moving a withdrawal to `Đã thanh toán` you must enter the actual amount paid (it may not exceed the available balance).
 
-**Rút tiền:** người dùng không tự nhập số tiền — hệ thống ghi nhận **toàn bộ số dư khả dụng** tại thời điểm gửi. Nhờ vậy số tiền đó bị **giữ chỗ** ngay, không thể rút trùng. Các ràng buộc ở server (`backend/routes/wallet.js`):
+**Withdrawals:** users do not type an amount — the system records the **entire available balance** at the time of the request. That amount is **reserved** right away, so it cannot be withdrawn twice. The server-side rules (`backend/routes/wallet.js`):
 
-- Số dư khả dụng = tổng hoa hồng của các đơn **đã được admin duyệt** − tiền đã rút. Đơn `Chờ đối soát` hoặc `Chờ admin duyệt` **chưa vào số dư**.
-- Số dư khả dụng phải đạt mức tối thiểu `WITHDRAWAL_MIN` (mặc định **1.000đ**) — chưa đủ thì trả `400` kèm số tiền còn thiếu.
-- Mỗi tài khoản chỉ được có **một** lệnh rút `Đang xử lý`; gửi lệnh thứ hai nhận `409`.
-- Nếu mạng báo huỷ/hoàn trả sau khi khách đã rút, hệ thống ghi nhận **thu hồi** và số dư có thể âm. Khoản âm là **nợ cần hoàn lại**, sẽ tự trừ vào hoa hồng tiếp theo; ví và trang quản trị hiển thị rõ khoản này.
-- Ngân hàng/ví được chọn từ danh sách trong `backend/lib/banks.js` (khoảng 50 ngân hàng và ví điện tử, hiện ở dropdown và ở `GET /api/config`). Người dùng cũng có thể chọn **"Ngân hàng khác"** rồi tự ghi tên (tối đa 60 ký tự).
-- Người dùng **chọn 1 trong 2** cách nhận tiền, không cần làm cả hai:
-  - **Nhập số tài khoản**: bắt buộc có ngân hàng/ví + `accNum` + `accName`.
-  - **Ảnh QR nhận tiền**: chỉ cần ảnh QR (chỉ nhận **PNG/JPG**, tối đa 2MB) — không cần nhập ngân hàng, số tài khoản hay tên chủ tài khoản vì QR đã có sẵn. Quản trị viên quét mã QR để chuyển tiền.
-  - Ảnh QR được **chụp lại** vào lệnh rút lúc gửi, nên đổi ảnh sau này không làm thay đổi lệnh cũ; file ảnh chỉ bị xoá khi **không còn lệnh rút nào** dùng nó.
-- Huỷ lệnh rút (`Đã huỷ`) sẽ **trả lại** số tiền vào số dư khả dụng.
-- Quản trị viên có thể sửa số tiền thực trả khi đánh dấu `Đã thanh toán`, nhưng không được vượt số dư khả dụng.
+- Available balance = total commission from **admin-approved** orders − money already withdrawn. Orders in `Chờ đối soát` or `Chờ admin duyệt` are **not part of the balance**.
+- The available balance must reach the `WITHDRAWAL_MIN` minimum (default **1,000 VND**) — otherwise `400` is returned with the shortfall.
+- Each account may have only **one** `Đang xử lý` withdrawal; a second one returns `409`.
+- If the network reports a cancellation/refund after the customer has withdrawn, the system records a **reversal** and the balance may go negative. The negative amount is a **debt to be recovered**, automatically deducted from the next commission; the wallet and admin page both show it clearly.
+- Bank/e-wallet is chosen from the list in `backend/lib/banks.js` (about 50 banks and e-wallets, shown in the dropdown and in `GET /api/config`). Users can also pick **"Other bank"** and type the name themselves (max 60 characters).
+- Users **choose one of two** payout methods, not both:
+  - **Enter an account number**: bank/e-wallet + `accNum` + `accName` are required.
+  - **Payout QR image**: only the QR image is needed (**PNG/JPG** only, max 2MB) — no bank, account number or account holder name, because the QR already carries them. The admin scans the QR to transfer the money.
+  - The QR image is **snapshotted** into the withdrawal at request time, so changing the image later does not alter old withdrawals; the image file is only deleted once **no withdrawal** references it anymore.
+- Cancelling a withdrawal (`Đã huỷ`) **returns** the money to the available balance.
+- The admin can adjust the actual amount paid when marking `Đã thanh toán`, but it may not exceed the available balance.
 
-### Chuyển đổi link hoàn tiền
+### Affiliate link conversion
 
-Khi người dùng tạo đơn, server gọi `backend/lib/affiliate.js` để đổi link sản phẩm thành link mua hàng **có gắn `sub_id` của người dùng** (mấu chốt để biết hoa hồng thuộc về ai), rồi lưu cả link gốc và link hoàn tiền vào đơn.
+When a user creates an order, the server calls `backend/lib/affiliate.js` to turn the product link into a purchase link **carrying the user's `sub_id`** (the key to knowing whose commission it is), then stores both the original link and the cashback link on the order.
 
-Chọn nhà cung cấp bằng biến `AFFILIATE_PROVIDER`:
+Choose the provider with `AFFILIATE_PROVIDER`:
 
-| Giá trị | Trạng thái | Ghi chú |
+| Value | Status | Notes |
 |---|---|---|
-| `mock` (mặc định) | ✅ chạy được ngay | Trả về link nội bộ `http://localhost:3000/r/<mã đơn>`. Bấm vào sẽ được đếm lượt và chuyển hướng sang link gốc. **Không tạo ra hoa hồng thật** — hoa hồng vẫn do quản trị viên chốt tay. |
-| `accesstrade` | ✅ TikTok Shop và Tiki đang chạy thật; Shopee/Lazada chờ duyệt campaign | Cần `ACCESSTRADE_API_KEY` + campaign ID từng sàn (`ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA`). Đã viết theo tài liệu chính thức (`POST /v1/product_link/create`), gắn `sub1 = gzafl-u<id>` (người dùng) và `sub2 = <mã đơn>` (đơn hàng). |
-| `shopee` | ⛔ chưa cài đặt | Cần `SHOPEE_AFFILIATE_APP_ID` + `SHOPEE_AFFILIATE_SECRET`, và phải đối chiếu tài liệu chính thức về cách ký request trước khi dùng. |
+| `mock` (default) | ✅ works right away | Returns an internal link `http://localhost:3000/r/<order code>`. Clicking it counts the click and redirects to the original link. **It does not generate real commission** — commission is still settled manually by the admin. |
+| `accesstrade` | ✅ TikTok Shop and Tiki are live; Shopee/Lazada awaiting campaign approval | Requires `ACCESSTRADE_API_KEY` + a campaign ID per platform (`ACCESSTRADE_CAMPAIGN_SHOPEE` / `_TIKTOK` / `_TIKI` / `_LAZADA`). Written against the official docs (`POST /v1/product_link/create`), attaching `sub1 = gzafl-u<id>` (user) and `sub2 = <order code>` (order). |
+| `shopee` | ⛔ not implemented | Requires `SHOPEE_AFFILIATE_APP_ID` + `SHOPEE_AFFILIATE_SECRET`, and the request-signing scheme must be checked against the official docs before use. |
 
-> ⚠️ **Không thể tạo hoa hồng bằng cách tự thêm tham số vào link.** Muốn có ghi nhận thật, bắt buộc phải có tài khoản affiliate đã được duyệt rồi gọi API do họ cấp. Xem phân tích đầy đủ ở **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
+> ⚠️ **Commission cannot be created just by appending parameters to a link.** For real tracking you need an approved affiliate account and to call the API they provide. See the full analysis in **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
 
-Nếu gọi nhà cung cấp thất bại, đơn **vẫn được tạo** với link gốc (người dùng không bị chặn) — chỉ là chưa ghi nhận được hoa hồng.
+If the provider call fails, the order **is still created** with the original link (users are not blocked) — it simply has no commission tracking.
 
-### Nhận hoa hồng về — đối soát postback
+### Receiving commissions — postback reconciliation
 
-Khi mạng affiliate báo có người mua hàng, họ gọi vào:
+When an affiliate network reports a purchase, it calls:
 
 ```
-GET /api/postback/accesstrade    ← khai URL này trong dashboard của mạng
+GET /api/postback/accesstrade    ← register this URL in the network's dashboard
 ```
 
-Quy trình (mã nguồn: `backend/routes/postback.js` + `backend/lib/postback.js`):
+The flow (source: `backend/routes/postback.js` + `backend/lib/postback.js`):
 
-1. **Xác thực** `POSTBACK_SECRET` (băm SHA-256 rồi so sánh bằng `timingSafeEqual`). Sai → `403` và **vẫn ghi vào nhật ký**. Chưa cấu hình secret → `503` (không nhận dữ liệu không rõ nguồn).
-   - Cách an toàn nhất: gửi chìa khoá trong header `X-Postback-Secret` (không nằm trong URL nên không lọt vào access log của proxy/CDN). Nếu header có mặt thì chỉ xét header.
-   - Cách phổ biến: thêm tham số `secret=<POSTBACK_SECRET>` vào URL khai với mạng (đổi tên bằng `POSTBACK_PARAM_SECRET`). Khi đó nên cấu hình proxy không ghi query string vào access log và định kỳ đổi khoá.
-2. **Ghi tham số nhận được** vào bảng `postback_logs` **trước khi** xử lý — có log mới đối soát được khi có khiếu nại. `POSTBACK_SECRET` và các tham số nhạy cảm (`token`, `signature`…) được **che** trước khi lưu và trước khi hiển thị ở trang quản trị.
-3. **Chống trùng** theo `payload_hash`: mạng gửi lại y hệt thì chỉ tăng số lần nhận, **không cộng tiền lần hai**.
-4. **Tra đơn**: `sub1 = gzafl-u<id>` → người dùng; `sub2 = <mã đơn GZ…>` → đúng đơn; nếu thiếu thì tra theo mã giao dịch đã lưu, cuối cùng mới lấy đơn gần nhất của người dùng đó.
-5. **Cộng dồn theo đơn** (mỗi sản phẩm lấy trạng thái **mới nhất**) rồi cập nhật:
-   - mạng báo **chưa duyệt** → đơn chuyển **"Chờ đối soát"**, tiền nằm ở `network_commission`, **chưa vào số dư**;
-   - mạng báo **đã duyệt** → đơn **"Chờ admin duyệt"**, ghi `commission = tiền đã duyệt × CASHBACK_RATE` như số **dự kiến**; admin duyệt đơn thì khoản này mới được cộng vào ví;
-   - mạng báo **huỷ/hoàn trả** → đơn **"Đã huỷ"**, hoa hồng về 0 và ghi số **đã thu hồi** vào `commission_reversed`.
-6. **Luôn trả `200` nhanh** (mạng chỉ gửi lại tối đa 3 lần). Với đơn đã ở **"Đã thanh toán"**, trạng thái đơn được giữ nguyên, nhưng nếu mạng báo huỷ/giảm hoa hồng thì hệ thống vẫn ghi nhận thu hồi và số dư âm (nợ) — không tự tăng tiền khi mạng báo thêm.
+1. **Authenticate** `POSTBACK_SECRET` (SHA-256 hash compared with `timingSafeEqual`). Wrong → `403`, and the call is **still logged**. Secret unconfigured → `503` (no data of unknown origin is accepted).
+   - Safest option: send the key in the `X-Postback-Secret` header (it never appears in the URL, so it does not leak into proxy/CDN access logs). If the header is present, only the header is considered.
+   - Common option: add a `secret=<POSTBACK_SECRET>` parameter to the URL registered with the network (rename it with `POSTBACK_PARAM_SECRET`). In that case configure the proxy not to log query strings and rotate the key periodically.
+2. **Record the received parameters** into the `postback_logs` table **before** processing — only with a log can disputes be reconciled later. `POSTBACK_SECRET` and sensitive parameters (`token`, `signature`...) are **masked** before being stored and before being shown on the admin page.
+3. **Dedupe** by `payload_hash`: an identical retry only increases the receive count and **does not add the money twice**.
+4. **Find the order**: `sub1 = gzafl-u<id>` → user; `sub2 = <GZ… order code>` → the exact order; if missing, look up by the stored transaction ID, and finally fall back to that user's most recent order.
+5. **Accumulate per order** (each product takes its **latest** status), then update:
+   - network reports **not approved** → order becomes **"Chờ đối soát"**, the money sits in `network_commission`, **not in the balance**;
+   - network reports **approved** → order becomes **"Chờ admin duyệt"**, writing `commission = approved amount × CASHBACK_RATE` as the **expected** figure; only when the admin approves does that amount enter the wallet;
+   - network reports **cancelled/refunded** → order becomes **"Đã huỷ"**, the commission goes to 0 and the **reversed** amount is written to `commission_reversed`.
+6. **Always return `200` quickly** (networks only retry up to 3 times). For orders already **"Đã thanh toán"**, the order status is left unchanged, but if the network reports a cancellation/reduction the system still records the reversal and the negative balance (debt) — it never increases money on an extra network report.
 
-> AccessTrade gửi **mỗi sản phẩm một lần gọi** (đơn 3 món = 3 postback cùng mã giao dịch), nên tổng hoa hồng được cộng dồn theo đơn.
+> AccessTrade sends **one call per product** (a 3-item order = 3 postbacks with the same transaction ID), so total commission is accumulated per order.
 
-Tên tham số do người dùng tự đặt trong dashboard của mạng nên hệ thống **dò tự động** (`transaction_id`, `product_id`, `reward`, `status`, `sub1`…) và còn **quét mọi giá trị** để tìm mã dạng `gzafl-u<id>` / `GZ…`. Khác hẳn thì ép lại bằng `POSTBACK_PARAM_*` trong `.env`.
+Parameter names are set by the user in the network dashboard, so the system **auto-detects** them (`transaction_id`, `product_id`, `reward`, `status`, `sub1`...) and also **scans every value** for `gzafl-u<id>` / `GZ…` patterns. For anything unusual, force them with `POSTBACK_PARAM_*` in `.env`.
 
-Xem toàn bộ lần gọi (kể cả lần sai chìa khoá, lần không khớp được đơn) và bấm **Xử lý lại** ở **trang quản trị → tab Đối soát**. Log đã bị từ chối (sai chìa khoá) **không** xử lý lại được, và tổng hoa hồng của một đơn chỉ cộng các log khớp **mã giao dịch** của đơn đó (khi đơn chưa có mã giao dịch thì cộng các log không mang mã giao dịch).
+See every call (including wrong-key calls and calls that matched no order) and click **Reprocess** in **admin page → Reconciliation tab**. Rejected logs (wrong key) **cannot** be reprocessed, and an order's total commission only sums logs matching that order's **transaction ID** (when the order has no transaction ID yet, logs without a transaction ID are summed).
 
-Điều kiện tiên quyết, đừng bỏ qua: **hỏi mạng trung gian xem điều khoản của họ có cho phép mô hình hoàn tiền lại cho người mua hay không** — nhiều chương trình affiliate cấm và có thể khoá tài khoản, thu hồi tiền đã trả.
+A prerequisite you should not skip: **ask the intermediary network whether their terms allow a cashback-to-buyer model** — many affiliate programs forbid it and may close the account and claw back money already paid.
 
-### Bảng dữ liệu
+### Database schema
 
-| Bảng | Nội dung |
+| Table | Contents |
 |---|---|
-| `users` | Tài khoản: `username`, `password_hash` (bcrypt), thông tin cá nhân, mã giới thiệu, điểm, `role` (`user`/`admin`), `token_version`, `security_hold_until` (admin tạm giữ), thông tin nhận tiền |
-| `orders` | Đơn hàng theo người dùng: mã `GZ...`, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, trạng thái, hoa hồng (dự kiến khi chờ admin duyệt, chính thức khi đã duyệt), `commission_reversed` (hoa hồng đã thu hồi), `click_count`, `network_order_id` (mã giao dịch bên mạng), `network_commission` (tiền mạng báo, có thể chưa duyệt), `network_status` |
-| `withdrawals` | Lệnh rút tiền theo người dùng: mã `WD...`, ngân hàng, số tài khoản, số tiền, trạng thái |
-| `referrals` | Lịch sử nhập mã giới thiệu của từng người dùng |
-| `notifications` | Thông báo của từng người dùng: tiêu đề, nội dung, icon, đã đọc hay chưa |
-| `password_resets` | Yêu cầu khôi phục mật khẩu gửi cho quản trị viên (đường dự phòng): người gửi, cách liên hệ lại, trạng thái (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), ai xử lý và lúc nào |
-| `email_otps` | Mã xác thực gửi qua email: mục đích (`register` / `reset` / `change_email` / `login`), email nhận, **bcrypt hash của mã** (không lưu mã gốc), số lần nhập sai, số lần đã gửi trong giờ, thời điểm hết hạn. Mã hết hạn từ hơn 1 ngày bị xoá tự động khi server khởi động |
-| `postback_logs` | **Nhật ký báo cáo chuyển đổi** từ mạng affiliate: lưu **nguyên tham số thô** trước khi xử lý, mã giao dịch/sản phẩm, hoa hồng mạng báo, trạng thái bên mạng, `sub_id`, người dùng/đơn đã khớp, kết quả xử lý, số lần mạng gửi lại (`dup_count`), IP. Có khoá duy nhất trên `payload_hash` để chống xử lý trùng |
-| `login_failures` | Từng lần đăng nhập sai (tên đăng nhập, IP, thiết bị, thời điểm) — chỉ để đếm và tạo cảnh báo, **không dùng để khóa tài khoản**. Tự xoá sau 30 ngày |
-| `security_alerts` | Cảnh báo bảo mật gộp cho admin: tên đăng nhập, người dùng (nếu có), IP, số lần sai, trạng thái `new`/`resolved`, ghi chú xử lý, lần đăng nhập đúng gần nhất. Không dùng khoá ngoại để giữ lại cảnh báo khi xoá người dùng |
+| `users` | Accounts: `username`, `password_hash` (bcrypt), personal info, referral code, points, `role` (`user`/`admin`), `token_version`, `security_hold_until` (admin hold), payout details |
+| `orders` | Orders per user: `GZ...` code, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, status, commission (expected while awaiting admin approval, final once approved), `commission_reversed` (reversed commission), `click_count`, `network_order_id` (transaction ID on the network), `network_commission` (network-reported amount, possibly unapproved), `network_status` |
+| `withdrawals` | Withdrawals per user: `WD...` code, bank, account number, amount, status |
+| `referrals` | Referral redemption history per user |
+| `notifications` | Notifications per user: title, body, icon, read state |
+| `password_resets` | Password-reset requests sent to the admin (fallback path): requester, contact-back details, status (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), who handled it and when |
+| `email_otps` | Email verification codes: purpose (`register` / `reset` / `change_email` / `login`), recipient email, **bcrypt hash of the code** (raw code not stored), wrong-entry count, sends within the hour, expiry. Codes expired for more than a day are deleted automatically at server startup |
+| `postback_logs` | **Conversion report log** from affiliate networks: **raw parameters** stored before processing, transaction/product ID, network-reported commission, network status, `sub_id`, matched user/order, processing result, retry count (`dup_count`), IP. A unique constraint on `payload_hash` prevents double processing |
+| `login_failures` | Individual failed logins (username, IP, device, timestamp) — used only for counting and alerting, **never to lock accounts**. Auto-deleted after 30 days |
+| `security_alerts` | Merged security alerts for the admin: login name, user (if any), IP, failure count, `new`/`resolved` status, handling note, last successful login. No foreign keys, so alerts survive user deletion |
 
-`db.js` tự thêm các cột còn thiếu khi khởi động, nên **database cũ vẫn nâng cấp được mà không mất dữ liệu**.
+`db.js` automatically adds missing columns at startup, so **old databases upgrade without losing data**.
 
 ---
 
-## Trang quản trị
+## Admin panel
 
-Mọi tài khoản đăng ký mới đều có `role = 'user'`. Muốn vào được trang quản trị, cấp quyền cho một tài khoản bằng công cụ dòng lệnh (chạy trong thư mục `backend`):
-
-```bash
-npm run make-admin -- --list                  # xem danh sách người dùng
-npm run make-admin -- quantri@example.com     # cấp quyền quản trị
-npm run make-admin -- quantri@example.com --demote   # thu quyền
-```
-
-Quên mật khẩu (hoặc bị khoá tài khoản khỏi hệ thống):
+Every newly registered account has `role = 'user'`. To access the admin page, grant a role with the CLI tool (run inside the `backend` directory):
 
 ```bash
-npm run reset-password -- --list                       # xem danh sách người dùng
-npm run reset-password -- quantri@example.com           # sinh mật khẩu ngẫu nhiên và in ra
-npm run reset-password -- quantri@example.com MatKhauMoi123   # đặt mật khẩu cụ thể
+npm run make-admin -- --list                  # list users
+npm run make-admin -- admin@example.com       # grant admin rights
+npm run make-admin -- admin@example.com --demote   # revoke them
 ```
 
-Đổi mật khẩu bằng công cụ này cũng làm **mọi phiên đăng nhập cũ hết hiệu lực**, và tự đóng mọi yêu cầu khôi phục đang chờ của tài khoản đó trong trang quản trị.
+Forgot the password (or locked out of the system):
 
-Nếu khách **chưa có email trong tài khoản**, hoặc email sai, hoặc hệ thống chưa cấu hình gửi thư, khách có thể bấm **"Không nhận được mã?"** ở màn hình quên mật khẩu để đưa yêu cầu vào hàng đợi quản trị viên — xem tab **Khôi phục mật khẩu** bên dưới. Cách làm này **không tiết lộ** tài khoản nào có tồn tại hay không.
+```bash
+npm run reset-password -- --list                       # list users
+npm run reset-password -- admin@example.com            # generate a random password and print it
+npm run reset-password -- admin@example.com NewPassword123   # set a specific password
+```
 
-`quantri@example.com` là **username dùng để đăng nhập** (Email hoặc Số điện thoại). Sau khi cấp quyền, tải lại trang — mục **Quản trị** sẽ xuất hiện ở cuối thanh menu bên trái.
+Changing the password with this tool also invalidates **all old login sessions** and automatically closes any pending reset request for that account in the admin page.
 
-Trang quản trị gồm 8 tab:
+If a customer **has no email on the account**, the email is wrong, or the system has no mail configured, they can click **"Didn't get a code?"** on the forgot-password screen to queue a request for the admin — see the **Password resets** tab below. This approach **does not reveal** whether an account exists.
 
-| Tab | Việc làm được |
+`admin@example.com` is the **username used to log in** (email or phone number). After granting the role, reload the page — the **Admin** entry appears at the bottom of the left menu.
+
+The admin page has 8 tabs:
+
+| Tab | What you can do |
 |---|---|
-| **Đơn hàng** | Tìm theo mã đơn / link / sàn / khách hàng; duyệt đơn và **chốt hoa hồng** (chỉ cộng ví khi admin duyệt); thấy rõ **chờ admin duyệt** / **đã cộng ví** / **đã thu hồi**; huỷ đơn sẽ ghi nhận thu hồi nếu trước đó đã cộng ví |
-| **Rút tiền** | Xem yêu cầu rút tiền kèm **số dư khả dụng**, **khoản nợ** và **ảnh QR nhận tiền** (nếu khách có tải lên — bấm vào ảnh để mở lớn rồi quét bằng ứng dụng ngân hàng); nhập số tiền thực trả rồi đánh dấu `Đã thanh toán`, hoặc `Đã huỷ` |
-| **Người dùng** | Xem điểm, số đơn, hoa hồng, **chờ duyệt**, đã rút, số dư/nợ; sửa vai trò và điểm thưởng; xoá người dùng |
-| **Bảo mật** | Xem cảnh báo đăng nhập sai (gộp số lần, IP, thời điểm); đánh dấu **Đã xử lý**; **Tạm giữ 24h** hoặc **Bỏ tạm giữ**. Hệ thống không tự khóa vĩnh viễn tài khoản |
-| **Giới thiệu** | Xem ai đã nhập mã của ai, nhận bao nhiêu điểm |
-| **Khôi phục mật khẩu** | Hàng đợi dự phòng: xem yêu cầu quên mật khẩu kèm cách liên hệ lại; bấm **Đặt lại** (bấm 2 lần cho chắc) để cấp **mật khẩu tạm**, hoặc **Từ chối** |
-| **Đối soát** | Nhật ký mọi lần mạng affiliate báo chuyển đổi: lọc theo trạng thái mạng (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) và theo kết quả (`đã khớp đơn` / `chưa hoặc chỉ khớp tạm` / `bị từ chối`); xem **tham số thô** mạng gửi (nút **Thô**) và bấm **Xử lý lại** cho log về trước lúc đơn được tạo. Huy hiệu số trên tab là số lần postback **cần người xem lại** (chưa khớp được đơn, hoặc chỉ khớp tạm). Tiền của các lần gọi sai chìa khoá **không** được tính vào thống kê hoa hồng |
+| **Orders** | Search by order code / link / platform / customer; approve orders and **settle commission** (money only enters the wallet once the admin approves); clearly see **awaiting admin approval** / **added to wallet** / **reversed**; cancelling an order records a reversal if it had already been added to the wallet |
+| **Withdrawals** | View withdrawal requests with **available balance**, **debt** and the **payout QR image** (if the customer uploaded one — click the image to enlarge and scan it with a banking app); enter the actual amount paid then mark `Đã thanh toán`, or `Đã huỷ` |
+| **Users** | View points, order count, commission, **pending**, withdrawn, balance/debt; edit role and reward points; delete users |
+| **Security** | View failed-login alerts (merged counts, IP, timestamp); mark **Resolved**; **Hold 24h** or **Release**. The system never permanently locks accounts |
+| **Referrals** | See who entered whose code and how many points they received |
+| **Password resets** | Fallback queue: view forgot-password requests with contact-back details; click **Reset** (click twice to confirm) to issue a **temporary password**, or **Reject** |
+| **Reconciliation** | Log of every affiliate network conversion report: filter by network status (`Chờ duyệt` / `Đã duyệt` / `Đã huỷ`) and by result (`matched an order` / `unmatched or only tentatively matched` / `rejected`); view the **raw parameters** the network sent (**Raw** button) and click **Reprocess** for logs that arrived before the order was created. The badge on the tab counts postbacks **needing a human look** (could not match an order, or only tentatively matched). Money from wrong-key calls is **not** counted in commission stats |
 
-### Cấp lại mật khẩu cho khách
+### Reissuing a customer password
 
-Khách thường **tự đặt lại được** bằng mã xác thực gửi qua email (xem [Xác thực email (OTP)](#xác-thực-email-otp)). Phần dưới đây là **đường dự phòng**, dùng khi khách không có email trong tài khoản hoặc không nhận được thư:
+Customers can normally **reset it themselves** using the verification code sent by email (see [Email verification (OTP)](#email-verification-otp)). The part below is the **fallback path**, for when the customer has no email on the account or does not receive the email:
 
-1. Khách bấm **"Quên mật khẩu?"** ở màn hình đăng nhập, nhập tài khoản, rồi bấm **"Không nhận được mã?"** và điền cách liên hệ lại.
-2. Vào **Quản trị → Khôi phục mật khẩu** (tab có **huy hiệu đỏ** đếm số yêu cầu đang chờ).
-3. Bấm **Đặt lại** hai lần → hệ thống hiện **mật khẩu tạm**.
-4. Chép mật khẩu rồi gửi cho khách qua Zalo/điện thoại, nhắc khách đổi mật khẩu sau khi đăng nhập.
+1. The customer clicks **"Forgot password?"** on the login screen, enters the account, then clicks **"Didn't get a code?"** and fills in how to reach them.
+2. Go to **Admin → Password resets** (the tab has a **red badge** counting pending requests).
+3. Click **Reset** twice → the system shows a **temporary password**.
+4. Copy the password and send it to the customer via Zalo/phone, and remind them to change it after logging in.
 
-Nếu khách đã tự đặt lại thành công thì yêu cầu của họ trong tab này **tự chuyển sang `Đã xử lý`**, không cần làm gì thêm.
+If the customer already reset it themselves, their request in this tab **automatically becomes `Đã xử lý`**, and nothing more is needed.
 
-Mật khẩu tạm **chỉ hiện đúng một lần**, không được lưu vào database. Sau khi đặt lại, **mọi phiên đăng nhập cũ của khách hết hiệu lực** và khách nhận được một thông báo.
+A temporary password is shown **exactly once** and is never stored in the database. After a reset, **all of the customer's old login sessions are invalidated** and the customer receives a notification.
 
-Không thể đặt lại mật khẩu cho **chính tài khoản đang đăng nhập** (sẽ tự văng ra ngay giữa lúc làm việc) — hãy dùng **Cá nhân → Đổi mật khẩu**.
+You cannot reset the password of **the account you are currently logged in with** (it would immediately kick you out mid-task) — use **Profile → Change password** instead.
 
-Một vài ràng buộc an toàn đã được chặn ở server:
+A few safety constraints are enforced on the server:
 
-- Quản trị viên **không thể tự hạ quyền** hoặc **tự xoá** chính mình.
-- Luôn phải còn **ít nhất một** quản trị viên trong hệ thống.
-- Không thể chi trả nhiều hơn số dư khả dụng của người dùng.
+- Admins **cannot demote** or **delete** themselves.
+- There must always be **at least one** admin in the system.
+- It is not possible to pay out more than the user's available balance.
 
-Mỗi thao tác ảnh hưởng tới tiền đều **tự động gửi thông báo cho khách hàng**: tạo đơn, quản trị viên chốt/đổi hoa hồng, đổi trạng thái đơn, gửi yêu cầu rút tiền, chi trả hoặc huỷ lệnh rút, và nhập mã giới thiệu.
+Every action that affects money **automatically notifies the customer**: creating an order, an admin settling/changing commission, changing order status, sending a withdrawal request, paying or cancelling a withdrawal, and redeeming a referral code.
 
 ---
 
-## Kiểm thử và sao lưu
+## Testing and backups
 
-**Chạy test tự động** (dùng database + thư mục ảnh tạm, không đụng dữ liệu thật):
+**Run the automated tests** (uses a temporary database + image directory, never touching real data):
 
 ```bash
 cd backend
 npm test
 ```
 
-Bộ test kiểm tra: health, header bảo mật, chặn tải file nội bộ, quyền xem ảnh QR,
-chặn link sàn giả, phân quyền quản trị, nhật ký quản trị, postback, chờ admin duyệt/thu hồi hoa hồng,
-rate limit dùng SQLite và script sao lưu.
+The test suite covers: health, security headers, blocking internal file downloads, QR image access permissions, fake marketplace link blocking, admin authorisation, admin audit log, postbacks, awaiting-admin-approval/commission reversal, SQLite-backed rate limiting and the backup script.
 
-**Sao lưu nóng** (không cần dừng server):
+**Hot backup** (no need to stop the server):
 
 ```bash
 cd backend
 npm run backup
 ```
 
-Bản sao lưu nằm trong `backend/backups/<thời-điểm>/`, gồm database, thư mục `uploads/`
-và `manifest.json`; tự xoá bản cũ hơn `BACKUP_KEEP_DAYS` ngày (mặc định 14).
-Cách đặt lịch và phục hồi: xem [docs/deployment.md](docs/deployment.md#5-vận-hành-thường-ngày).
+Backups land in `backend/backups/<timestamp>/` and contain the database, the `uploads/` directory
+and a `manifest.json`; backups older than `BACKUP_KEEP_DAYS` days (default 14) are deleted automatically.
+For scheduling and restoring: see [docs/deployment.md](docs/deployment.md#5-vận-hành-thường-ngày).
 
 ---
 
 
-## Bảo mật
+## Security
 
-- Mật khẩu lưu dạng **bcrypt hash**, không lưu văn bản thường.
-- Phiên đăng nhập là **JWT trong cookie `httpOnly`** (`sameSite=lax`), hết hạn sau 7 ngày.
-- Mỗi tài khoản có `token_version`; **đổi mật khẩu hoặc đăng xuất sẽ tăng số này** nên token cũ (kể cả token bị đánh cắp) mất hiệu lực ngay, không phải chờ hết hạn 7 ngày. Đổi mật khẩu sẽ cấp lại cookie mới cho phiên đang thao tác; đăng xuất là đăng xuất **toàn bộ thiết bị**.
-- Frontend **không thể sửa** dữ liệu đơn hàng/ví/điểm — tất cả kiểm tra ở server.
-- Mọi truy vấn theo `user_id` lấy từ token, người dùng chỉ thấy dữ liệu của mình.
-- API quản trị kiểm tra `role` ở **server**, không tin vào việc ẩn/hiện menu ở frontend.
-- Chỉ **danh sách file giao diện đã biết** (index.html, script.js, admin.js, support.js, lucide.min.js, CSS, ảnh logo, components/, styles/) được phục vụ qua HTTP. Mọi đường dẫn khác trả `404`, kể cả khi bị mã hoá kiểu `/%62ackend/data/...` — không thể tải `backend/`, `data/`, `node_modules/` hay `package.json`.
-- Có giới hạn số lần gọi API đăng nhập/đăng ký để tránh dò mật khẩu.
-- Yêu cầu **quên mật khẩu** luôn trả về **cùng một thông báo** dù tài khoản có tồn tại hay không, nên người ngoài không dò được danh sách tài khoản. Bước yêu cầu gửi mã xác thực cũng vậy.
-- **Mã xác thực email (OTP)** chỉ có hiệu lực 10 phút, dùng một lần, lưu dạng **bcrypt hash**; sai quá 5 lần phải xin mã mới; mỗi email chỉ được yêu cầu lại sau 60 giây và tối đa 5 mã/giờ. Mã của luồng này **không dùng được** cho luồng khác (đăng ký / đặt lại mật khẩu / đổi email / đăng nhập tách biệt nhau).
-- **Xác thực khi đăng nhập**: mã chỉ được gửi **sau khi mật khẩu đã đúng**, nên người không biết mật khẩu không làm tốn thư trong hộp của người khác. Bước 2 dùng một **phiếu đăng nhập** ký sẵn (sống 5 phút) thay cho việc gửi lại mật khẩu, và phiếu tự hết hiệu lực khi mật khẩu bị đổi.
-- **Mật khẩu tạm** do quản trị viên cấp không được lưu dưới dạng văn bản thường — chỉ hiện một lần cho quản trị viên rồi thôi.
-- Mọi response có **header bảo mật**: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`; khi chạy HTTPS có thêm `Strict-Transport-Security`. API trả `Cache-Control: no-store` để không lưu đệm dữ liệu ví/đơn.
-- **Postback** từ mạng affiliate phải kèm `POSTBACK_SECRET`; thiếu hoặc sai khoá đều bị từ chối (503/403) và được ghi nhật ký.
+- Passwords are stored as **bcrypt hashes**, never as plain text.
+- Login sessions are **JWTs in an `httpOnly` cookie** (`sameSite=lax`), expiring after 7 days.
+- Each account has a `token_version`; **changing the password or logging out increments it**, so old tokens (including stolen ones) stop working immediately instead of waiting out the 7 days. Changing the password issues a fresh cookie for the current session; logging out logs out **all devices**.
+- The frontend **cannot modify** order/wallet/points data — all checks happen on the server.
+- Every query by `user_id` uses the value from the token, so users only see their own data.
+- The admin API checks `role` **on the server** and does not trust menu visibility in the frontend.
+- Only a **known list of UI files** (index.html, script.js, admin.js, support.js, lucide.min.js, CSS, logo images, components/, styles/) is served over HTTP. Any other path returns `404`, even when obfuscated as `/%62ackend/data/...` — `backend/`, `data/`, `node_modules/` and `package.json` cannot be downloaded.
+- Login/sign-up APIs are rate-limited to prevent password guessing.
+- **Forgot-password** requests always return **the same message** whether or not the account exists, so outsiders cannot probe the account list. The same applies to the verification-code request step.
+- **Email verification codes (OTP)** are valid for 10 minutes, single-use, and stored as **bcrypt hashes**; after 5 wrong entries a new code is required; each email may request again only after 60 seconds and at most 5 codes/hour. A code from one flow **cannot be used** for another (sign-up / password reset / email change / login are all separate).
+- **Login verification**: the code is only sent **after the password is correct**, so someone who does not know the password cannot fill someone else's inbox. Step 2 uses a pre-signed **login ticket** (valid for 5 minutes) instead of resending the password, and the ticket is invalidated when the password changes.
+- **Temporary passwords** issued by an admin are never stored as plain text — they are shown to the admin once and then gone.
+- Every response carries **security headers**: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`; over HTTPS also `Strict-Transport-Security`. APIs return `Cache-Control: no-store` so wallet/order data is not cached.
+- **Postbacks** from affiliate networks must include `POSTBACK_SECRET`; a missing or wrong key is rejected (503/403) and logged.
 
-### Lưu ý khi triển khai thật
+### Production notes
 
-> 📘 Hướng dẫn từng bước (HTTPS, `.env`, Nginx/Caddy, PM2/systemd, xử lý sự cố): **[docs/deployment.md](docs/deployment.md)**.
+> 📘 Step-by-step guide (HTTPS, `.env`, Nginx/Caddy, PM2/systemd, troubleshooting): **[docs/deployment.md](docs/deployment.md)**.
 
-- Đổi `JWT_SECRET` và bật HTTPS — khi đó cookie tự động được đặt `secure: true`. Server đã **từ chối khởi động** ở `NODE_ENV=production` nếu khoá trống, vẫn là khoá mặc định, hoặc ngắn hơn 32 ký tự.
-- Nếu chạy sau Nginx/Caddy/Cloudflare thì **phải** đặt `TRUST_PROXY` — thiếu biến này cookie `secure` sẽ bị trình duyệt từ chối (đăng nhập xong vẫn như chưa đăng nhập) và link hoàn tiền sẽ bị tạo với `http://`.
-- Hoa hồng chưa được lấy tự động từ các sàn — hiện do quản trị viên **chốt thủ công** ở tab Đơn hàng, và việc chi trả cũng do quản trị viên xác nhận. Khi đã có tài khoản affiliate, cấu hình `AFFILIATE_PROVIDER` + khóa API là link hoàn tiền sẽ do sàn cấp.
-- Nếu chạy nhiều tiến trình/instance, đặt `RATE_LIMIT_STORE=sqlite` để bộ đếm chống spam và hạn mức AI dùng chung qua database (khuyến nghị vẫn chạy **một tiến trình**). Sao lưu định kỳ bằng `npm run backup` — script sao lưu cả database và ảnh, tự dọn bản cũ.
-- Muốn đổi thông tin liên hệ hiển thị ở trang Trợ giúp thì đặt `SUPPORT_EMAIL` / `SUPPORT_ZALO` trong `.env` — không cần sửa HTML. Trợ lý hỗ trợ cũng lấy hai giá trị này cho nút **"Liên hệ hỗ trợ"** trong khung chat.
-- **Trợ lý hỗ trợ chạy được ngay, không cần cấu hình** (chế độ kịch bản). Nếu đặt `AI_API_KEY` thì mỗi câu hỏi của khách là một lượt gọi API tính vào hạn mức/chi phí của khoá đó — nên đặt **hạn mức chi tiêu** ở phía nhà cung cấp, giữ giới hạn 30 tin nhắn/10 phút mỗi IP và chỉnh trần **`AI_DAILY_LIMIT`** (mặc định 800 lượt/ngày cho toàn hệ thống; vượt trần thì trợ lý tự trả lời bằng kịch bản có sẵn).
-- **Trước khi dùng xác thực khi đăng nhập** (`LOGIN_OTP=auto` sẽ tự bật khi đã có SMTP): phải chắc chắn tài khoản quản trị có **email thật đọc được**, nếu không bạn sẽ tự khoá mình khỏi trang quản trị. Cách làm an toàn: để `LOGIN_OTP=off`, đăng nhập, đổi email ở trang **Cá nhân**, rồi bỏ dòng đó đi. Nếu máy chủ thư gặp sự cố (hết hạn mức/sai mật khẩu ứng dụng), thêm `LOGIN_OTP=off` rồi khởi động lại là mọi người vào được ngay bằng mật khẩu.
+- Change `JWT_SECRET` and enable HTTPS — cookies then automatically get `secure: true`. At `NODE_ENV=production` the server already **refuses to start** if the key is empty, still the default, or shorter than 32 characters.
+- If running behind Nginx/Caddy/Cloudflare you **must** set `TRUST_PROXY` — without it the browser will reject the `secure` cookie (logging in looks like it did nothing) and cashback links will be built with `http://`.
+- Commissions are not yet pulled automatically from the marketplaces — they are currently **settled manually** by the admin in the Orders tab, and payouts are also confirmed by the admin. Once you have an affiliate account, configuring `AFFILIATE_PROVIDER` + API key makes the marketplaces issue the cashback links.
+- If running multiple processes/instances, set `RATE_LIMIT_STORE=sqlite` so the anti-spam counters and AI quota are shared through the database (running **a single process** is still recommended). Back up periodically with `npm run backup` — the script backs up both the database and images and cleans up old copies.
+- To change the contact details shown on the Help page, set `SUPPORT_EMAIL` / `SUPPORT_ZALO` in `.env` — no HTML edits needed. The support assistant also uses these two values for the **"Contact support"** button in the chat window.
+- **The support assistant works out of the box with no configuration** (scripted mode). If you set `AI_API_KEY`, every customer question is one API call charged against that key's quota/cost — so set a **spending limit** on the provider side, keep the 30 messages/10 minutes per IP limit, and tune the **`AI_DAILY_LIMIT`** cap (default 800 calls/day system-wide; past the cap the assistant answers from the built-in script).
+- **Before enabling login verification** (`LOGIN_OTP=auto` turns on automatically once SMTP exists): make sure the admin account has **a real, readable email**, otherwise you will lock yourself out of the admin page. A safe approach: set `LOGIN_OTP=off`, log in, change the email on the **Profile** page, then remove that line. If the mail server breaks (quota exhausted/wrong app password), add `LOGIN_OTP=off` and restart — everyone can get in with their password right away.
 
-> 📄 Muốn biến nút **"Tạo link & kiểm tra hoa hồng"** thành chức năng chuyển đổi link thật (trả về link mua hàng có ghi nhận hoa hồng), xem thiết kế chi tiết tại **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
+> 📄 To turn the **"Create link & check commission"** button into real link conversion (returning purchase links with commission tracking), see the detailed design in **[docs/affiliate-integration.md](docs/affiliate-integration.md)**.
 
 ---
 
-## Tài khoản
+## Accounts
 
-Đăng ký mới ngay trên trang chủ bằng **Email** hoặc **Số điện thoại Việt Nam**, mật khẩu tối thiểu 8 ký tự, kèm **một địa chỉ email để nhận mã xác thực** — email này là bắt buộc kể cả khi bạn đăng nhập bằng số điện thoại, vì đó là nơi nhận mã khi quên mật khẩu. Mỗi email chỉ dùng được cho một tài khoản.
+Sign up right on the home page with an **email** or a **Vietnamese phone number**, a password of at least 8 characters, plus **an email address to receive verification codes** — this email is required even if you log in with a phone number, because it is where password-recovery codes go. Each email can only be used for one account.
 
-Khi đăng nhập, nếu hệ thống bật xác thực 2 lớp, sau khi nhập đúng mật khẩu bạn sẽ nhận thêm **mã 6 số** qua email và nhập vào ô xác thực để hoàn tất. Nếu đã có mã còn hiệu lực thì hệ thống dùng lại mã đó (không gửi thêm thư).
+At login, if two-factor authentication is enabled, after entering the correct password you receive a **6-digit code** by email and enter it in the verification box to finish. If a valid code already exists, the system reuses it (no extra email sent).
