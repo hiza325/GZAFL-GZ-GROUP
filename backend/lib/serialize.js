@@ -271,10 +271,15 @@ function toAdminWithdrawal(row) {
 
 function toAdminReferral(row) {
   if (!row) return null;
+  const rewardedAt = row.rewarded_at || null;
   return {
     id: row.id,
     code: row.code,
     points: Number(row.points) || 0,
+    pending: !rewardedAt,
+    rewardedAt,
+    rewardedDate: rewardedAt ? formatDateTime(rewardedAt) : null,
+    rewardedOrderId: row.rewarded_order_id ? Number(row.rewarded_order_id) : null,
     createdAt: row.created_at,
     date: formatDateTime(row.created_at),
     user: {

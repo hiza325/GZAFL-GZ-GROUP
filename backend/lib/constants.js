@@ -35,6 +35,10 @@ const POINT_VALUE = 10; // đồng cho mỗi điểm
 const POINT_REDEEM_MIN = 100; // số điểm tối thiểu mỗi lần đổi
 const POINT_REDEEM_STEP = 100; // số điểm mỗi bước đổi
 
+// Điểm thưởng cho người nhập mã giới thiệu. Chỉ cộng sau khi người đó có ít nhất
+// một đơn hàng không bị huỷ (xem lib/referralRewards.js).
+const REFERRAL_REWARD_POINTS = 100;
+
 module.exports = {
   ORDER_STATUSES,
   WITHDRAWAL_STATUSES,
@@ -48,5 +52,6 @@ module.exports = {
   WITHDRAWAL_MIN,
   POINT_VALUE,
   POINT_REDEEM_MIN,
-  POINT_REDEEM_STEP
+  POINT_REDEEM_STEP,
+  REFERRAL_REWARD_POINTS
 };

@@ -194,6 +194,7 @@ backend/
     mailer.js              # Send email via SMTP (prints to console when unconfigured in dev)
     otp.js                 # Generate / verify email verification codes (OTP) for sign-up and password reset
     notify.js              # Write notifications for users
+    referralRewards.js     # Credit referral points after the invited user has a qualifying order
     supportKnowledge.js    # Knowledge base of the support assistant (used by both AI and scripted mode)
     ai.js                  # Calls an OpenAI-compatible AI API (Gemini / Groq / OpenRouter / OpenAI...)
   routes/
@@ -359,8 +360,8 @@ All APIs live under `/api` and return JSON. APIs that require login use the sess
 | GET | `/api/wallet` | Wallet stats, dashboard `insights` (current month, 6-month series, commission per platform), withdrawal history, `withdrawableOrders` (approved orders with commission left to withdraw), `minWithdraw`, `canWithdraw`, `pendingWithdrawal` (code and amount of the pending request, if any) |
 | POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose payout method: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }`. Choose amount source: `{ source: 'all' }` (default, whole available balance) or `{ source: 'orders', orderCodes: ['GZ...'] }` (commission of selected orders) |
 | DELETE | `/api/wallet/withdrawals/:code` | Cancel your own `Đang xử lý` withdrawal and return the amount to the available balance |
-| GET | `/api/referral` | Referral code, points, conversion rate (1 point = 10₫) and redemption history |
-| POST | `/api/referral/redeem` | Redeem a referral code `{ code }` |
+| GET | `/api/referral` | Referral code, points, conversion rate (1 point = 10₫), referral history (pending/credited) and redemption history |
+| POST | `/api/referral/redeem` | Redeem a referral code `{ code }`. Points are credited only after the invited user has a non-cancelled order (or immediately if one already exists) |
 | POST | `/api/referral/convert` | Convert points into wallet balance `{ points }` — minimum 100 points, multiples of 100 (100 points = 1,000₫) |
 | GET | `/api/notifications` | Notification list + unread count |
 | POST | `/api/notifications/read-all` | Mark all notifications as read |
@@ -415,7 +416,7 @@ Valid statuses:
 
 **How money is calculated:** a user's wallet balance = the sum of `commission` across **non-cancelled** orders − the sum of `amount` across **non-cancelled** withdrawals + the sum of `amount` in `point_redemptions`. So marking something `Đã huỷ` removes that order/withdrawal from the calculation, and when moving a withdrawal to `Đã thanh toán` you must enter the actual amount paid (it may not exceed the available balance).
 
-**Referral points:** entering someone's code awards **100 points**. Users can convert points into wallet balance on the referral page at **100 points = 1,000₫** (1 point = 10₫), minimum 100 points and in multiples of 100; the converted amount is recorded in `point_redemptions` and can be withdrawn like commission. Admin users list and withdrawal screens include the converted amount when showing balance/debt.
+**Referral points:** entering someone's code records the referral, but **100 points are credited only after the invited user has a non-cancelled order** (immediately if they already had one; the first order created afterwards triggers the credit). This prevents points from being farmed by entering codes without using the service. Users can convert points into wallet balance on the referral page at **100 points = 1,000₫** (1 point = 10₫), minimum 100 points and in multiples of 100; the converted amount is recorded in `point_redemptions` and can be withdrawn like commission. Admin users list and withdrawal screens include the converted amount when showing balance/debt.
 
 **Withdrawals:** users can withdraw the **entire available balance** (default) or pick the **commission of individual orders**. The amount is **reserved** right away, so it cannot be withdrawn twice. The server-side rules (`backend/routes/wallet.js`):
 
@@ -490,7 +491,7 @@ A prerequisite you should not skip: **ask the intermediary network whether their
 | `orders` | Orders per user: `GZ...` code, `link`/`original_link`, `affiliate_link`, `sub_id`, `platform`, status, commission (expected while awaiting admin approval, final once approved), `commission_reversed` (reversed commission), `click_count`, `network_order_id` (transaction ID on the network), `network_commission` (network-reported amount, possibly unapproved), `network_status` |
 | `withdrawals` | Withdrawals per user: `WD...` code, bank, account number, amount, status |
 | `withdrawal_items` | Which orders (and how much commission) each withdrawal used; allows per-order withdrawals without double-spending |
-| `referrals` | Referral redemption history per user |
+| `referrals` | Referral redemption history per user: code entered, points credited, and `rewarded_at` / `rewarded_order_id` (NULL while waiting for the invited user's first non-cancelled order) |
 | `point_redemptions` | Points converted into wallet balance (points deducted, amount credited, timestamp) |
 | `notifications` | Notifications per user: title, body, icon, read state |
 | `password_resets` | Password-reset requests sent to the admin (fallback path): requester, contact-back details, status (`Chờ xử lý` / `Đã xử lý` / `Đã huỷ`), who handled it and when |
@@ -560,7 +561,7 @@ A few safety constraints are enforced on the server:
 - There must always be **at least one** admin in the system.
 - It is not possible to pay out more than the user's available balance.
 
-Every action that affects money **automatically notifies the customer**: creating an order, an admin settling/changing commission, changing order status, sending a withdrawal request, paying or cancelling a withdrawal, and redeeming a referral code.
+Every action that affects money **automatically notifies the customer**: creating an order, an admin settling/changing commission, changing order status, sending a withdrawal request, paying or cancelling a withdrawal, redeeming a referral code, and crediting referral points after the invited user's first order.
 
 ---
 

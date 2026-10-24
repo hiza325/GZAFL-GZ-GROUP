@@ -755,8 +755,15 @@
             ? `<div class="font-semibold text-slate-700">${escapeHtml(r.owner.name)}</div><div class="text-xs text-slate-400">${escapeHtml(r.owner.username)}</div>`
             : '<span class="text-xs text-slate-400">Không xác định</span>'
         }</td>
-        <td class="px-3 py-3 font-semibold text-emerald-600">+${r.points}</td>
-        <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(r.date)}</td>
+        <td class="px-3 py-3">${
+          r.pending
+            ? '<span class="text-[11px] font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-100 whitespace-nowrap">Chờ đơn hàng</span>'
+            : `<span class="font-semibold text-emerald-600">+${r.points}</span>`
+        }</td>
+        <td class="px-3 py-3 text-xs text-slate-400">
+          <div>${escapeHtml(r.date)}</div>
+          ${r.rewardedDate && r.rewardedDate !== r.date ? `<div class="text-[11px] text-emerald-600 mt-0.5">Cộng điểm: ${escapeHtml(r.rewardedDate)}</div>` : ''}
+        </td>
       </tr>`
       )
       .join('');

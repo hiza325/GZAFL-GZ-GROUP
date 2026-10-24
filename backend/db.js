@@ -92,6 +92,10 @@ db.exec(`
     user_id    INTEGER NOT NULL,
     code       TEXT NOT NULL,
     points     INTEGER NOT NULL DEFAULT 0,
+    -- NULL = mã đã nhập nhưng còn chờ người dùng tạo đơn hàng đầu tiên.
+    -- Khi đủ điều kiện, points = 100 và rewarded_at được ghi lại.
+    rewarded_at TEXT,
+    rewarded_order_id INTEGER,
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (user_id, code)
@@ -298,6 +302,19 @@ ensureColumn('withdrawals', 'qr_url', 'TEXT');
 // Lệnh cũ có sẵn sẽ được phân bổ một lần ở cuối file này.
 ensureColumn('withdrawals', 'items_allocated', 'INTEGER NOT NULL DEFAULT 0');
 
+// Mã giới thiệu chỉ cộng điểm sau khi người nhập mã có đơn hàng đầu tiên.
+// rewarded_at = NULL nghĩa là đang chờ; rewarded_order_id là đơn đã kích hoạt điểm.
+ensureColumn('referrals', 'rewarded_at', 'TEXT');
+ensureColumn('referrals', 'rewarded_order_id', 'INTEGER');
+
+// Các lượt nhập mã CŨ đã được cộng điểm ngay lúc nhập (trước khi có điều kiện đơn hàng).
+// Đánh dấu chúng là đã thưởng để lịch sử không hiện nhầm trạng thái "chờ đơn hàng".
+db.prepare(
+  `UPDATE referrals
+   SET rewarded_at = created_at
+   WHERE rewarded_at IS NULL AND points > 0`
+).run();
+
 // Phân biệt link hoàn tiền THẬT với link mock/chưa gắn hoa hồng.
 // Lưu theo từng đơn để sau này đổi AFFILIATE_LIVE_PLATFORMS vẫn xem lại được lịch sử.
 ensureColumn('orders', 'affiliate_provider', 'TEXT');
@@ -338,6 +355,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_withdrawal_items_wd ON withdrawal_items (withdrawal_id);
   CREATE INDEX IF NOT EXISTS idx_withdrawal_items_order ON withdrawal_items (order_id);
   CREATE INDEX IF NOT EXISTS idx_referrals_user     ON referrals (user_id);
+  CREATE INDEX IF NOT EXISTS idx_referrals_pending  ON referrals (user_id, rewarded_at);
   CREATE INDEX IF NOT EXISTS idx_point_redemptions_user ON point_redemptions (user_id);
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
   CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);

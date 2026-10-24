@@ -8,6 +8,7 @@ const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
 const { rateLimit } = require('../lib/rateLimit');
 const affiliate = require('../lib/affiliate');
+const { awardReferralIfEligible } = require('../lib/referralRewards');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -111,6 +112,15 @@ router.post('/', orderRateLimit, async (req, res, next) => {
         conversion.error ? String(conversion.error).slice(0, 300) : null,
         new Date().toISOString()
       );
+
+    // Đơn hàng đầu tiên là điều kiện để cộng điểm mã giới thiệu đang chờ.
+    // Lỗi cộng điểm không được làm hỏng việc tạo đơn; người dùng vẫn có thể
+    // nhận điểm ở lần tạo đơn sau nếu lượt nhập vẫn còn chờ.
+    try {
+      awardReferralIfEligible(req.user.id, Number(info.lastInsertRowid));
+    } catch (err) {
+      console.error('Không cộng được điểm giới thiệu:', err.message);
+    }
 
     notify(req.user.id, {
       title: `Đã tạo đơn ${code}`,

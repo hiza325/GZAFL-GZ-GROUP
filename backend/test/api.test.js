@@ -1379,6 +1379,139 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(adminWd.payable, 2000);
   });
 
+  await t.test('điểm giới thiệu chỉ cộng sau khi người nhập mã có đơn hàng', async () => {
+    const inviter = createUser({
+      username: 'ref-inviter@test.local',
+      email: 'ref-inviter@test.local',
+      name: 'Người mời'
+    });
+    const invited = createUser({
+      username: 'ref-invited@test.local',
+      email: 'ref-invited@test.local',
+      name: 'Người được mời'
+    });
+
+    const inviterInfo = await json('/api/referral', { cookie: inviter.cookie });
+    assert.equal(inviterInfo.res.status, 200);
+    const code = inviterInfo.data.code;
+    assert.ok(code);
+
+    // Nhập mã khi chưa có đơn: ghi nhận nhưng chưa cộng điểm.
+    let redeemed = await json('/api/referral/redeem', {
+      method: 'POST',
+      cookie: invited.cookie,
+      body: { code }
+    });
+    assert.equal(redeemed.res.status, 200);
+    assert.equal(redeemed.data.pending, true);
+    assert.equal(redeemed.data.points, 0);
+    assert.match(redeemed.data.message, /sau khi tạo đơn hàng/i);
+
+    let referral = await json('/api/referral', { cookie: invited.cookie });
+    assert.equal(referral.data.points, 0);
+    assert.equal(referral.data.redeemedCount, 1);
+    assert.equal(referral.data.creditedCount, 0);
+    assert.equal(referral.data.pendingCount, 1);
+    assert.equal(referral.data.history[0].pending, true);
+    assert.equal(referral.data.history[0].points, 0);
+
+    // Chưa đủ điều kiện thì không được nhập thêm mã khác.
+    const duplicate = await json('/api/referral/redeem', {
+      method: 'POST',
+      cookie: invited.cookie,
+      body: { code }
+    });
+    assert.equal(duplicate.res.status, 409);
+
+    // Tạo đơn đầu tiên -> cộng 100 điểm.
+    const firstOrder = await json('/api/orders', {
+      method: 'POST',
+      cookie: invited.cookie,
+      body: { link: 'https://shopee.vn/p/referral-reward-test' }
+    });
+    assert.equal(firstOrder.res.status, 201);
+
+    referral = await json('/api/referral', { cookie: invited.cookie });
+    assert.equal(referral.data.points, 100);
+    assert.equal(referral.data.creditedCount, 1);
+    assert.equal(referral.data.pendingCount, 0);
+    assert.equal(referral.data.history[0].pending, false);
+    assert.equal(referral.data.history[0].points, 100);
+    assert.ok(referral.data.history[0].rewardedAt);
+    assert.match(referral.data.history[0].rewardedDate, /\d/);
+
+    // Đơn thứ hai không cộng thêm điểm.
+    const secondOrder = await json('/api/orders', {
+      method: 'POST',
+      cookie: invited.cookie,
+      body: { link: 'https://tiki.vn/p/referral-reward-test-2' }
+    });
+    assert.equal(secondOrder.res.status, 201);
+    referral = await json('/api/referral', { cookie: invited.cookie });
+    assert.equal(referral.data.points, 100, 'Mỗi lượt nhập mã chỉ cộng điểm một lần');
+
+    // Người mời không nhận điểm; điểm thuộc về người nhập mã.
+    const inviterAfter = await json('/api/referral', { cookie: inviter.cookie });
+    assert.equal(inviterAfter.data.points, 0);
+
+    // Đã có đơn trước khi nhập mã -> cộng điểm ngay.
+    const existing = createUser({
+      username: 'ref-existing@test.local',
+      email: 'ref-existing@test.local',
+      name: 'Người đã có đơn'
+    });
+    const existingOrder = await json('/api/orders', {
+      method: 'POST',
+      cookie: existing.cookie,
+      body: { link: 'https://lazada.vn/p/referral-existing-order' }
+    });
+    assert.equal(existingOrder.res.status, 201);
+
+    redeemed = await json('/api/referral/redeem', {
+      method: 'POST',
+      cookie: existing.cookie,
+      body: { code }
+    });
+    assert.equal(redeemed.res.status, 200);
+    assert.equal(redeemed.data.pending, false);
+    assert.equal(redeemed.data.points, 100);
+    assert.equal(redeemed.data.history[0].pending, false);
+
+    // Đơn đã huỷ không đủ điều kiện kích hoạt điểm.
+    const cancelled = createUser({
+      username: 'ref-cancelled@test.local',
+      email: 'ref-cancelled@test.local',
+      name: 'Người có đơn huỷ'
+    });
+    const cancelledOrder = await json('/api/orders', {
+      method: 'POST',
+      cookie: cancelled.cookie,
+      body: { link: 'https://shopee.vn/p/referral-cancelled-order' }
+    });
+    assert.equal(cancelledOrder.res.status, 201);
+
+    const db = new DatabaseSync(DB_PATH);
+    db.prepare("UPDATE orders SET status = 'Đã huỷ' WHERE user_id = ?").run(cancelled.uid);
+    db.close();
+
+    redeemed = await json('/api/referral/redeem', {
+      method: 'POST',
+      cookie: cancelled.cookie,
+      body: { code }
+    });
+    assert.equal(redeemed.res.status, 200);
+    assert.equal(redeemed.data.pending, true);
+    assert.equal(redeemed.data.points, 0);
+
+    const adminReferrals = await json('/api/admin/referrals', { cookie: admin.cookie });
+    const pendingRow = (adminReferrals.data.referrals || []).find(
+      (row) => row.user.username === 'ref-cancelled@test.local'
+    );
+    assert.ok(pendingRow);
+    assert.equal(pendingRow.pending, true);
+    assert.equal(pendingRow.points, 0);
+  });
+
   await t.test('SEO: robots.txt, sitemap.xml và thẻ chia sẻ có URL tuyệt đối', async () => {
     const robots = await request('/robots.txt');
     assert.equal(robots.status, 200);

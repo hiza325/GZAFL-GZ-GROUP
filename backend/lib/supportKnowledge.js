@@ -189,8 +189,8 @@ const TOPICS = [
     ],
     answer: [
       'Mỗi tài khoản có một mã giới thiệu 6 ký tự ở trang "Mời bạn bè"; mã gắn cố định với tài khoản của bạn.',
-      'Khi người khác nhập mã của bạn, người NHẬP mã được cộng ngay 100 điểm thưởng.',
-      'Bạn không thể nhập mã của chính mình, và mỗi mã chỉ nhập được một lần cho mỗi tài khoản.',
+      'Khi người khác nhập mã của bạn, hệ thống ghi nhận ngay. Người NHẬP mã được cộng 100 điểm thưởng sau khi tạo đơn hàng đầu tiên (đơn không bị huỷ). Nếu người đó đã có đơn hàng trước khi nhập mã, điểm được cộng ngay.',
+      'Bạn không thể nhập mã của chính mình, và mỗi tài khoản chỉ nhập được một mã giới thiệu.',
       'Điểm thưởng hiển thị ở trang "Mời bạn bè". Tại đó bạn có thể đổi điểm sang ví: 100 điểm = 1.000đ, tối thiểu 100 điểm và đổi theo bội số 100 điểm. Tiền đổi được cộng ngay vào số dư ví và rút về ngân hàng như hoa hồng.'
     ].join('\n')
   },

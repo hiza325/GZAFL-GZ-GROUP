@@ -10,20 +10,43 @@ const { formatMoney } = require('../lib/format');
 const {
   POINT_VALUE,
   POINT_REDEEM_MIN,
-  POINT_REDEEM_STEP
+  POINT_REDEEM_STEP,
+  REFERRAL_REWARD_POINTS
 } = require('../lib/constants');
 const { computeUserMoney } = require('../lib/money');
+const { awardReferralIfEligible } = require('../lib/referralRewards');
 
 const router = express.Router();
 router.use(requireAuth);
-
-const REWARD_POINTS = 100;
 
 function getHistory(userId) {
   return db
     .prepare('SELECT * FROM referrals WHERE user_id = ? ORDER BY id DESC')
     .all(userId)
-    .map((row) => ({ code: row.code, date: formatDateTime(row.created_at), points: row.points }));
+    .map((row) => {
+      const rewardedAt = row.rewarded_at || null;
+      return {
+        code: row.code,
+        date: formatDateTime(row.created_at),
+        points: Number(row.points) || 0,
+        rewardPoints: REFERRAL_REWARD_POINTS,
+        // Mã đã được ghi nhận nhưng còn chờ người dùng tạo đơn hàng đầu tiên.
+        pending: !rewardedAt,
+        rewardedAt,
+        rewardedDate: rewardedAt ? formatDateTime(rewardedAt) : null,
+        rewardedOrderId: row.rewarded_order_id ? Number(row.rewarded_order_id) : null
+      };
+    });
+}
+
+/** Đếm số mã đã cộng điểm và số mã đang chờ đơn hàng. */
+function countReferrals(history) {
+  const credited = history.filter((item) => !item.pending).length;
+  return {
+    redeemedCount: history.length,
+    creditedCount: credited,
+    pendingCount: history.length - credited
+  };
 }
 
 /** Các lần đổi điểm gần nhất, để người dùng đối chiếu với số dư ví. */
@@ -48,7 +71,8 @@ router.get('/', (req, res) => {
   return res.json({
     code: req.user.referral_code,
     points,
-    redeemedCount: history.length,
+    ...countReferrals(history),
+    rewardPoints: REFERRAL_REWARD_POINTS,
     history,
     // Quy đổi điểm sang ví: 100 điểm = 1.000đ (1 điểm = 10đ)
     pointValue: POINT_VALUE,
@@ -79,28 +103,39 @@ router.post('/redeem', (req, res) => {
   // Kiểm tra "đã nhập chưa" + ghi lịch sử + cộng điểm trong CÙNG một transaction:
   // khi chạy nhiều tiến trình, hai request đồng thời không thể cùng lọt qua bước
   // kiểm tra rồi cộng điểm hai lần.
-  let updated;
+  let result;
   try {
-    updated = db.transaction(() => {
+    result = db.transaction(() => {
       // Mỗi tài khoản chỉ được nhập mã giới thiệu MỘT lần (tránh nhập hàng loạt mã để farm điểm)
       const used = db.prepare('SELECT 1 AS x FROM referrals WHERE user_id = ?').get(req.user.id);
       if (used) throw Object.assign(new Error('Mỗi tài khoản chỉ nhập được mã giới thiệu một lần.'), { status: 409 });
 
-      db.prepare('INSERT INTO referrals (user_id, code, points, created_at) VALUES (?, ?, ?, ?)').run(
-        req.user.id,
-        code,
-        REWARD_POINTS,
-        new Date().toISOString()
-      );
-      db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(REWARD_POINTS, req.user.id);
+      db.prepare(
+        `INSERT INTO referrals (user_id, code, points, rewarded_at, rewarded_order_id, created_at)
+         VALUES (?, ?, 0, NULL, NULL, ?)`
+      ).run(req.user.id, code, new Date().toISOString());
 
-      notify(req.user.id, {
-        title: 'Nhập mã giới thiệu thành công',
-        body: `Bạn vừa nhận được ${REWARD_POINTS} điểm từ mã ${code}.`,
-        icon: 'user-plus'
-      });
+      // Người dùng đã có đơn từ trước? Cộng điểm ngay. Nếu chưa, lượt nhập
+      // nằm chờ và sẽ được cộng khi đơn hàng đầu tiên được tạo.
+      const reward = awardReferralIfEligible(req.user.id);
 
-      return db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+      if (!reward) {
+        notify(req.user.id, {
+          title: 'Đã ghi nhận mã giới thiệu',
+          body: `Mã ${code} đã được ghi nhận. Bạn sẽ nhận ${REFERRAL_REWARD_POINTS} điểm sau khi tạo đơn hàng đầu tiên.`,
+          icon: 'user-plus'
+        });
+      }
+
+      const updated = db.prepare('SELECT points FROM users WHERE id = ?').get(req.user.id);
+      const history = getHistory(req.user.id);
+      return {
+        points: Number(updated && updated.points) || 0,
+        history,
+        counts: countReferrals(history),
+        rewarded: !!reward,
+        reward
+      };
     });
   } catch (err) {
     if (err && err.status) return res.status(err.status).json({ error: err.message });
@@ -108,9 +143,15 @@ router.post('/redeem', (req, res) => {
   }
 
   return res.json({
-    message: `Nhập mã thành công! Bạn vừa nhận được ${REWARD_POINTS} điểm.`,
-    points: updated.points,
-    redeemedCount: getHistory(req.user.id).length
+    message: result.rewarded
+      ? `Nhập mã thành công! Bạn vừa nhận được ${REFERRAL_REWARD_POINTS} điểm từ mã ${code}.`
+      : `Đã ghi nhận mã ${code}. Bạn sẽ nhận ${REFERRAL_REWARD_POINTS} điểm sau khi tạo đơn hàng đầu tiên.`,
+    points: result.points,
+    pending: !result.rewarded,
+    rewardPoints: REFERRAL_REWARD_POINTS,
+    reward: result.reward,
+    ...result.counts,
+    history: result.history
   });
 });
 

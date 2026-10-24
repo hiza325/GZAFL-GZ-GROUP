@@ -2187,6 +2187,9 @@ let referralState = {
   code: '',
   points: 0,
   redeemedCount: 0,
+  creditedCount: 0,
+  pendingCount: 0,
+  rewardPoints: 100,
   history: [],
   pointValue: 10,
   minRedeemPoints: 100,
@@ -2212,18 +2215,25 @@ function renderRedeemHistory() {
   } else {
     let html = `<div class="space-y-3">`;
     history.forEach(item => {
+      const pending = !!item.pending;
+      const rewardPoints = Number(item.rewardPoints) || 100;
       html += `
-        <div class="flex items-center justify-between gap-4 p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
+        <div class="flex items-center justify-between gap-4 p-4 rounded-2xl border ${pending ? 'border-amber-100 bg-amber-50/30' : 'border-slate-100 bg-slate-50/50'}">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center flex-shrink-0">
-              <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+            <div class="w-10 h-10 rounded-xl ${pending ? 'bg-amber-50 text-amber-500' : 'bg-emerald-50 text-emerald-500'} flex items-center justify-center flex-shrink-0">
+              <i data-lucide="${pending ? 'clock' : 'check-circle-2'}" class="w-5 h-5"></i>
             </div>
             <div>
               <div class="font-bold text-slate-800 tracking-widest">${escapeHtml(item.code)}</div>
               <div class="text-xs text-slate-400 mt-0.5">${escapeHtml(item.date)}</div>
+              ${pending ? `<div class="text-[11px] text-amber-600 font-medium mt-1">Sẽ cộng ${rewardPoints} điểm khi bạn có đơn hàng đầu tiên.</div>` : ''}
             </div>
           </div>
-          <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">+${Number(item.points) || 0} điểm</span>
+          ${
+            pending
+              ? '<span class="text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 whitespace-nowrap">Chờ đơn hàng</span>'
+              : `<span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 whitespace-nowrap">+${Number(item.points) || 0} điểm</span>`
+          }
         </div>
       `;
     });
@@ -2237,6 +2247,7 @@ function refreshReferralStats() {
   setText('referral-points', referralState.points);
   setText('stat-total-points', referralState.points);
   setText('stat-redeemed-count', referralState.redeemedCount);
+  setText('stat-reward-points', referralState.rewardPoints || 100);
 }
 
 /**

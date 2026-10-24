@@ -326,6 +326,11 @@ Phải thấy `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-F
 > Database tự tạo bảng `withdrawal_items`, thêm cột `withdrawals.items_allocated` và
 > phân bổ một lần các lệnh rút cũ cho những đơn hoa hồng còn lại (đơn cũ trước).
 > Không cần chạy migration tay; vẫn nên `npm run backup` trước khi nâng cấp.
+>
+> **Nâng cấp điều kiện điểm giới thiệu:** database tự thêm `referrals.rewarded_at` và
+> `referrals.rewarded_order_id`. Các lượt nhập mã cũ đã được cộng điểm sẽ được đánh dấu
+> là đã thưởng; từ bản này, điểm chỉ được cộng sau khi người nhập mã có đơn hàng đầu tiên
+> (hoặc cộng ngay nếu họ đã có đơn trước khi nhập mã).
 
 Khách quên mật khẩu thường sẽ **tự xử lý được**: bấm **"Quên mật khẩu?"** ở màn hình đăng nhập,
 hệ thống gửi mã xác thực về email đã đăng ký, khách nhập mã kèm mật khẩu mới là xong.
