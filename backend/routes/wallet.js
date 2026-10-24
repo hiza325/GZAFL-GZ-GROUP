@@ -7,15 +7,91 @@ const { generateWithdrawalCode } = require('../lib/validate');
 const { requireAuth } = require('../lib/auth');
 const { notify } = require('../lib/notify');
 const { formatMoney } = require('../lib/format');
-const { WITHDRAWAL_MIN } = require('../lib/constants');
+const { WITHDRAWAL_MIN, CANCELLED } = require('../lib/constants');
 const { isValidBankName } = require('../lib/banks');
-const { computeUserMoney } = require('../lib/money');
+const { computeUserMoney, creditedCondition } = require('../lib/money');
 
 const router = express.Router();
 router.use(requireAuth);
 
 function computeBalance(userId) {
   return computeUserMoney(userId);
+}
+
+/* ==========================================
+   Số liệu cho dashboard.
+   Trước đây dashboard tự vẽ biểu đồ bằng HTML tĩnh nên hiển thị số giả.
+   Giờ mọi con số đều tính từ bảng orders của chính người dùng.
+   ========================================== */
+function monthKey(date) {
+  return date.toISOString().slice(0, 7);
+}
+
+function monthLabel(key) {
+  const parts = String(key).split('-');
+  return `T${Number(parts[1])}/${String(parts[0]).slice(2)}`;
+}
+
+function computeInsights(userId) {
+  const now = new Date();
+  const thisMonth = monthKey(now);
+
+  const monthRow = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ${creditedCondition()} THEN commission ELSE 0 END), 0) AS commission,
+         COUNT(*) AS orders
+       FROM orders WHERE user_id = ? AND substr(created_at, 1, 7) = ?`
+    )
+    .get(userId, thisMonth);
+
+  const byPlatform = db
+    .prepare(
+      `SELECT platform,
+              COALESCE(SUM(CASE WHEN ${creditedCondition()} THEN commission ELSE 0 END), 0) AS commission,
+              COUNT(*) AS orders
+       FROM orders WHERE user_id = ?
+       GROUP BY platform
+       ORDER BY commission DESC, orders DESC`
+    )
+    .all(userId)
+    .map((row) => ({
+      platform: String(row.platform || 'Khác'),
+      commission: Number(row.commission) || 0,
+      orders: Number(row.orders) || 0
+    }));
+
+  // 6 tháng gần nhất, tháng nào không có đơn thì trả 0 (biểu đồ không bị lệch)
+  const keys = [];
+  for (let i = 5; i >= 0; i -= 1) {
+    keys.push(monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
+  }
+  const rows = db
+    .prepare(
+      `SELECT substr(created_at, 1, 7) AS m,
+              COALESCE(SUM(commission), 0) AS commission
+       FROM orders
+       WHERE user_id = ? AND ${creditedCondition()} AND substr(created_at, 1, 7) >= ?
+       GROUP BY m`
+    )
+    .all(userId, keys[0]);
+
+  const monthlyMap = new Map(rows.map((row) => [row.m, Number(row.commission) || 0]));
+  const monthly = keys.map((key) => ({
+    key,
+    label: monthLabel(key),
+    commission: monthlyMap.get(key) || 0
+  }));
+
+  return {
+    month: {
+      key: thisMonth,
+      commission: Number(monthRow.commission) || 0,
+      orders: Number(monthRow.orders) || 0
+    },
+    byPlatform,
+    monthly
+  };
 }
 
 /** Lỗi có mã HTTP để ném ra từ bên trong transaction rồi trả về cho client. */
@@ -49,6 +125,7 @@ router.get('/', (req, res) => {
       completed: Number(stats.completed) || 0,
       paid: Number(stats.paid) || 0
     },
+    insights: computeInsights(userId),
     balance: money.balance,
     totalCommission: money.totalCommission,
     withdrawn: money.withdrawn,
@@ -185,6 +262,50 @@ router.post('/withdrawals', (req, res) => {
   return res.status(201).json({
     withdrawal: toWithdrawal(row),
     user: toUser(userRow),
+    balance: computeBalance(req.user.id).balance
+  });
+});
+
+/**
+ * Người dùng tự huỷ lệnh rút đang chờ.
+ * Trước đây mỗi tài khoản chỉ được có 1 lệnh chờ: nếu khách gửi sai thông tin
+ * thì bị chặn rút cho tới khi admin xử lý. Huỷ được thì số tiền trả lại ngay
+ * vào số dư khả dụng (vì số dư = hoa hồng đã duyệt - lệnh rút không bị huỷ).
+ */
+router.delete('/withdrawals/:code', (req, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase();
+
+  let updated;
+  try {
+    updated = db.transaction(() => {
+      const row = db
+        .prepare('SELECT * FROM withdrawals WHERE code = ? AND user_id = ?')
+        .get(code, req.user.id);
+      if (!row) throw httpError(404, 'Không tìm thấy lệnh rút tiền.');
+      if (row.status !== 'Đang xử lý') {
+        throw httpError(
+          409,
+          `Lệnh rút ${code} đang ở trạng thái "${row.status}" nên không thể huỷ.`
+        );
+      }
+
+      db.prepare('UPDATE withdrawals SET status = ? WHERE id = ?').run(CANCELLED, row.id);
+
+      notify(req.user.id, {
+        title: `Đã huỷ lệnh rút ${code}`,
+        body: `Số tiền ${formatMoney(Number(row.amount) || 0)} đã được trả lại vào số dư khả dụng.`,
+        icon: 'rotate-ccw'
+      });
+
+      return db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(row.id);
+    });
+  } catch (err) {
+    if (err && err.status) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
+
+  return res.json({
+    withdrawal: toWithdrawal(updated),
     balance: computeBalance(req.user.id).balance
   });
 });

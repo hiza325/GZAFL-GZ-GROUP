@@ -5,10 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="GZ AFL - tạo link hoàn tiền Shopee, TikTok Shop, Tiki và Lazada, theo dõi đơn hàng và nhận hoa hồng minh bạch.">
   <meta name="theme-color" content="#18253f">
+  <meta name="robots" content="index, follow">
   <title>GZ AFL - Nền tảng Affiliate</title>
-  
-  <!--Favicon) -->
+
+  <!-- URL tuyệt đối cho thẻ chia sẻ mạng xã hội.
+       __PUBLIC_BASE_URL__ được backend thay bằng PUBLIC_BASE_URL khi trả trang. -->
+  <link rel="canonical" href="__PUBLIC_BASE_URL__/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GZ AFL">
+  <meta property="og:locale" content="vi_VN">
+  <meta property="og:title" content="GZ AFL — Chuyển link mua sắm, nhận hoa hồng">
+  <meta property="og:description" content="Tạo link hoàn tiền cho Shopee, TikTok Shop, Tiki và Lazada. Theo dõi đơn hàng và nhận hoa hồng minh bạch.">
+  <meta property="og:url" content="__PUBLIC_BASE_URL__/">
+  <meta property="og:image" content="__PUBLIC_BASE_URL__/LOGO.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="GZ AFL — Chuyển link mua sắm, nhận hoa hồng">
+  <meta name="twitter:description" content="Tạo link hoàn tiền cho Shopee, TikTok Shop, Tiki và Lazada.">
+  <meta name="twitter:image" content="__PUBLIC_BASE_URL__/LOGO.png">
+
+  <link rel="preload" href="styles/inter-variable.woff2" as="font" type="font/woff2" crossorigin>
+
+  <!-- Favicon -->
   <link rel="icon" type="image/png" href="LOGO.png">
+  <link rel="apple-touch-icon" href="LOGO.png">
 
   <!-- Áp dụng giao diện sáng/tối trước khi CSS được vẽ (tránh nháy trắng). -->
   <script src="theme.js"></script>
@@ -21,6 +40,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-[#f4f6f9] text-slate-700 m-0 p-0">
+
+  <noscript>
+    <div style="max-width:720px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif">
+      <h1 style="font-size:24px;margin:0 0 12px">GZ AFL — Chuyển link mua sắm, nhận hoa hồng</h1>
+      <p style="line-height:1.6;color:#475569;margin:0 0 12px">
+        GZ AFL tạo link hoàn tiền cho Shopee, TikTok Shop, Tiki và Lazada, giúp bạn theo dõi đơn hàng
+        và nhận lại phần hoa hồng minh bạch.
+      </p>
+      <p style="line-height:1.6;color:#475569;margin:0">
+        Trang web cần JavaScript để hiển thị đầy đủ. Vui lòng bật JavaScript rồi tải lại trang.
+      </p>
+    </div>
+  </noscript>
 
   <!-- dashboard-->
   <div id="app-root" class="flex min-h-screen hidden">
@@ -69,12 +101,12 @@
         <div class="space-y-4">
           <!-- Cách nhận tiền: người dùng CHỈ CẦN CHỌN 1 TRONG 2 (số tài khoản hoặc ảnh QR) -->
           <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách nhận tiền</label>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" id="withdraw-method-account" data-action="withdraw-mode" data-mode="account" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
+            <span id="withdraw-method-label" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cách nhận tiền</span>
+            <div class="grid grid-cols-2 gap-2" role="group" aria-labelledby="withdraw-method-label">
+              <button type="button" id="withdraw-method-account" data-action="withdraw-mode" data-mode="account" aria-pressed="true" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
                 <i data-lucide="credit-card" class="w-4 h-4"></i> Số tài khoản
               </button>
-              <button type="button" id="withdraw-method-qr" data-action="withdraw-mode" data-mode="qr" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
+              <button type="button" id="withdraw-method-qr" data-action="withdraw-mode" data-mode="qr" aria-pressed="false" class="border-2 rounded-xl py-3 px-2 text-sm font-semibold transition flex items-center justify-center gap-2">
                 <i data-lucide="qr-code" class="w-4 h-4"></i> Ảnh QR
               </button>
             </div>
@@ -86,7 +118,7 @@
                  Danh sách đầy đủ do script.js nạp từ /api/config (xem backend/lib/banks.js);
                  các <option> dưới đây chỉ là phương án dự phòng khi không gọi được API. -->
             <div>
-              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ngân hàng / Ví điện tử</label>
+              <label for="withdraw-bank" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ngân hàng / Ví điện tử</label>
               <select id="withdraw-bank" data-change-action="toggle-other-bank" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-700 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all appearance-none cursor-pointer">
                 <option value="" disabled selected>-- Chọn phương thức nhận tiền --</option>
                 <option value="MBBank">Ngân hàng Quân Đội (MBBank)</option>
@@ -100,28 +132,28 @@
                 <option value="__other__">Ngân hàng khác (tự ghi tên)</option>
               </select>
               <!-- Chỉ hiện khi chọn "Ngân hàng khác" -->
-              <input type="text" id="withdraw-bank-other" maxlength="60" placeholder="Ghi rõ tên ngân hàng, ví dụ: Ngân hàng Bản Việt" class="hidden w-full mt-2 bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
+              <input type="text" id="withdraw-bank-other" aria-label="Tên ngân hàng khác" maxlength="60" placeholder="Ghi rõ tên ngân hàng, ví dụ: Ngân hàng Bản Việt" class="hidden w-full mt-2 bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
             </div>
 
             <!-- Nhập STK -->
             <div>
-              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Số tài khoản / Số điện thoại ví</label>
+              <label for="withdraw-acc-number" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Số tài khoản / Số điện thoại ví</label>
               <input type="text" id="withdraw-acc-number" placeholder="Ví dụ: 0987654321" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all">
             </div>
 
             <!-- Tên chủ thẻ -->
             <div>
-              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên chủ tài khoản (Không dấu)</label>
+              <label for="withdraw-acc-name" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tên chủ tài khoản (Không dấu)</label>
               <input type="text" id="withdraw-acc-name" placeholder="VD: NGUYEN VAN A" class="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 text-slate-800 font-medium focus:outline-none focus:border-blue-400 focus:bg-white transition-all uppercase">
             </div>
           </div>
 
           <!-- Cách 2: chỉ cần ảnh QR (ảnh QR đã có sẵn số tài khoản) -->
           <div id="withdraw-fields-qr" class="hidden">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ảnh QR nhận tiền</label>
+            <label for="withdraw-qr-upload" class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ảnh QR nhận tiền</label>
             <input type="file" id="withdraw-qr-upload" accept="image/png,image/jpeg" class="hidden">
             <div class="flex items-center gap-3">
-              <img id="withdraw-qr-preview" src="" alt="Ảnh QR nhận tiền" class="hidden w-20 h-20 rounded-xl border border-slate-200 bg-white object-contain flex-shrink-0">
+              <img id="withdraw-qr-preview" alt="Ảnh QR nhận tiền" class="hidden w-20 h-20 rounded-xl border border-slate-200 bg-white object-contain flex-shrink-0">
               <div class="flex-1 min-w-0">
                 <button type="button" data-action="pick-withdraw-qr" class="w-full bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-4 py-2 rounded-xl text-sm transition flex items-center justify-center gap-2 mb-2 shadow-sm">
                   <i data-lucide="qr-code" class="w-4 h-4"></i> <span id="withdraw-qr-label">Tải ảnh QR lên</span>

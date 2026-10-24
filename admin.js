@@ -433,7 +433,11 @@
         </td>
         <td class="px-3 py-3">${badge(w.status)}</td>
         <td class="px-3 py-3 text-xs text-slate-400">${escapeHtml(w.date)}</td>
-        <td class="px-3 py-3 text-right">${actionButton('data-adm-edit-wd', w.id, 'Xử lý', 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100')}</td>
+        <td class="px-3 py-3 text-right">${
+          w.status === 'Đã thanh toán' || w.status === 'Đã huỷ'
+            ? `<span class="text-[11px] font-semibold text-slate-300" title="Lệnh đã ở trạng thái cuối, không sửa được để bảo toàn lịch sử chi trả">Đã khoá</span>`
+            : actionButton('data-adm-edit-wd', w.id, 'Xử lý', 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100')
+        }</td>
       </tr>`;
       })
       .join('');

@@ -219,6 +219,8 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
 
     const owner = await request(`/uploads/qr_${user.uid}_test.webp`, { cookie: user.cookie });
     assert.equal(owner.status, 200);
+    // Ảnh QR chứa số tài khoản: không được để proxy/CDN cache dùng chung
+    assert.match(owner.headers.get('cache-control') || '', /no-store/);
 
     const stranger = await request(`/uploads/qr_${user.uid}_test.webp`, { cookie: other.cookie });
     assert.equal(stranger.status, 403);
@@ -965,6 +967,121 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.ok(adminWd);
     assert.equal(adminWd.debt, 100000);
     assert.equal(adminWd.payable, 0);
+  });
+
+  await t.test('ví: huỷ lệnh rút đang chờ, chặn sửa lệnh đã chi, số liệu dashboard là thật', async () => {
+    const wdUser = createUser({
+      username: 'withdraw@test.local',
+      email: 'withdraw@test.local',
+      name: 'Người rút tiền'
+    });
+
+    // Tạo sẵn 1 đơn đã được duyệt để có số dư, không phụ thuộc luồng postback
+    const db = new DatabaseSync(DB_PATH);
+    db.prepare(
+      `INSERT INTO orders (user_id, code, link, platform, status, commission, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      wdUser.uid,
+      'WD-BASE-' + Date.now(),
+      'https://shopee.vn/product/1',
+      'Shopee',
+      'Hoàn thành',
+      200000,
+      new Date().toISOString()
+    );
+    db.close();
+
+    // Dashboard không còn số giả: mọi con số lấy từ đơn thật của chính người dùng
+    const before = await json('/api/wallet', { cookie: wdUser.cookie });
+    assert.equal(before.res.status, 200);
+    assert.ok(before.data.insights, 'Phải có insights cho dashboard');
+    assert.equal(before.data.insights.monthly.length, 6);
+    assert.equal(before.data.insights.month.commission, 200000);
+    const shopee = (before.data.insights.byPlatform || []).find((p) => p.platform === 'Shopee');
+    assert.ok(shopee);
+    assert.equal(shopee.commission, 200000);
+    assert.equal(shopee.orders, 1);
+
+    const created = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: wdUser.cookie,
+      body: { bank: 'Vietcombank', accNum: '0123456789', accName: 'NGUYEN VAN A' }
+    });
+    assert.equal(created.res.status, 201);
+    const code = created.data.withdrawal.id;
+    assert.equal(created.data.balance, 0);
+
+    // Tự huỷ được, tiền về lại số dư ngay
+    const cancelled = await json('/api/wallet/withdrawals/' + encodeURIComponent(code), {
+      method: 'DELETE',
+      cookie: wdUser.cookie
+    });
+    assert.equal(cancelled.res.status, 200);
+    assert.equal(cancelled.data.withdrawal.status, 'Đã huỷ');
+    assert.equal(cancelled.data.balance, 200000);
+
+    // Huỷ lần hai phải bị chặn
+    const again = await json('/api/wallet/withdrawals/' + encodeURIComponent(code), {
+      method: 'DELETE',
+      cookie: wdUser.cookie
+    });
+    assert.equal(again.res.status, 409);
+
+    // Người khác không huỷ được lệnh của mình (coi như không tồn tại)
+    const otherTry = await json('/api/wallet/withdrawals/' + encodeURIComponent(code), {
+      method: 'DELETE',
+      cookie: other.cookie
+    });
+    assert.equal(otherTry.res.status, 404);
+
+    // Admin cũng không được sửa lệnh đã huỷ
+    const editCancelled = await json('/api/admin/withdrawals/' + encodeURIComponent(code), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { status: 'Đang xử lý' }
+    });
+    assert.equal(editCancelled.res.status, 409);
+
+    // Lệnh mới -> admin chi trả -> lịch sử chi trả bị khoá
+    const second = await json('/api/wallet/withdrawals', {
+      method: 'POST',
+      cookie: wdUser.cookie,
+      body: { bank: 'Vietcombank', accNum: '0123456789', accName: 'NGUYEN VAN A' }
+    });
+    assert.equal(second.res.status, 201);
+    const code2 = second.data.withdrawal.id;
+
+    const paid = await json('/api/admin/withdrawals/' + encodeURIComponent(code2), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { status: 'Đã thanh toán' }
+    });
+    assert.equal(paid.res.status, 200);
+    assert.equal(paid.data.withdrawal.status, 'Đã thanh toán');
+
+    const editPaid = await json('/api/admin/withdrawals/' + encodeURIComponent(code2), {
+      method: 'PATCH',
+      cookie: admin.cookie,
+      body: { amount: 1000 }
+    });
+    assert.equal(editPaid.res.status, 409);
+  });
+
+  await t.test('SEO: robots.txt, sitemap.xml và thẻ chia sẻ có URL tuyệt đối', async () => {
+    const robots = await request('/robots.txt');
+    assert.equal(robots.status, 200);
+    assert.match(await robots.text(), /Sitemap: http:\/\/localhost:\d+\/sitemap\.xml/);
+
+    const sitemap = await request('/sitemap.xml');
+    assert.equal(sitemap.status, 200);
+    assert.match(await sitemap.text(), /<urlset/);
+
+    const home = await request('/');
+    assert.equal(home.status, 200);
+    const html = await home.text();
+    assert.match(html, /property="og:title"/);
+    assert.doesNotMatch(html, /__PUBLIC_BASE_URL__/, 'Placeholder phải được thay bằng URL thật');
   });
 
   await t.test('chatbot FAQ biết đơn chờ admin duyệt và thu hồi hoa hồng', async () => {

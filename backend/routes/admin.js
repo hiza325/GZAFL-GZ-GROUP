@@ -809,6 +809,17 @@ router.patch('/withdrawals/:code', (req, res) => {
       const row = db.prepare('SELECT * FROM withdrawals WHERE code = ?').get(code);
       if (!row) throw httpError(404, 'Không tìm thấy lệnh rút tiền.');
 
+      // Lệnh đã chi hoặc đã huỷ là trạng thái CUỐI: sửa số tiền/huỷ tiếp sẽ làm
+      // số dư của khách tăng lại trong khi tiền đã chuyển đi (hoặc đã trả lại).
+      // Muốn điều chỉnh thì tạo bút toán mới, không sửa lịch sử.
+      if (row.status === 'Đã thanh toán' || row.status === CANCELLED) {
+        throw httpError(
+          409,
+          `Lệnh rút ${code} đã ở trạng thái "${row.status}" nên không thể sửa. ` +
+            'Hãy tạo yêu cầu/điều chỉnh mới thay vì sửa lịch sử chi trả.'
+        );
+      }
+
       const updates = [];
       const values = [];
 

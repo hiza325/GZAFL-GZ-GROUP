@@ -103,6 +103,7 @@ The language switch sits in the top-right of the home page navbar, and the choic
 | `ACCESSTRADE_SHORT_DOMAIN` | – | Optional: your own short domain registered with AccessTrade |
 | `POSTBACK_SECRET` | – | Authentication key for conversion reports (postbacks). **If empty, every postback is rejected** (see [Receiving commissions](#receiving-commissions--postback-reconciliation)) |
 | `POSTBACK_PARAM_*` | auto-detected | Force the network's parameter names: `_SECRET`, `_TRANSACTION`, `_PRODUCT`, `_CONVERSION`, `_REWARD`, `_STATUS`, `_SUB`, `_ORDER_CODE` |
+| `POSTBACK_LOG_KEEP_DAYS` | `90` | How long to keep **rejected** postback logs (wrong key / processing error) before the startup cleanup deletes them. Logs that matched an order are financial records and are never deleted automatically |
 | `EMAIL_OTP` | `auto` | Email verification step: `auto` (on when SMTP is configured, or when running `development`) / `on` / `off`. Applies to **sign-up**, **forgot password** and **email changes**. In production, email verification is **mandatory** (see `ALLOW_UNVERIFIED_EMAIL`) |
 | `ALLOW_UNVERIFIED_EMAIL` | – | Only set to `1` when you truly have no SMTP: lets production start even though sign-up emails are **not verified** (accepting the risk that someone registers with someone else's email) |
 | `LOGIN_OTP` | `auto` | Verification step at **login**: `auto` (on when `EMAIL_OTP` is on **and** mail can be sent) / `on` (always required) / `off` (password only). The "rescue" switch for when the mail server breaks |
@@ -355,8 +356,9 @@ All APIs live under `/api` and return JSON. APIs that require login use the sess
 | POST | `/api/auth/forgot-password` | Fallback path: send a request to the admin `{ username, note }` |
 | GET | `/api/orders` | Your order list (with cashback link, `sub_id`, click count) |
 | POST | `/api/orders` | Create an order `{ link }` → returns `{ order, affiliate }` with the cashback link |
-| GET | `/api/wallet` | Wallet stats + withdrawal history + `minWithdraw`, `canWithdraw` |
+| GET | `/api/wallet` | Wallet stats, dashboard `insights` (current month, 6-month series, commission per platform), withdrawal history, `minWithdraw`, `canWithdraw` |
 | POST | `/api/wallet/withdrawals` | Request a withdrawal. Choose one of two: `{ mode: 'account', bank, accNum, accName }` or `{ mode: 'qr' }` (uses the uploaded QR image, no bank/account number needed) |
+| DELETE | `/api/wallet/withdrawals/:code` | Cancel your own `Đang xử lý` withdrawal and return the amount to the available balance |
 | GET | `/api/referral` | Referral code, points, redemption history |
 | POST | `/api/referral/redeem` | Redeem a referral code `{ code }` |
 | GET | `/api/notifications` | Notification list + unread count |
@@ -395,7 +397,7 @@ Every API below **requires an account with `role = 'admin'`**. Anonymous callers
 | GET | `/api/admin/orders` | Order list (`status`, `q`, `limit`, `offset`) |
 | PATCH | `/api/admin/orders/:code` | Change `{ status, commission }` |
 | GET | `/api/admin/withdrawals` | Withdrawal list (`status`, `q`, `limit`, `offset`) |
-| PATCH | `/api/admin/withdrawals/:code` | Change `{ status, amount }` |
+| PATCH | `/api/admin/withdrawals/:code` | Change `{ status, amount }`. `Đã thanh toán` / `Đã huỷ` are final: further edits return `409` |
 | GET | `/api/admin/referrals` | Referral redemption history (`limit`, `offset`) |
 | GET | `/api/admin/postbacks` | **Reconciliation log**: every time a network called the postback endpoint (`q`, `status` = `pending`/`approved`/`rejected`, `only` = `matched`/`unmatched`/`refused`, `limit`, `offset`) + aggregate stats |
 | POST | `/api/admin/postbacks/:id/reapply` | Reprocess an old log (e.g. a postback that arrived before the order was created) |
@@ -417,6 +419,7 @@ Valid statuses:
 - Available balance = total commission from **admin-approved** orders − money already withdrawn. Orders in `Chờ đối soát` or `Chờ admin duyệt` are **not part of the balance**.
 - The available balance must reach the `WITHDRAWAL_MIN` minimum (default **1,000 VND**) — otherwise `400` is returned with the shortfall.
 - Each account may have only **one** `Đang xử lý` withdrawal; a second one returns `409`.
+- The customer can **cancel their own** `Đang xử lý` withdrawal (`DELETE /api/wallet/withdrawals/:code`) — useful when they entered the wrong account. The reserved money returns to the available balance immediately.
 - If the network reports a cancellation/refund after the customer has withdrawn, the system records a **reversal** and the balance may go negative. The negative amount is a **debt to be recovered**, automatically deducted from the next commission; the wallet and admin page both show it clearly.
 - Bank/e-wallet is chosen from the list in `backend/lib/banks.js` (about 50 banks and e-wallets, shown in the dropdown and in `GET /api/config`). Users can also pick **"Other bank"** and type the name themselves (max 60 characters).
 - Users **choose one of two** payout methods, not both:
@@ -424,6 +427,7 @@ Valid statuses:
   - **Payout QR image**: only the QR image is needed (**PNG/JPG** only, max 2MB) — no bank, account number or account holder name, because the QR already carries them. The admin scans the QR to transfer the money.
   - The QR image is **snapshotted** into the withdrawal at request time, so changing the image later does not alter old withdrawals; the image file is only deleted once **no withdrawal** references it anymore.
 - Cancelling a withdrawal (`Đã huỷ`) **returns** the money to the available balance.
+- `Đã thanh toán` and `Đã huỷ` are **final states**: neither the customer nor an admin can edit them (`409`). This keeps the payout history auditable — adjust with a new entry instead of rewriting the past.
 - The admin can adjust the actual amount paid when marking `Đã thanh toán`, but it may not exceed the available balance.
 
 ### Affiliate link conversion
@@ -452,7 +456,7 @@ GET /api/postback/accesstrade    ← register this URL in the network's dashboar
 
 The flow (source: `backend/routes/postback.js` + `backend/lib/postback.js`):
 
-1. **Authenticate** `POSTBACK_SECRET` (SHA-256 hash compared with `timingSafeEqual`). Wrong → `403`, and the call is **still logged**. Secret unconfigured → `503` (no data of unknown origin is accepted).
+1. **Authenticate** `POSTBACK_SECRET` (SHA-256 hash compared with `timingSafeEqual`). Wrong → `403`, and the call is **still logged** — but at most **10 rejected logs per IP per 15 minutes** (the rest are dropped) so a stranger cannot flood the SQLite file that holds the money data. Rejected logs older than `POSTBACK_LOG_KEEP_DAYS` (default 90) are deleted at startup. Secret unconfigured → `503` (no data of unknown origin is accepted).
    - Safest option: send the key in the `X-Postback-Secret` header (it never appears in the URL, so it does not leak into proxy/CDN access logs). If the header is present, only the header is considered.
    - Common option: add a `secret=<POSTBACK_SECRET>` parameter to the URL registered with the network (rename it with `POSTBACK_PARAM_SECRET`). In that case configure the proxy not to log query strings and rotate the key periodically.
 2. **Record the received parameters** into the `postback_logs` table **before** processing — only with a log can disputes be reconciled later. `POSTBACK_SECRET` and sensitive parameters (`token`, `signature`...) are **masked** before being stored and before being shown on the admin page.
@@ -592,7 +596,9 @@ For scheduling and restoring: see [docs/deployment.md](docs/deployment.md#5-vậ
 - **Login verification**: the code is only sent **after the password is correct**, so someone who does not know the password cannot fill someone else's inbox. Step 2 uses a pre-signed **login ticket** (valid for 5 minutes) instead of resending the password, and the ticket is invalidated when the password changes.
 - **Temporary passwords** issued by an admin are never stored as plain text — they are shown to the admin once and then gone.
 - Every response carries **security headers**: `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`; over HTTPS also `Strict-Transport-Security`. APIs return `Cache-Control: no-store` so wallet/order data is not cached.
-- **Postbacks** from affiliate networks must include `POSTBACK_SECRET`; a missing or wrong key is rejected (503/403) and logged.
+- **Postbacks** from affiliate networks must include `POSTBACK_SECRET`; a missing or wrong key is rejected (503/403) and logged (with the per-IP cap described above).
+- Payout **QR images** (`/uploads/qr_*`) are readable only by the owner or an admin and are served with `Cache-Control: private, no-store` (both by Node and by the Nginx config in `deploy/`), so bank account numbers are never cached by a shared proxy or CDN. Avatars remain public.
+- The SPA reflects the current page in the URL (`#/wallet`, `#/orders`...), so refresh and Back/Forward work. `/robots.txt` and `/sitemap.xml` are generated from `PUBLIC_BASE_URL`, and `index.html` carries absolute Open Graph/Twitter tags plus a `<noscript>` summary, so link previews and crawlers get real content even though the dashboard itself renders client-side.
 
 ### Production notes
 

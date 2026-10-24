@@ -546,8 +546,40 @@ function notifyOwner(order, commission, status, reversedCommission = 0) {
 /**
  * Ghi lại một lần gọi KHÔNG hợp lệ (sai chìa khoá, lỗi xử lý) để còn truy vết.
  * Những lần này không đụng tới đơn hàng.
+ *
+ * Giới hạn: mỗi IP chỉ ghi tối đa REJECTED_LOG_MAX dòng / REJECTED_LOG_WINDOW_MS.
+ * Endpoint postback là API công khai, không thể để người lạ bơm hàng triệu dòng
+ * vào cùng file SQLite đang giữ dữ liệu tiền. Vượt giới hạn thì bỏ qua (vẫn trả 403).
  */
+const REJECTED_LOG_MAX = 10;
+const REJECTED_LOG_WINDOW_MS = 15 * 60 * 1000;
+const REJECTED_LOG_MAX_IPS = 5000;
+const rejectedLogState = new Map();
+
+function shouldLogRejected(ip) {
+  const key = String(ip || 'unknown').slice(0, 60);
+  const now = Date.now();
+  const entry = rejectedLogState.get(key);
+
+  if (!entry || entry.resetAt <= now) {
+    // Dọn bớt mục hết hạn để Map không phình vô hạn (bị lợi dụng bằng nhiều IP)
+    if (rejectedLogState.size >= REJECTED_LOG_MAX_IPS) {
+      for (const [k, v] of rejectedLogState) {
+        if (v.resetAt <= now) rejectedLogState.delete(k);
+      }
+      if (rejectedLogState.size >= REJECTED_LOG_MAX_IPS) rejectedLogState.clear();
+    }
+    rejectedLogState.set(key, { count: 1, resetAt: now + REJECTED_LOG_WINDOW_MS });
+    return true;
+  }
+
+  entry.count += 1;
+  return entry.count <= REJECTED_LOG_MAX;
+}
+
 function receiveRejected(params, meta = {}, reason = '') {
+  if (!shouldLogRejected(meta.ip)) return null;
+
   const now = new Date().toISOString();
   const parsed = normalize(params);
   // Băm kèm thời điểm + số ngẫu nhiên: mọi lần gọi sai đều được ghi lại (không gộp trùng)
@@ -631,9 +663,26 @@ function describe() {
   };
 }
 
+/**
+ * Dọn các dòng log BỊ TỪ CHỐI cũ (sai chìa khoá / lỗi xử lý).
+ * Log khớp đơn là chứng từ tài chính nên KHÔNG bao giờ tự xoá.
+ * Mặc định giữ 90 ngày, đổi bằng POSTBACK_LOG_KEEP_DAYS.
+ */
+function pruneRejected() {
+  const raw = Number(process.env.POSTBACK_LOG_KEEP_DAYS);
+  const days = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 3650) : 90;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const info = db
+    .prepare("DELETE FROM postback_logs WHERE action = 'Từ chối' AND received_at < ?")
+    .run(cutoff);
+  return Number(info.changes) || 0;
+}
+
 module.exports = {
   receive,
   receiveRejected,
+  pruneRejected,
   reapply,
   describe,
   verifySecret,

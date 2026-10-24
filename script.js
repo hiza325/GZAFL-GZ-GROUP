@@ -20,15 +20,45 @@ const tr = (key, vars) => (window.GZ_I18N ? window.GZ_I18N.t(key, vars) : key);
 ========================================== */
 
 // Gọi API backend. Tự gửi cookie phiên (credentials: same-origin).
+//
+// Có timeout: trước đây nếu server treo (mất mạng, SQLite bị khoá, deploy dở)
+// thì fetch chờ vô hạn và giao diện quay mãi không báo gì cho người dùng.
+const API_TIMEOUT_MS = 20000;
+
 async function api(path, options = {}) {
-  const { method = 'GET', body } = options;
-  const fetchOptions = { method, credentials: 'same-origin', headers: {} };
+  const { method = 'GET', body, timeout = API_TIMEOUT_MS } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  const fetchOptions = {
+    method,
+    credentials: 'same-origin',
+    headers: {},
+    signal: controller.signal
+  };
   if (body !== undefined) {
     fetchOptions.headers['Content-Type'] = 'application/json';
     fetchOptions.body = JSON.stringify(body);
   }
 
-  const res = await fetch('/api' + path, fetchOptions);
+  let res;
+  try {
+    res = await fetch('/api' + path, fetchOptions);
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      const timeoutError = new Error('Máy chủ phản hồi quá lâu. Vui lòng kiểm tra kết nối rồi thử lại.');
+      timeoutError.status = 0;
+      timeoutError.code = 'TIMEOUT';
+      throw timeoutError;
+    }
+    const networkError = new Error('Không kết nối được máy chủ. Vui lòng kiểm tra mạng rồi thử lại.');
+    networkError.status = 0;
+    networkError.code = 'NETWORK';
+    throw networkError;
+  } finally {
+    clearTimeout(timer);
+  }
+
   const text = await res.text();
   let data = null;
   if (text) {
@@ -166,12 +196,6 @@ function statusBadgeClass(status) {
   return 'bg-amber-50 text-amber-600 border-amber-100';
 }
 
-// Đọc giá trị hoa hồng (số hoặc chuỗi "đ0") thành số
-function parseCommissionValue(value) {
-  const n = parseInt(String(value == null ? '' : value).replace(/[^0-9-]/g, ''), 10);
-  return isNaN(n) ? 0 : n;
-}
-
 // Thông báo toast thay cho alert()
 function showToast(message, type = 'info') {
   let host = document.getElementById('toast-host');
@@ -179,6 +203,10 @@ function showToast(message, type = 'info') {
     host = document.createElement('div');
     host.id = 'toast-host';
     host.className = 'fixed top-5 right-5 z-[200] flex flex-col gap-3 pointer-events-none px-2';
+    // Trình đọc màn hình phải đọc được thông báo (trước đây toast chỉ hiện hình).
+    host.setAttribute('role', 'status');
+    host.setAttribute('aria-live', 'polite');
+    host.setAttribute('aria-atomic', 'false');
     document.body.appendChild(host);
   }
 
@@ -297,13 +325,23 @@ async function applySupportContact(root) {
   if (zaloEl && support.zalo) zaloEl.textContent = 'Zalo: ' + support.zalo;
 }
 
+// Chống "đua" khi bấm menu liên tiếp: chỉ yêu cầu MỚI NHẤT được ghi vào DOM.
+// Nếu không có bước này, phản hồi chậm của trang cũ có thể đè lên trang mới.
+const componentLoadTokens = new Map();
+
 async function loadComponent(elementId, filePath) {
+  const token = (componentLoadTokens.get(elementId) || 0) + 1;
+  componentLoadTokens.set(elementId, token);
+
   try {
     const response = await fetch(filePath);
     if (!response.ok) throw new Error('Không thể tải file ' + filePath);
 
     const html = await response.text();
+    if (componentLoadTokens.get(elementId) !== token) return false;
+
     const container = document.getElementById(elementId);
+    if (!container) return false;
     container.innerHTML = html;
 
     // Dịch các nhãn tĩnh ngay sau khi chèn component (trang chủ, hướng dẫn...)
@@ -325,8 +363,30 @@ async function loadComponent(elementId, filePath) {
     else if (filePath.includes('notifications.html')) updateNotificationsData();
     else if (filePath.includes('guide.html')) applySupportContact(document.getElementById(elementId));
     else if (filePath.includes('landing.html')) applyAffiliateStatus();
+
+    return true;
   } catch (error) {
     console.error('Lỗi khi tải component:', error);
+    if (componentLoadTokens.get(elementId) !== token) return false;
+
+    const container = document.getElementById(elementId);
+    if (container) {
+      container.innerHTML = `
+        <div class="p-8">
+          <div class="bg-white p-10 rounded-3xl border border-slate-100 text-center">
+            <div class="w-16 h-16 mx-auto rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-4">
+              <i data-lucide="wifi-off" class="w-7 h-7"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800 mb-1">Không tải được nội dung trang</h3>
+            <p class="text-sm text-slate-500 mb-6">Kết nối có thể bị gián đoạn. Vui lòng thử lại.</p>
+            <button data-action="reload-page" class="bg-[#f04d4d] hover:bg-red-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition">
+              Tải lại trang
+            </button>
+          </div>
+        </div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    return false;
   }
 }
 
@@ -363,9 +423,16 @@ async function checkAuth() {
 
     closeSidebar();
     setHeaderTitle('Tổng quan');
+    document.title = 'Tổng quan - GZ AFL';
     updateActiveMenu('dashboard');
     renderHeaderUser(user);
     applyAdminVisibility(user);
+
+    // Mở đúng trang khi người dùng F5 hoặc dán link dạng #/wallet
+    const deepLink = pageFromHash();
+    if (deepLink && deepLink !== 'dashboard') {
+      await navigateTo(deepLink, { push: false });
+    }
 
     // Nếu người dùng vừa dán link ở trang chủ rồi mới đăng nhập,
     // đưa họ thẳng tới trang Tạo đơn với link đã điền sẵn.
@@ -427,6 +494,8 @@ window.logoutUser = async function() {
     /* dù lỗi vẫn đưa về trạng thái chưa đăng nhập */
   }
   currentUser = null;
+  // Xoá hash (#/admin, #/wallet) để lần đăng nhập sau không mở lại trang cũ
+  window.history.replaceState(null, '', window.location.pathname);
   await checkAuth();
 };
 
@@ -1348,19 +1417,29 @@ function closeSidebar() {
   setSidebarOpen(false);
 }
 
-async function navigateTo(page) {
+async function navigateTo(page, options = {}) {
   const route = PAGE_ROUTES[page];
-  if (!route) return;
+  if (!route) return false;
 
   // Chặn xem trước ở phía giao diện (server vẫn là nơi quyết định thật)
   if (page === 'admin' && (!currentUser || currentUser.role !== 'admin')) {
     showToast('Bạn không có quyền truy cập trang quản trị.', 'error');
-    return;
+    return false;
   }
 
-  await loadComponent('main-content-container', route.file);
+  const loaded = await loadComponent('main-content-container', route.file);
+  if (!loaded) return false;
+
   setHeaderTitle(route.title);
   updateActiveMenu(page);
+
+  // URL phản ánh trang đang xem: F5 giữ nguyên trang, Back/Forward hoạt động.
+  // Dùng hash (#/wallet) để nginx/Express không cần cấu hình rewrite.
+  if (options.push !== false && pageFromHash() !== page) {
+    window.history.pushState({ page }, '', '#/' + page);
+  }
+  document.title = route.title + ' - GZ AFL';
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
 
   if (page === 'profile') initProfilePage();
 
@@ -1372,7 +1451,22 @@ async function navigateTo(page) {
       showToast('Không tải được trang quản trị. Vui lòng thử lại.', 'error');
     }
   }
+
+  return true;
 }
+
+// Đọc trang từ hash. Chỉ nhận tên trang có trong PAGE_ROUTES (tránh chèn nội dung lạ).
+function pageFromHash() {
+  const raw = String(window.location.hash || '')
+    .replace(/^#\/?/, '')
+    .trim();
+  return Object.prototype.hasOwnProperty.call(PAGE_ROUTES, raw) ? raw : null;
+}
+
+window.addEventListener('popstate', function () {
+  if (!currentUser) return;
+  navigateTo(pageFromHash() || 'dashboard', { push: false });
+});
 
 document.addEventListener('click', async function(event) {
   // 0. Mở/đóng sidebar trên mobile
@@ -1596,9 +1690,11 @@ function renderLinkResult(order, affiliate) {
 async function fetchOrders() {
   try {
     const data = await api('/orders');
-    return data.orders || [];
+    return Array.isArray(data.orders) ? data.orders : [];
   } catch (err) {
-    return [];
+    // Trả null để nơi gọi phân biệt "không có đơn" với "không tải được".
+    console.warn('Không tải được danh sách đơn hàng:', err);
+    return null;
   }
 }
 
@@ -1615,31 +1711,151 @@ function setHeaderBalance(balance) {
   setText('header-balance', formatCurrency(balance));
 }
 
+const PLATFORM_STYLES = {
+  shopee: { cls: 'bg-orange-500', icon: 'shopping-bag' },
+  'tiktok shop': { cls: 'bg-black', icon: 'video' },
+  tiki: { cls: 'bg-blue-600', icon: 'heart' },
+  lazada: { cls: 'bg-indigo-600', icon: 'shopping-cart' }
+};
+
+function renderCommissionChart(monthly) {
+  const chart = document.getElementById('dash-chart');
+  const labels = document.getElementById('dash-chart-labels');
+  const totalEl = document.getElementById('dash-chart-total');
+  if (!chart || !labels) return;
+
+  const months = Array.isArray(monthly) ? monthly : [];
+  if (months.length === 0) {
+    chart.innerHTML = `<div class="h-full w-full flex items-center justify-center text-xs text-slate-300">Không tải được số liệu</div>`;
+    labels.innerHTML = '';
+    if (totalEl) totalEl.textContent = 'Tổng: —';
+    return;
+  }
+
+  const total = months.reduce((sum, m) => sum + (Number(m.commission) || 0), 0);
+  if (totalEl) totalEl.textContent = 'Tổng: ' + formatCurrency(total);
+
+  const labelsHtml = months
+    .map((m, i) => {
+      const isLast = i === months.length - 1;
+      return `<div class="flex-1 text-center text-[11px] font-semibold ${isLast ? 'text-slate-700' : 'text-slate-400'}">${escapeHtml(m.label)}</div>`;
+    })
+    .join('');
+
+  const max = Math.max(...months.map((m) => Number(m.commission) || 0), 0);
+  if (max <= 0) {
+    chart.innerHTML = `<div class="h-full w-full flex items-center justify-center text-xs text-slate-300">Chưa có hoa hồng được duyệt</div>`;
+    labels.innerHTML = labelsHtml;
+    return;
+  }
+
+  chart.innerHTML = months
+    .map((m, i) => {
+      const value = Number(m.commission) || 0;
+      // Cao tối thiểu 4% để tháng có hoa hồng nhỏ vẫn nhìn thấy
+      const height = value > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0;
+      const isLast = i === months.length - 1;
+      return `<div class="flex-1 h-full flex items-end" title="${escapeHtml(m.label)}: ${formatCurrency(value)}">
+        <div class="w-full rounded-t-lg transition-all ${isLast ? 'bg-[#f04d4d] shadow-sm' : 'bg-red-100 hover:bg-red-200'}" style="height:${height}%"></div>
+      </div>`;
+    })
+    .join('');
+  labels.innerHTML = labelsHtml;
+}
+
+function renderPlatformCommissions(byPlatform) {
+  const area = document.getElementById('dash-platforms');
+  if (!area) return;
+
+  const list = Array.isArray(byPlatform) ? byPlatform : [];
+  if (list.length === 0) {
+    area.innerHTML = `<div class="text-xs text-slate-400 py-6 text-center">Chưa có đơn hàng nào.</div>`;
+    return;
+  }
+
+  area.innerHTML = list
+    .slice(0, 8)
+    .map((p) => {
+      const key = String(p.platform || '').toLowerCase();
+      const style = PLATFORM_STYLES[key] || { cls: 'bg-slate-500', icon: 'store' };
+      return `<div class="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg ${style.cls} text-white flex items-center justify-center font-bold text-xs shadow-sm flex-shrink-0">
+            <i data-lucide="${style.icon}" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="font-medium text-sm text-slate-700 truncate">${escapeHtml(p.platform)}</div>
+            <div class="text-[11px] text-slate-400">${Number(p.orders) || 0} đơn</div>
+          </div>
+        </div>
+        <span class="font-bold text-xs text-red-500 flex-shrink-0">${formatCurrency(p.commission)}</span>
+      </div>`;
+    })
+    .join('');
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderDashboardError() {
+  const area = document.getElementById('dash-recent-orders');
+  if (!area) return;
+  area.innerHTML = `
+    <div class="py-10 flex flex-col items-center text-center">
+      <div class="w-12 h-12 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mb-3">
+        <i data-lucide="cloud-off" class="w-5 h-5"></i>
+      </div>
+      <div class="font-bold text-slate-800 text-sm">Không tải được dữ liệu</div>
+      <div class="text-xs text-slate-400 mt-1 mb-4">Kết nối tới máy chủ bị gián đoạn hoặc phản hồi quá chậm.</div>
+      <button type="button" data-action="retry-dashboard" class="bg-[#f04d4d] hover:bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">
+        Thử lại
+      </button>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
 async function updateDashboardData() {
-  const orders = await fetchOrders();
-  const wallet = await fetchWallet();
+  const [orders, wallet] = await Promise.all([fetchOrders(), fetchWallet()]);
   const user = currentUser;
-  const total = orders.length;
-  const pending = orders.filter(o => o.status === 'Đang xử lý' || o.status === 'Chờ đối soát' || o.status === 'Chờ admin duyệt').length;
-  const completed = orders.filter(o => o.status === 'Hoàn thành').length;
-  // Đơn đã huỷ không được tính vào hoa hồng
-  const commission = wallet
-    ? Number(wallet.totalCommission) || 0
-    : orders.filter(o => o.status !== 'Đã huỷ').reduce((sum, o) => sum + parseCommissionValue(o.commission), 0);
-  const balance = wallet ? Number(wallet.balance) || 0 : commission;
+
+  const ordersOk = Array.isArray(orders);
+  const stats = (wallet && wallet.stats) || {};
+  const insights = (wallet && wallet.insights) || null;
+
+  const total = ordersOk ? orders.length : Number(stats.total) || 0;
+  const pending = ordersOk
+    ? orders.filter((o) => o.status === 'Đang xử lý' || o.status === 'Chờ đối soát' || o.status === 'Chờ admin duyệt').length
+    : Number(stats.pending) || 0;
+
+  const monthCommission = insights ? Number(insights.month.commission) || 0 : null;
+  const monthOrders = insights ? Number(insights.month.orders) || 0 : null;
+  const totalCommission = wallet ? Number(wallet.totalCommission) || 0 : null;
+  const balance = wallet ? Number(wallet.balance) || 0 : null;
 
   setText('dashboard-username', (user && user.name) ? user.name : 'bạn');
-  setText('dash-commission', formatCurrency(commission));
-  setText('dash-completed-note', completed + ' đơn hoàn thành');
-  setText('dash-order-count', total);
-  setText('dash-pending-note', pending > 0 ? (pending + ' đơn đang chờ') : 'Không có đơn chờ');
-  setText('dash-balance', formatCurrency(balance));
-  setText('dash-total-commission', formatCurrency(commission));
-  setText('dash-total-note', total + ' đơn tất cả');
-  setText('dash-card-balance', formatCurrency(balance));
-  setHeaderBalance(balance);
 
-  renderDashboardRecentOrders(orders);
+  // "Hoa hồng tháng này" = hoa hồng đã được admin duyệt của các đơn TẠO trong tháng.
+  // Trước đây ô này hiển thị tổng hoa hồng mọi thời kỳ nên số liệu bị sai.
+  setText('dash-commission', monthCommission === null ? '—' : formatCurrency(monthCommission));
+  setText('dash-completed-note', insights ? monthOrders + ' đơn trong tháng' : 'Không tải được số liệu');
+
+  setText('dash-order-count', monthOrders === null ? '—' : monthOrders);
+  setText('dash-pending-note', pending > 0 ? pending + ' đơn đang chờ' : 'Không có đơn chờ');
+
+  setText('dash-balance', balance === null ? '—' : formatCurrency(balance));
+  setText('dash-total-commission', totalCommission === null ? '—' : formatCurrency(totalCommission));
+  setText('dash-total-note', total + ' đơn tất cả');
+  setText('dash-card-balance', balance === null ? '—' : formatCurrency(balance));
+  if (balance !== null) setHeaderBalance(balance);
+
+  renderCommissionChart(insights ? insights.monthly : null);
+  renderPlatformCommissions(insights ? insights.byPlatform : null);
+
+  if (!wallet || !ordersOk) {
+    renderDashboardError();
+  } else {
+    renderDashboardRecentOrders(orders);
+  }
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -1685,6 +1901,23 @@ async function updateWalletData() {
   try {
     data = await api('/wallet');
   } catch (err) {
+    console.warn('Không tải được ví:', err);
+    const container = document.getElementById('tx-container');
+    if (container) {
+      container.innerHTML = `
+        <div class="py-12 flex flex-col items-center justify-center text-center">
+          <div class="w-16 h-16 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mb-4">
+            <i data-lucide="cloud-off" class="w-7 h-7"></i>
+          </div>
+          <h4 class="text-lg font-bold text-slate-800 mb-1">Không tải được dữ liệu ví</h4>
+          <p class="text-slate-500 text-sm mb-5">${escapeHtml(err.message || 'Vui lòng kiểm tra kết nối rồi thử lại.')}</p>
+          <button type="button" data-action="retry-wallet" class="bg-[#f04d4d] hover:bg-red-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition">
+            Thử lại
+          </button>
+        </div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    setText('wallet-balance', '—');
     return;
   }
 
@@ -1703,6 +1936,22 @@ async function updateWalletData() {
   }
 
   renderWithdrawHistory(data.withdrawals || []);
+}
+
+// Huỷ lệnh rút đang chờ. Tiền trả lại số dư khả dụng ngay (không cần admin duyệt).
+async function cancelWithdrawal(code) {
+  if (!code) return;
+  const confirmed = window.confirm(`Huỷ lệnh rút ${code}?\nSố tiền sẽ trở lại số dư khả dụng ngay.`);
+  if (!confirmed) return;
+
+  try {
+    const data = await api('/wallet/withdrawals/' + encodeURIComponent(code), { method: 'DELETE' });
+    showToast(`Đã huỷ lệnh rút ${code}. Số dư khả dụng: ${formatCurrency(Number(data.balance) || 0)}.`, 'success');
+    if (document.getElementById('tx-container')) await updateWalletData();
+    if (document.getElementById('dash-recent-orders')) await updateDashboardData();
+  } catch (err) {
+    showToast(err.message || 'Không huỷ được lệnh rút.', 'error');
+  }
 }
 
 function renderWithdrawHistory(list = []) {
@@ -1750,6 +1999,11 @@ function renderWithdrawHistory(list = []) {
           <div class="flex items-center gap-3 self-start sm:self-center">
             ${tx.amount > 0 ? `<span class="text-sm font-bold text-slate-800">${formatCurrency(tx.amount)}</span>` : ''}
             <span class="text-xs font-bold px-3 py-1.5 rounded-full border ${statusBadgeClass(tx.status)}">${escapeHtml(tx.status)}</span>
+            ${tx.status === 'Đang xử lý'
+              ? `<button type="button" data-action="cancel-withdrawal" data-id="${escapeHtml(tx.id)}"
+                   aria-label="Huỷ lệnh rút ${escapeHtml(tx.id)}"
+                   class="text-xs font-semibold text-slate-400 hover:text-red-500 px-2 py-1.5 rounded-lg hover:bg-red-50 transition">Huỷ</button>`
+              : ''}
           </div>
         </div>
       `;
@@ -1765,6 +2019,23 @@ async function updateOrdersData() {
   const area = document.getElementById('orders-display-area');
   const badge = document.getElementById('order-count-badge');
   if (!area) return;
+
+  if (orders === null) {
+    if (badge) badge.classList.add('hidden');
+    area.innerHTML = `
+      <div class="bg-white p-12 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center min-h-[400px]">
+        <div class="w-20 h-20 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-5">
+          <i data-lucide="cloud-off" class="w-9 h-9"></i>
+        </div>
+        <h3 class="text-xl font-bold text-slate-800 mb-2">Không tải được đơn hàng</h3>
+        <p class="text-slate-500 max-w-md mx-auto mb-8">Kết nối bị gián đoạn hoặc máy chủ phản hồi quá chậm. Đơn hàng của bạn vẫn an toàn.</p>
+        <button type="button" data-action="retry-orders" class="bg-[#f04d4d] hover:bg-red-600 text-white font-medium px-6 py-3 rounded-xl shadow-md transition-all">
+          Thử lại
+        </button>
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
 
   if (orders.length === 0) {
     if (badge) badge.classList.add('hidden');
@@ -2407,6 +2678,8 @@ window.setWithdrawMode = function(mode) {
     (item[1] ? onClasses : offClasses).forEach(function(cls) {
       btn.classList.add(cls);
     });
+    // aria-pressed để trình đọc màn hình biết nút nào đang được chọn
+    btn.setAttribute('aria-pressed', item[1] ? 'true' : 'false');
   });
 
   updateWithdrawQrNote();
@@ -2982,6 +3255,13 @@ const UI_ACTIONS = {
   'pick-withdraw-qr': () => document.getElementById('withdraw-qr-upload')?.click(),
   'remove-bank-qr': () => removeBankQr(),
   'submit-withdraw': () => submitWithdraw(),
+  'cancel-withdrawal': (el) => cancelWithdrawal(el.dataset.id),
+
+  // Tải lại dữ liệu khi mất kết nối
+  'retry-dashboard': () => updateDashboardData(),
+  'retry-orders': () => updateOrdersData(),
+  'retry-wallet': () => updateWalletData(),
+  'reload-page': () => window.location.reload(),
 
   // Đăng nhập / đăng ký / quên mật khẩu
   'open-auth': () => openAuthModal(true),

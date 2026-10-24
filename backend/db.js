@@ -306,6 +306,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications (user_id, is_read);
   CREATE INDEX IF NOT EXISTS idx_pwd_resets_status   ON password_resets (status, created_at);
   CREATE INDEX IF NOT EXISTS idx_postback_tx        ON postback_logs (transaction_id);
+  CREATE INDEX IF NOT EXISTS idx_postback_order     ON postback_logs (order_code);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_postback_hash ON postback_logs (payload_hash);
   CREATE INDEX IF NOT EXISTS idx_audit_created       ON admin_audit_logs (created_at);
   CREATE INDEX IF NOT EXISTS idx_login_fail_user     ON login_failures (username, created_at);

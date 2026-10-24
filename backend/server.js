@@ -21,6 +21,7 @@ const cookieParser = require('cookie-parser');
 const { rateLimit } = require('./lib/rateLimit');
 
 const db = require('./db'); // khởi tạo database + bảng
+const postbackLib = require('./lib/postback');
 
 const IS_PRODUCTION = isProduction();
 const DEV_SECRET = 'gzafl-dev-secret-change-me';
@@ -257,6 +258,9 @@ function uploadGuard(req, res, next) {
   if (user.role !== 'admin' && String(user.id) !== qr[1]) {
     return res.status(403).json({ error: 'Bạn không có quyền xem ảnh này.' });
   }
+  // Ảnh QR chứa số tài khoản ngân hàng: cấm mọi cache dùng chung (proxy/CDN) và
+  // cấm trình duyệt giữ lại sau khi đóng tab.
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
   return next();
 }
 
@@ -364,9 +368,60 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Không tìm thấy API.' }));
 
 // Frontend tĩnh (xem danh sách cho phép ở trên)
+//
+// Trang chủ render nội dung bằng JavaScript, nên bot mạng xã hội chỉ đọc được
+// phần <head>. Vì vậy các thẻ og:*/twitter:* trong index.html dùng placeholder
+// __PUBLIC_BASE_URL__ và được thay bằng URL công khai thật khi trả về.
+function publicBaseUrl() {
+  const raw = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (raw) {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === 'http:' || url.protocol === 'https:') return url.origin;
+    } catch (err) {
+      /* rơi xuống URL mặc định bên dưới */
+    }
+  }
+  return `http://localhost:${PORT}`;
+}
+
+function renderIndexHtml() {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  return html.split('__PUBLIC_BASE_URL__').join(publicBaseUrl());
+}
+
 app.get(['/', '/index.html'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.sendFile(path.join(ROOT, 'index.html'));
+  res.type('html');
+  res.send(renderIndexHtml());
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send(
+    [
+      'User-agent: *',
+      'Allow: /',
+      'Disallow: /api/',
+      'Disallow: /uploads/',
+      'Disallow: /r/',
+      '',
+      `Sitemap: ${publicBaseUrl()}/sitemap.xml`,
+      ''
+    ].join('\n')
+  );
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const base = publicBaseUrl();
+  const lastmod = new Date().toISOString().slice(0, 10);
+  res.type('application/xml');
+  res.send(
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+      `  <url><loc>${base}/</loc><lastmod>${lastmod}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>\n` +
+      '</urlset>\n'
+  );
 });
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
@@ -505,6 +560,9 @@ server.listen(PORT, () => {
 
   const cleaned = otp.cleanup();
   if (cleaned) console.log(`  Đã dọn ${cleaned} mã xác thực hết hạn.`);
+
+  const prunedPostbacks = postbackLib.pruneRejected();
+  if (prunedPostbacks) console.log(`  Đã dọn ${prunedPostbacks} log postback bị từ chối quá hạn.`);
 });
 
 /* ==========================================
