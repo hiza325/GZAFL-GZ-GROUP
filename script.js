@@ -2325,10 +2325,11 @@ function renderReferralPage() {
   renderPointRedemptions();
 }
 
-function showRedeemFeedback(success, message) {
+function showRedeemFeedback(success, message, note = '') {
   const box = document.getElementById('redeem-feedback');
   const icon = document.getElementById('redeem-feedback-icon');
   const text = document.getElementById('redeem-feedback-text');
+  const noteEl = document.getElementById('redeem-feedback-note');
   if (!box || !icon || !text) return;
   box.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-700', 'bg-red-50', 'text-red-500');
   if (success) {
@@ -2339,6 +2340,10 @@ function showRedeemFeedback(success, message) {
     icon.setAttribute('data-lucide', 'alert-circle');
   }
   text.innerText = message;
+  if (noteEl) {
+    noteEl.innerText = note;
+    noteEl.classList.toggle('hidden', !note);
+  }
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -2395,7 +2400,15 @@ async function initReferralPage() {
       btnRedeem.disabled = true;
       try {
         const result = await api('/referral/redeem', { method: 'POST', body: { code } });
-        showRedeemFeedback(true, result.message);
+        if (result.pending) {
+          showRedeemFeedback(
+            true,
+            'Nhập mã thành công!',
+            `${Number(result.rewardPoints) || 100} điểm sẽ được cộng khi tài khoản của bạn có đơn hàng đầu tiên (đơn không bị huỷ).`
+          );
+        } else {
+          showRedeemFeedback(true, result.message || 'Nhập mã thành công!');
+        }
         redeemInput.value = '';
         referralState = await api('/referral');
         renderReferralPage();

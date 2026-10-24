@@ -121,8 +121,8 @@ router.post('/redeem', (req, res) => {
 
       if (!reward) {
         notify(req.user.id, {
-          title: 'Đã ghi nhận mã giới thiệu',
-          body: `Mã ${code} đã được ghi nhận. Bạn sẽ nhận ${REFERRAL_REWARD_POINTS} điểm sau khi tạo đơn hàng đầu tiên.`,
+          title: 'Nhập mã giới thiệu thành công',
+          body: `Mã ${code} đã được ghi nhận. Bạn sẽ nhận ${REFERRAL_REWARD_POINTS} điểm sau khi tài khoản có đơn hàng đầu tiên.`,
           icon: 'user-plus'
         });
       }
@@ -145,7 +145,7 @@ router.post('/redeem', (req, res) => {
   return res.json({
     message: result.rewarded
       ? `Nhập mã thành công! Bạn vừa nhận được ${REFERRAL_REWARD_POINTS} điểm từ mã ${code}.`
-      : `Đã ghi nhận mã ${code}. Bạn sẽ nhận ${REFERRAL_REWARD_POINTS} điểm sau khi tạo đơn hàng đầu tiên.`,
+      : `Nhập mã ${code} thành công! ${REFERRAL_REWARD_POINTS} điểm sẽ được cộng khi tài khoản của bạn có đơn hàng đầu tiên (đơn không bị huỷ).`,
     points: result.points,
     pending: !result.rewarded,
     rewardPoints: REFERRAL_REWARD_POINTS,

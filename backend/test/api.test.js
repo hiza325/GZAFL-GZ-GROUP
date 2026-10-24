@@ -1405,7 +1405,8 @@ test('API và hạ tầng', { timeout: 90_000 }, async (t) => {
     assert.equal(redeemed.res.status, 200);
     assert.equal(redeemed.data.pending, true);
     assert.equal(redeemed.data.points, 0);
-    assert.match(redeemed.data.message, /sau khi tạo đơn hàng/i);
+    assert.match(redeemed.data.message, /thành công/i);
+    assert.match(redeemed.data.message, /đơn hàng đầu tiên/i);
 
     let referral = await json('/api/referral', { cookie: invited.cookie });
     assert.equal(referral.data.points, 0);
