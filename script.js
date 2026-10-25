@@ -95,6 +95,32 @@ function safeHttpUrl(url) {
   return '';
 }
 
+// Tên miền của các sàn được hỗ trợ (khớp backend/lib/validate.js).
+// So khớp theo hostname để không nhận nhầm link giả dạng như "tiktok.com.example.com".
+const SHOP_LINK_SUFFIXES = ['tiktok.com', 'tiktokshop.com', 'shopee.vn', 'shp.ee', 'tiki.vn', 'lazada.vn'];
+const SHOP_LINK_MAX_LENGTH = 2048;
+
+// Kiểm tra sớm ở giao diện; backend vẫn là nơi quyết định cuối cùng.
+// Giữ đúng các điều kiện của parseOrderLink() để không báo "hợp lệ" rồi server lại từ chối.
+function isSupportedShopLink(raw) {
+  let text = String(raw == null ? '' : raw).trim();
+  if (!text || text.length > SHOP_LINK_MAX_LENGTH) return false;
+  if (text.includes('\n') || text.includes('\r')) return false;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) text = 'https://' + text;
+
+  let url;
+  try {
+    url = new URL(text);
+  } catch (err) {
+    return false;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+  if (url.username || url.password) return false;
+
+  const host = url.hostname.toLowerCase();
+  return SHOP_LINK_SUFFIXES.some((suffix) => host === suffix || host.endsWith('.' + suffix));
+}
+
 // Gán text cho element theo id (bỏ qua nếu không tồn tại)
 function setText(id, text) {
   const el = document.getElementById(id);
@@ -314,15 +340,22 @@ async function fetchSupportContact() {
 
 async function applySupportContact(root) {
   const scope = root || document;
-  const emailEl = scope.querySelector('#support-email');
-  const zaloEl = scope.querySelector('#support-zalo');
-  if (!emailEl && !zaloEl) return;
+  // Một trang có thể hiển thị thông tin liên hệ ở nhiều khối (đầu trang, chân trang...)
+  // nên dùng querySelectorAll để điền tất cả, tránh chỉ phần tử đầu tiên được cập nhật.
+  const targets = scope.querySelectorAll('[data-support]');
+  if (!targets.length) return;
 
   const support = await fetchSupportContact();
   if (!support) return;
 
-  if (emailEl && support.email) emailEl.textContent = support.email;
-  if (zaloEl && support.zalo) zaloEl.textContent = 'Zalo: ' + support.zalo;
+  targets.forEach((el) => {
+    const isEmail = el.dataset.support === 'email';
+    const value = isEmail ? support.email : support.zalo;
+    if (!value) return;
+    // Nhãn "Zalo:" đã nằm sẵn ngoài phần tử thì không thêm tiền tố lần nữa.
+    const prefix = !isEmail && el.dataset.supportPrefix !== 'none' ? 'Zalo: ' : '';
+    el.textContent = prefix + value;
+  });
 }
 
 // Chống "đua" khi bấm menu liên tiếp: chỉ yêu cầu MỚI NHẤT được ghi vào DOM.
@@ -361,8 +394,11 @@ async function loadComponent(elementId, filePath) {
     else if (filePath.includes('orders.html')) updateOrdersData();
     else if (filePath.includes('referral.html')) initReferralPage();
     else if (filePath.includes('notifications.html')) updateNotificationsData();
-    else if (filePath.includes('guide.html')) applySupportContact(document.getElementById(elementId));
     else if (filePath.includes('landing.html')) applyAffiliateStatus();
+
+    // Điền thông tin liên hệ từ .env cho mọi component có khối [data-support]
+    // (hướng dẫn, chính sách...). Không chờ để nội dung trang hiện ngay.
+    applySupportContact(container);
 
     return true;
   } catch (error) {
@@ -1564,10 +1600,6 @@ document.addEventListener('click', async function(event) {
   if (!inputElement) return;
 
   const inputValue = inputElement.value.trim();
-  const shopeeRegex = /(shopee\.vn|shp\.ee)/i;
-  const tiktokRegex = /(tiktok\.com|vt\.tiktok\.com)/i;
-  const tikiRegex = /(tiki\.vn)/i;
-  const lazadaRegex = /(lazada\.vn|c\.lazada\.vn)/i;
 
   errorBox && errorBox.classList.add('hidden');
   inputElement.classList.remove('border-red-500', 'bg-red-50/50');
@@ -1596,7 +1628,7 @@ document.addEventListener('click', async function(event) {
   }
 
   const singleLink = links[0];
-  if (!(shopeeRegex.test(singleLink) || tiktokRegex.test(singleLink) || tikiRegex.test(singleLink) || lazadaRegex.test(singleLink))) {
+  if (!isSupportedShopLink(singleLink)) {
     showError('Phát hiện link không hợp lệ! Vui lòng chỉ nhập link Shopee, TikTok, Tiki hoặc Lazada.');
     return;
   }
@@ -3488,7 +3520,8 @@ function renderNotifications() {
 // Link người dùng dán ở trang chủ, giữ lại để điền sẵn sau khi đăng nhập xong
 let pendingLandingLink = null;
 
-const LANDING_LINK_REGEX = /(shopee\.vn|shp\.ee|tiktok\.com|vt\.tiktok\.com|tiki\.vn|lazada\.vn|c\.lazada\.vn)/i;
+// Dùng chung isSupportedShopLink() ở phần tiện ích để giao diện và backend
+// nhận đúng cùng một danh sách tên miền (tiktok.com, tiktokshop.com, shopee.vn...).
 
 window.convertLandingLink = function() {
   const input = document.getElementById('landing-link-input');
@@ -3499,7 +3532,7 @@ window.convertLandingLink = function() {
     if (input) input.focus();
     return;
   }
-  if (!LANDING_LINK_REGEX.test(value)) {
+  if (!isSupportedShopLink(value)) {
     showToast(tr('landing.error.invalid'), 'error');
     if (input) input.focus();
     return;
